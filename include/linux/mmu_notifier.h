@@ -141,6 +141,11 @@ struct mmu_notifier_ops {
 	void (*invalidate_range_end)(struct mmu_notifier *mn,
 				     struct mm_struct *mm,
 				     unsigned long start, unsigned long end);
+
+	/* Called after release at a point when mn can be freed.
+	 * Note that the mm_struct may be long gone.
+	 */
+	void (*destroy)(struct mmu_notifier *mn);
 };
 
 /*
@@ -157,6 +162,7 @@ struct mmu_notifier_ops {
 struct mmu_notifier {
 	struct hlist_node hlist;
 	const struct mmu_notifier_ops *ops;
+	struct rcu_head rcuh;
 };
 
 static inline int mm_has_notifiers(struct mm_struct *mm)

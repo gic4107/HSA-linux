@@ -22,6 +22,16 @@
 /* global SRCU for all MMs */
 static struct srcu_struct srcu;
 
+/* Calling mn->ops->destroy from call_srcu,
+ * this exists to handle the type-cast.
+ */
+static void destroy_wrapper(struct rcu_head *rcuh)
+{
+	struct mmu_notifier *mn = container_of(rcuh, struct mmu_notifier, rcuh);
+
+	mn->ops->destroy(mn);
+}
+
 /*
  * This function can't run concurrently against mmu_notifier_register
  * because mm->mm_users > 0 during mmu_notifier_register and exit_mmap
@@ -67,6 +77,9 @@ void __mmu_notifier_release(struct mm_struct *mm)
 		 * return.
 		 */
 		hlist_del_init_rcu(&mn->hlist);
+
+		if (mn->ops->destroy)
+			call_srcu(&srcu, &mn->rcuh, destroy_wrapper);
 	}
 	spin_unlock(&mm->mmu_notifier_mm->lock);
 
@@ -310,6 +323,10 @@ void mmu_notifier_unregister(struct mmu_notifier *mn, struct mm_struct *mm)
 		 * can delete it before we hold the lock.
 		 */
 		hlist_del_init_rcu(&mn->hlist);
+
+		if (mn->ops->destroy)
+			call_srcu(&srcu, &mn->rcuh, destroy_wrapper);
+
 		spin_unlock(&mm->mmu_notifier_mm->lock);
 	}
 
