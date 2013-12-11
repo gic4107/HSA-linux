@@ -837,7 +837,7 @@ static int i915_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	 * keep around the fake agp stuff for gen3, even when kms is enabled. */
 	if (intel_info->gen != 3) {
 		driver.driver_features &=
-			~(DRIVER_USE_AGP | DRIVER_REQUIRE_AGP);
+	driver.driver_features &= ~(DRIVER_USE_AGP | DRIVER_REQUIRE_AGP);
 	} else if (!intel_agp_enabled) {
 		DRM_ERROR("drm/i915 can't work without intel_agp module!\n");
 		return -ENODEV;
@@ -949,7 +949,7 @@ static struct drm_driver driver = {
 	 * deal with them for Intel hardware.
 	 */
 	.driver_features =
-	    DRIVER_USE_AGP | DRIVER_REQUIRE_AGP |
+	    DRIVER_USE_AGP |
 	    DRIVER_HAVE_IRQ | DRIVER_IRQ_SHARED | DRIVER_GEM | DRIVER_PRIME |
 	    DRIVER_RENDER,
 	.load = i915_driver_load,
