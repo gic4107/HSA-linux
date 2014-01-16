@@ -829,13 +829,15 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			.private = &cp,
 		};
 		down_read(&mm->mmap_sem);
-		if (type == CLEAR_REFS_SOFT_DIRTY)
-			mmu_notifier_invalidate_range_start(mm, 0,
-							    -1, MMU_STATUS);
 		for (vma = mm->mmap; vma; vma = vma->vm_next) {
 			cp.vma = vma;
 			if (is_vm_hugetlb_page(vma))
 				continue;
+			if (type == CLEAR_REFS_SOFT_DIRTY)
+				mmu_notifier_invalidate_range_start(vma,
+								    vma->vm_start,
+								    vma->vm_end,
+								    MMU_STATUS);
 			/*
 			 * Writing 1 to /proc/pid/clear_refs affects all pages.
 			 *
@@ -857,10 +859,12 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			}
 			walk_page_range(vma->vm_start, vma->vm_end,
 					&clear_refs_walk);
+			if (type == CLEAR_REFS_SOFT_DIRTY)
+				mmu_notifier_invalidate_range_end(vma,
+								  vma->vm_start,
+								  vma->vm_end,
+								  MMU_STATUS);
 		}
-		if (type == CLEAR_REFS_SOFT_DIRTY)
-			mmu_notifier_invalidate_range_end(mm, 0,
-							  -1, MMU_STATUS);
 		flush_tlb_mm(mm);
 		up_read(&mm->mmap_sem);
 		mmput(mm);
