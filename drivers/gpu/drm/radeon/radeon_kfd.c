@@ -25,7 +25,10 @@
 #include <drm/drmP.h>
 #include "radeon.h"
 
+static uint64_t get_vmem_size(struct kgd_dev *kgd);
+
 static const struct kfd2kgd_calls kfd2kgd = {
+	.get_vmem_size = get_vmem_size,
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -89,4 +92,12 @@ void radeon_kfd_device_fini(struct radeon_device *rdev)
 		kgd2kfd->device_exit(rdev->kfd);
 		rdev->kfd = NULL;
 	}
+}
+
+static uint64_t get_vmem_size(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+	BUG_ON(kgd == NULL);
+
+	return rdev->mc.real_vram_size;
 }
