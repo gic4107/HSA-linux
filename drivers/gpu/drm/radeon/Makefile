@@ -99,6 +99,8 @@ radeon-y += \
 	uvd_v3_1.o \
 	uvd_v4_2.o
 
+radeon-y += radeon_kfd.o
+
 radeon-$(CONFIG_COMPAT) += radeon_ioc32.o
 radeon-$(CONFIG_VGA_SWITCHEROO) += radeon_atpx_handler.o
 radeon-$(CONFIG_ACPI) += radeon_acpi.o
