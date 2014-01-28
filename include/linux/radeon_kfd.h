@@ -76,6 +76,10 @@ struct kfd2kgd_calls {
 	void (*unkmap_mem)(struct kgd_dev *kgd, struct kgd_mem *mem);
 
 	uint64_t (*get_vmem_size)(struct kgd_dev *kgd);
+
+	/* SRBM_GFX_CNTL mutex */
+	void (*lock_srbm_gfx_cntl)(struct kgd_dev *kgd);
+	void (*unlock_srbm_gfx_cntl)(struct kgd_dev *kgd);
 };
 
 bool kgd2kfd_init(unsigned interface_version,

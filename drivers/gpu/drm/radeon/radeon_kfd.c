@@ -41,6 +41,10 @@ static void unkmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem);
 
 static uint64_t get_vmem_size(struct kgd_dev *kgd);
 
+static void lock_srbm_gfx_cntl(struct kgd_dev *kgd);
+static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd);
+
+
 static const struct kfd2kgd_calls kfd2kgd = {
 	.allocate_mem = allocate_mem,
 	.free_mem = free_mem,
@@ -49,6 +53,8 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.kmap_mem = kmap_mem,
 	.unkmap_mem = unkmap_mem,
 	.get_vmem_size = get_vmem_size,
+	.lock_srbm_gfx_cntl = lock_srbm_gfx_cntl,
+	.unlock_srbm_gfx_cntl = unlock_srbm_gfx_cntl,
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -202,4 +208,16 @@ static uint64_t get_vmem_size(struct kgd_dev *kgd)
 	BUG_ON(kgd == NULL);
 
 	return rdev->mc.real_vram_size;
+}
+
+static void lock_srbm_gfx_cntl(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+	mutex_lock(&rdev->srbm_mutex);
+}
+
+static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+	mutex_unlock(&rdev->srbm_mutex);
 }
