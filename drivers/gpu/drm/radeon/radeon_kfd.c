@@ -25,9 +25,29 @@
 #include <drm/drmP.h>
 #include "radeon.h"
 
+struct kgd_mem {
+	struct radeon_bo *bo;
+	u32 domain;
+};
+
+static int allocate_mem(struct kgd_dev *kgd, size_t size, size_t alignment, enum kgd_memory_pool pool, struct kgd_mem **memory_handle);
+static void free_mem(struct kgd_dev *kgd, struct kgd_mem *memory_handle);
+
+static int gpumap_mem(struct kgd_dev *kgd, struct kgd_mem *mem, uint64_t *vmid0_address);
+static void ungpumap_mem(struct kgd_dev *kgd, struct kgd_mem *mem);
+
+static int kmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem, void **ptr);
+static void unkmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem);
+
 static uint64_t get_vmem_size(struct kgd_dev *kgd);
 
 static const struct kfd2kgd_calls kfd2kgd = {
+	.allocate_mem = allocate_mem,
+	.free_mem = free_mem,
+	.gpumap_mem = gpumap_mem,
+	.ungpumap_mem = ungpumap_mem,
+	.kmap_mem = kmap_mem,
+	.unkmap_mem = unkmap_mem,
 	.get_vmem_size = get_vmem_size,
 };
 
@@ -92,6 +112,88 @@ void radeon_kfd_device_fini(struct radeon_device *rdev)
 		kgd2kfd->device_exit(rdev->kfd);
 		rdev->kfd = NULL;
 	}
+}
+
+static u32 pool_to_domain(enum kgd_memory_pool p)
+{
+	switch (p) {
+	case KGD_POOL_FRAMEBUFFER: return RADEON_GEM_DOMAIN_VRAM;
+	default: return RADEON_GEM_DOMAIN_GTT;
+	}
+}
+
+static int allocate_mem(struct kgd_dev *kgd, size_t size, size_t alignment, enum kgd_memory_pool pool, struct kgd_mem **memory_handle)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+	struct kgd_mem *mem;
+	int r;
+
+	mem = kzalloc(sizeof(struct kgd_mem), GFP_KERNEL);
+	if (!mem)
+		return -ENOMEM;
+
+	mem->domain = pool_to_domain(pool);
+
+	r = radeon_bo_create(rdev, size, alignment, true, mem->domain, NULL, &mem->bo);
+	if (r) {
+		kfree(mem);
+		return r;
+	}
+
+	*memory_handle = mem;
+	return 0;
+}
+
+static void free_mem(struct kgd_dev *kgd, struct kgd_mem *mem)
+{
+	/* Assume that KFD will never free gpumapped or kmapped memory. This is not quite settled. */
+	radeon_bo_unref(&mem->bo);
+	kfree(mem);
+}
+
+static int gpumap_mem(struct kgd_dev *kgd, struct kgd_mem *mem, uint64_t *vmid0_address)
+{
+	int r;
+
+	r = radeon_bo_reserve(mem->bo, true);
+	BUG_ON(r != 0); /* ttm_bo_reserve can only fail if the buffer reservation lock is held in circumstances that would deadlock. */
+	r = radeon_bo_pin(mem->bo, mem->domain, vmid0_address);
+	radeon_bo_unreserve(mem->bo);
+
+	return r;
+}
+
+static void ungpumap_mem(struct kgd_dev *kgd, struct kgd_mem *mem)
+{
+	int r;
+
+	r = radeon_bo_reserve(mem->bo, true);
+	BUG_ON(r != 0); /* ttm_bo_reserve can only fail if the buffer reservation lock is held in circumstances that would deadlock. */
+	r = radeon_bo_unpin(mem->bo);
+	BUG_ON(r != 0); /* This unpin only removed NO_EVICT placement flags and should never fail. */
+	radeon_bo_unreserve(mem->bo);
+}
+
+static int kmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem, void **ptr)
+{
+	int r;
+
+	r = radeon_bo_reserve(mem->bo, true);
+	BUG_ON(r != 0); /* ttm_bo_reserve can only fail if the buffer reservation lock is held in circumstances that would deadlock. */
+	r = radeon_bo_kmap(mem->bo, ptr);
+	radeon_bo_unreserve(mem->bo);
+
+	return r;
+}
+
+static void unkmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem)
+{
+	int r;
+
+	r = radeon_bo_reserve(mem->bo, true);
+	BUG_ON(r != 0); /* ttm_bo_reserve can only fail if the buffer reservation lock is held in circumstances that would deadlock. */
+	radeon_bo_kunmap(mem->bo);
+	radeon_bo_unreserve(mem->bo);
 }
 
 static uint64_t get_vmem_size(struct kgd_dev *kgd)

@@ -36,6 +36,14 @@ struct pci_dev;
 struct kfd_dev;
 struct kgd_dev;
 
+struct kgd_mem;
+
+enum kgd_memory_pool {
+	KGD_POOL_SYSTEM_CACHEABLE = 1,
+	KGD_POOL_SYSTEM_WRITECOMBINE = 2,
+	KGD_POOL_FRAMEBUFFER = 3,
+};
+
 struct kgd2kfd_shared_resources {
 	void __iomem *mmio_registers; /* Mapped pointer to GFX MMIO registers. */
 
@@ -57,6 +65,16 @@ struct kgd2kfd_calls {
 };
 
 struct kfd2kgd_calls {
+	/* Memory management. */
+	int (*allocate_mem)(struct kgd_dev *kgd, size_t size, size_t alignment, enum kgd_memory_pool pool, struct kgd_mem **memory_handle);
+	void (*free_mem)(struct kgd_dev *kgd, struct kgd_mem *memory_handle);
+
+	int (*gpumap_mem)(struct kgd_dev *kgd, struct kgd_mem *mem, uint64_t *vmid0_address);
+	void (*ungpumap_mem)(struct kgd_dev *kgd, struct kgd_mem *mem);
+
+	int (*kmap_mem)(struct kgd_dev *kgd, struct kgd_mem *mem, void **ptr);
+	void (*unkmap_mem)(struct kgd_dev *kgd, struct kgd_mem *mem);
+
 	uint64_t (*get_vmem_size)(struct kgd_dev *kgd);
 };
 
