@@ -1,0 +1,20 @@
+#
+# Heterogenous system architecture configuration
+#
+
+menuconfig HSA
+	bool "Heterogenous System Architecture"
+	default y
+	help
+	  Say Y here if you want Heterogenous System Architecture support.
+
+if HSA
+
+config HSA_RADEON
+	tristate "HSA kernel driver for AMD Radeon devices"
+	depends on HSA && AMD_IOMMU_V2 && X86_64
+	default m
+	help
+	  Enable this if you want to support HSA on AMD Radeon devices.
+
+endif # HSA
