@@ -342,6 +342,8 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 	/* All queues just got destroyed so this should be gone. */
 	BUG_ON(pdd->scheduler_process != NULL);
 
+	radeon_kfd_doorbell_unmap(pdd);
+
 	list_del(&pdd->per_device_list);
 	kfree(pdd);
 
