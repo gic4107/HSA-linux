@@ -178,4 +178,6 @@ source "drivers/mcb/Kconfig"
 
 source "drivers/thunderbolt/Kconfig"
 
+source "drivers/gpu/hsa/Kconfig"
+
 endmenu
