@@ -2244,6 +2244,9 @@ struct radeon_device {
 
 	struct dev_pm_domain vga_pm_domain;
 	bool have_disp_power_ref;
+
+	/* HSA KFD interface */
+	struct kfd_dev		*kfd;
 };
 
 int radeon_device_init(struct radeon_device *rdev,
