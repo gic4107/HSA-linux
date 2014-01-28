@@ -57,6 +57,7 @@ struct kgd2kfd_calls {
 };
 
 struct kfd2kgd_calls {
+	uint64_t (*get_vmem_size)(struct kgd_dev *kgd);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
