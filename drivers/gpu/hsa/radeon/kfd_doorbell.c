@@ -144,6 +144,14 @@ doorbell_t __user *radeon_kfd_get_doorbell(struct file *devkfd, struct kfd_proce
 	return &pdd->doorbell_mapping[doorbell_index];
 }
 
+/* queue_ids are in the range [0,MAX_PROCESS_QUEUES) and are mapped 1:1 to doorbells with the process's doorbell page. */
+unsigned int radeon_kfd_queue_id_to_doorbell(struct kfd_dev *kfd, struct kfd_process *process, unsigned int queue_id)
+{
+	/* doorbell_id_offset accounts for doorbells taken by KGD.
+	 * pasid * doorbell_process_allocation/sizeof(doorbell_t) adjusts to the process's doorbells */
+	return kfd->doorbell_id_offset + process->pasid * (doorbell_process_allocation()/sizeof(doorbell_t)) + queue_id;
+}
+
 void radeon_kfd_doorbell_unmap(struct kfd_process_device *pdd)
 {
 	if (pdd->doorbell_mapping != NULL)
