@@ -63,6 +63,87 @@ void radeon_kfd_doorbell_init(struct kfd_dev *kfd)
 	kfd->doorbell_process_limit = doorbell_process_limit;
 }
 
+/* This is the /dev/kfd mmap (for doorbell) implementation. We intend that this is only called through map_doorbells,
+** not through user-mode mmap of /dev/kfd. */
+int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct *vma)
+{
+	unsigned int device_index;
+	struct kfd_dev *dev;
+	phys_addr_t start;
+
+	BUG_ON(vma->vm_pgoff < KFD_MMAP_DOORBELL_START || vma->vm_pgoff >= KFD_MMAP_DOORBELL_END);
+
+	/* For simplicitly we only allow mapping of the entire doorbell allocation of a single device & process. */
+	if (vma->vm_end - vma->vm_start != doorbell_process_allocation())
+		return -EINVAL;
+
+	/* device_index must be GPU ID!! */
+	device_index = vma->vm_pgoff - KFD_MMAP_DOORBELL_START;
+
+	dev = radeon_kfd_device_by_id(device_index);
+	if (dev == NULL)
+		return -EINVAL;
+
+	vma->vm_flags |= VM_IO | VM_DONTCOPY | VM_DONTEXPAND | VM_NORESERVE | VM_DONTDUMP | VM_PFNMAP;
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+	start = dev->doorbell_base + process->pasid * doorbell_process_allocation();
+
+	pr_debug("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
+		 "     target user address == 0x%016llX\n"
+		 "     physical address    == 0x%016llX\n"
+		 "     vm_flags            == 0x%08lX\n"
+		 "     size                == 0x%08lX\n",
+		 (long long unsigned int) vma->vm_start, start, vma->vm_flags,
+		 doorbell_process_allocation());
+
+	return io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot);
+}
+
+/* Map the doorbells for a single process & device. This will indirectly call radeon_kfd_doorbell_mmap.
+** This assumes that the process mutex is being held. */
+static int
+map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev)
+{
+	struct kfd_process_device *pdd = radeon_kfd_get_process_device_data(dev, process);
+
+	if (pdd == NULL)
+		return -ENOMEM;
+
+	if (pdd->doorbell_mapping == NULL) {
+		unsigned long offset = (KFD_MMAP_DOORBELL_START + dev->id) << PAGE_SHIFT;
+		doorbell_t __user *doorbell_mapping;
+
+		doorbell_mapping = (doorbell_t __user *)vm_mmap(devkfd, 0, doorbell_process_allocation(), PROT_WRITE,
+								MAP_SHARED, offset);
+		if (IS_ERR(doorbell_mapping))
+			return PTR_ERR(doorbell_mapping);
+
+		pdd->doorbell_mapping = doorbell_mapping;
+	}
+
+	return 0;
+}
+
+/* Get the user-mode address of a doorbell. Assumes that the process mutex is being held. */
+doorbell_t __user *radeon_kfd_get_doorbell(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev,
+					   unsigned int doorbell_index)
+{
+	struct kfd_process_device *pdd;
+	int err;
+
+	BUG_ON(doorbell_index > MAX_DOORBELL_INDEX);
+
+	err = map_doorbells(devkfd, process, dev);
+	if (err)
+		return ERR_PTR(err);
+
+	pdd = radeon_kfd_get_process_device_data(dev, process);
+	BUG_ON(pdd == NULL); /* map_doorbells would have failed otherwise */
+
+	return &pdd->doorbell_mapping[doorbell_index];
+}
+
 void radeon_kfd_doorbell_unmap(struct kfd_process_device *pdd)
 {
 	if (pdd->doorbell_mapping != NULL)
