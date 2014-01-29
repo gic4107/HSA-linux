@@ -576,6 +576,14 @@ F:	drivers/crypto/geode*
 F:	drivers/video/geode/
 F:	arch/x86/include/asm/geode.h
 
+AMD HSA RADEON DRIVER (KFD)
+M:	Oded Gabbay <oded.gabbay@amd.com>
+L:	dri-devel@lists.freedesktop.org
+S:	Supported
+F:	drivers/gpu/hsa/radeon
+F:	include/linux/radeon_kfd.h
+F:	include/linux/uapi/linux/kfd_ioctl.h
+
 AMD IOMMU (AMD-VI)
 M:	Joerg Roedel <joro@8bytes.org>
 L:	iommu@lists.linux-foundation.org
