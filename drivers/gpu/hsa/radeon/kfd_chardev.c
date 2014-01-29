@@ -27,12 +27,12 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <uapi/linux/kfd_ioctl.h>
 #include "kfd_priv.h"
 #include "kfd_scheduler.h"
 
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
 static int kfd_open(struct inode *, struct file *);
-static int kfd_release(struct inode *, struct file *);
 static int kfd_mmap(struct file *, struct vm_area_struct *);
 
 static const char kfd_dev_name[] = "kfd";
@@ -110,6 +110,143 @@ kfd_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
+static long
+kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_create_queue_args args;
+	struct kfd_dev *dev;
+	int err = 0;
+	unsigned int queue_id;
+	struct kfd_queue *queue;
+	struct kfd_process_device *pdd;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	dev = radeon_kfd_device_by_id(args.gpu_id);
+	if (dev == NULL)
+		return -EINVAL;
+
+	queue = kzalloc(offsetof(struct kfd_queue, scheduler_queue) + dev->device_info->scheduler_class->queue_size, GFP_KERNEL);
+	if (!queue)
+		return -ENOMEM;
+
+	queue->dev = dev;
+
+	mutex_lock(&p->mutex);
+
+	pdd = radeon_kfd_bind_process_to_device(dev, p);
+	if (IS_ERR(pdd) < 0) {
+		err = PTR_ERR(pdd);
+		goto err_bind_pasid;
+	}
+
+	pr_debug("kfd: creating queue number %d for PASID %d on GPU 0x%x\n",
+			pdd->queue_count,
+			p->pasid,
+			dev->id);
+
+	if (pdd->queue_count++ == 0) {
+		err = dev->device_info->scheduler_class->register_process(dev->scheduler, p, &pdd->scheduler_process);
+		if (err < 0)
+			goto err_register_process;
+	}
+
+	if (!radeon_kfd_allocate_queue_id(p, &queue_id))
+		goto err_allocate_queue_id;
+
+	err = dev->device_info->scheduler_class->create_queue(dev->scheduler, pdd->scheduler_process,
+							      &queue->scheduler_queue,
+							      (void __user *)args.ring_base_address,
+							      args.ring_size,
+							      (void __user *)args.read_pointer_address,
+							      (void __user *)args.write_pointer_address,
+							      radeon_kfd_queue_id_to_doorbell(dev, p, queue_id));
+	if (err)
+		goto err_create_queue;
+
+	radeon_kfd_install_queue(p, queue_id, queue);
+
+	args.queue_id = queue_id;
+	args.doorbell_address = (uint64_t)(uintptr_t)radeon_kfd_get_doorbell(filep, p, dev, queue_id);
+
+	if (copy_to_user(arg, &args, sizeof(args))) {
+		err = -EFAULT;
+		goto err_copy_args_out;
+	}
+
+	mutex_unlock(&p->mutex);
+
+	pr_debug("kfd: queue id %d was created successfully.\n"
+		 "     ring buffer address == 0x%016llX\n"
+		 "     read ptr address    == 0x%016llX\n"
+		 "     write ptr address   == 0x%016llX\n"
+		 "     doorbell address    == 0x%016llX\n",
+			args.queue_id,
+			args.ring_base_address,
+			args.read_pointer_address,
+			args.write_pointer_address,
+			args.doorbell_address);
+
+	return 0;
+
+err_copy_args_out:
+	dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
+err_create_queue:
+	radeon_kfd_remove_queue(p, queue_id);
+err_allocate_queue_id:
+	if (--pdd->queue_count == 0) {
+		dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
+		pdd->scheduler_process = NULL;
+	}
+err_register_process:
+err_bind_pasid:
+	kfree(queue);
+	mutex_unlock(&p->mutex);
+	return err;
+}
+
+static int
+kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_destroy_queue_args args;
+	struct kfd_queue *queue;
+	struct kfd_dev *dev;
+	struct kfd_process_device *pdd;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	mutex_lock(&p->mutex);
+
+	queue = radeon_kfd_get_queue(p, args.queue_id);
+	if (!queue) {
+		mutex_unlock(&p->mutex);
+		return -EINVAL;
+	}
+
+	dev = queue->dev;
+
+	pr_debug("kfd: destroying queue id %d for PASID %d\n",
+			args.queue_id,
+			p->pasid);
+
+	radeon_kfd_remove_queue(p, args.queue_id);
+	dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
+
+	kfree(queue);
+
+	pdd = radeon_kfd_get_process_device_data(dev, p);
+	BUG_ON(pdd == NULL); /* Because a queue exists. */
+
+	if (--pdd->queue_count == 0) {
+		dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
+		pdd->scheduler_process = NULL;
+	}
+
+	mutex_unlock(&p->mutex);
+	return 0;
+}
 
 static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -121,7 +258,19 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		 "ioctl cmd 0x%x (#%d), arg 0x%lx\n",
 		 cmd, _IOC_NR(cmd), arg);
 
+	process = radeon_kfd_get_process(current);
+	if (IS_ERR(process))
+		return PTR_ERR(process);
+
 	switch (cmd) {
+	case KFD_IOC_CREATE_QUEUE:
+		err = kfd_ioctl_create_queue(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_DESTROY_QUEUE:
+		err = kfd_ioctl_destroy_queue(filep, process, (void __user *)arg);
+		break;
+
 	default:
 		dev_err(kfd_device,
 			"unknown ioctl cmd 0x%x, arg 0x%lx)\n",
