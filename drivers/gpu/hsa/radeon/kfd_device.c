@@ -28,6 +28,7 @@
 #include "kfd_scheduler.h"
 
 static const struct kfd_device_info bonaire_device_info = {
+	.scheduler_class = &radeon_kfd_cik_static_scheduler_class,
 	.max_pasid_bits = 16,
 };
 
