@@ -149,6 +149,9 @@ static inline void radeon_unregister_atpx_handler(void) {}
 static inline bool radeon_is_px(void) { return false; }
 #endif
 
+extern bool radeon_kfd_init(void);
+extern void radeon_kfd_fini(void);
+
 int radeon_no_wb;
 int radeon_modeset = -1;
 int radeon_dynclks = -1;
@@ -632,12 +635,15 @@ static int __init radeon_init(void)
 #endif
 	}
 
+	radeon_kfd_init();
+
 	/* let modprobe override vga console setting */
 	return drm_pci_init(driver, pdriver);
 }
 
 static void __exit radeon_exit(void)
 {
+	radeon_kfd_fini();
 	drm_pci_exit(driver, pdriver);
 	radeon_unregister_atpx_handler();
 }
