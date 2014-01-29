@@ -39,6 +39,7 @@ static const struct file_operations kfd_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = kfd_ioctl,
 	.open = kfd_open,
+	.mmap = kfd_mmap,
 };
 
 static int kfd_char_dev_major = -1;
@@ -130,4 +131,23 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		dev_err(kfd_device, "ioctl error %ld\n", err);
 
 	return err;
+}
+
+static int
+kfd_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	unsigned long pgoff = vma->vm_pgoff;
+	struct kfd_process *process;
+
+	process = radeon_kfd_get_process(current);
+	if (IS_ERR(process))
+		return PTR_ERR(process);
+
+	if (pgoff < KFD_MMAP_DOORBELL_START)
+		return -EINVAL;
+
+	if (pgoff < KFD_MMAP_DOORBELL_END)
+		return radeon_kfd_doorbell_mmap(process, vma);
+
+	return -EINVAL;
 }
