@@ -866,8 +866,17 @@ int radeon_vm_bo_set_addr(struct radeon_device *rdev,
 	struct radeon_bo_va *tmp;
 	struct list_head *head;
 	unsigned last_pfn;
+	uint64_t address_mask;
 
 	if (soffset) {
+		/* make sure the address is in the GPUVM range*/
+		address_mask = ~(((uint64_t)rdev->vm_manager.max_pfn << RADEON_GPU_PAGE_SHIFT) - 1);
+
+		if (soffset & address_mask) {
+			dev_err(rdev->dev, "va msb bits should be 0");
+			return -EINVAL;
+		}
+
 		/* make sure object fit at this offset */
 		eoffset = soffset + size;
 		if (soffset >= eoffset) {
@@ -952,15 +961,15 @@ uint64_t radeon_vm_map_gart(struct radeon_device *rdev, uint64_t addr)
  */
 static uint32_t radeon_vm_page_flags(uint32_t flags)
 {
-        uint32_t hw_flags = 0;
-        hw_flags |= (flags & RADEON_VM_PAGE_VALID) ? R600_PTE_VALID : 0;
-        hw_flags |= (flags & RADEON_VM_PAGE_READABLE) ? R600_PTE_READABLE : 0;
-        hw_flags |= (flags & RADEON_VM_PAGE_WRITEABLE) ? R600_PTE_WRITEABLE : 0;
-        if (flags & RADEON_VM_PAGE_SYSTEM) {
-                hw_flags |= R600_PTE_SYSTEM;
-                hw_flags |= (flags & RADEON_VM_PAGE_SNOOPED) ? R600_PTE_SNOOPED : 0;
-        }
-        return hw_flags;
+	uint32_t hw_flags = 0;
+	hw_flags |= (flags & RADEON_VM_PAGE_VALID) ? R600_PTE_VALID : 0;
+	hw_flags |= (flags & RADEON_VM_PAGE_READABLE) ? R600_PTE_READABLE : 0;
+	hw_flags |= (flags & RADEON_VM_PAGE_WRITEABLE) ? R600_PTE_WRITEABLE : 0;
+	if (flags & RADEON_VM_PAGE_SYSTEM) {
+		hw_flags |= R600_PTE_SYSTEM;
+		hw_flags |= (flags & RADEON_VM_PAGE_SNOOPED) ? R600_PTE_SNOOPED : 0;
+	}
+	return hw_flags;
 }
 
 /**

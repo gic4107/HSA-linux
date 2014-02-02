@@ -78,6 +78,14 @@ struct kfd2kgd_calls {
 	int (*kmap_mem)(struct kgd_dev *kgd, struct kgd_mem *mem, void **ptr);
 	void (*unkmap_mem)(struct kgd_dev *kgd, struct kgd_mem *mem);
 
+	int (*create_process_vm)(struct kgd_dev *kgd, void **vm);
+	void (*destroy_process_vm)(struct kgd_dev *kgd, void *vm);
+
+	int (*create_process_gpumem)(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem);
+	void (*destroy_process_gpumem)(struct kgd_dev *kgd, struct kgd_mem *mem);
+
+	uint32_t (*get_process_page_dir)(void *vm);
+
 	uint64_t (*get_vmem_size)(struct kgd_dev *kgd);
 	uint64_t (*get_gpu_clock_counter)(struct kgd_dev *kgd);
 
