@@ -481,6 +481,32 @@ static void cik_static_destroy(struct kfd_scheduler *scheduler)
 	kfree(priv);
 }
 
+static void
+enable_interrupts(struct cik_static_private *priv)
+{
+	unsigned int i;
+
+	lock_srbm_index(priv);
+	for (i = 0; i < priv->num_pipes; i++) {
+		pipe_select(priv, i);
+		WRITE_REG(priv->dev, CPC_INT_CNTL, DEQUEUE_REQUEST_INT_ENABLE);
+	}
+	unlock_srbm_index(priv);
+}
+
+static void
+disable_interrupts(struct cik_static_private *priv)
+{
+	unsigned int i;
+
+	lock_srbm_index(priv);
+	for (i = 0; i < priv->num_pipes; i++) {
+		pipe_select(priv, i);
+		WRITE_REG(priv->dev, CPC_INT_CNTL, 0);
+	}
+	unlock_srbm_index(priv);
+}
+
 static void cik_static_start(struct kfd_scheduler *scheduler)
 {
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
@@ -490,6 +516,7 @@ static void cik_static_start(struct kfd_scheduler *scheduler)
 
 	init_pipes(priv);
 	init_ats(priv);
+	enable_interrupts(priv);
 }
 
 static void cik_static_stop(struct kfd_scheduler *scheduler)
@@ -497,6 +524,7 @@ static void cik_static_stop(struct kfd_scheduler *scheduler)
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
 
 	exit_ats(priv);
+	disable_interrupts(priv);
 
 	radeon_kfd_vidmem_ungpumap(priv->dev, priv->hpd_mem);
 	radeon_kfd_vidmem_ungpumap(priv->dev, priv->mqd_mem);
