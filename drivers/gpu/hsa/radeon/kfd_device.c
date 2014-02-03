@@ -30,6 +30,7 @@
 static const struct kfd_device_info bonaire_device_info = {
 	.scheduler_class = &radeon_kfd_cik_static_scheduler_class,
 	.max_pasid_bits = 16,
+	.ih_ring_entry_size = 4 * sizeof(uint32_t)
 };
 
 struct kfd_deviceid {

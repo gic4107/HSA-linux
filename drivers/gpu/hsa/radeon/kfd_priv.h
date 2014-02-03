@@ -28,6 +28,9 @@
 #include <linux/mutex.h>
 #include <linux/radeon_kfd.h>
 #include <linux/types.h>
+#include <linux/atomic.h>
+#include <linux/workqueue.h>
+#include <linux/spinlock.h>
 
 struct kfd_scheduler_class;
 
@@ -57,6 +60,7 @@ typedef u32 doorbell_t;
 struct kfd_device_info {
 	const struct kfd_scheduler_class *scheduler_class;
 	unsigned int max_pasid_bits;
+	size_t ih_ring_entry_size;
 };
 
 struct kfd_dev {
@@ -78,6 +82,15 @@ struct kfd_dev {
 	struct kgd2kfd_shared_resources shared_resources;
 
 	struct kfd_scheduler *scheduler;
+
+	/* Interrupts of interest to KFD are copied from the HW ring into a SW ring. */
+	bool interrupts_active;
+	void *interrupt_ring;
+	size_t interrupt_ring_size;
+	atomic_t interrupt_ring_rptr;
+	atomic_t interrupt_ring_wptr;
+	struct work_struct interrupt_work;
+	spinlock_t interrupt_lock;
 };
 
 /* KGD2KFD callbacks */
@@ -219,5 +232,10 @@ struct kfd_dev *radeon_kfd_device_by_pci_dev(const struct pci_dev *pdev);
 #define READ_REG(dev, reg) radeon_kfd_read_reg((dev), (reg))
 void radeon_kfd_write_reg(struct kfd_dev *dev, uint32_t reg, uint32_t value);
 uint32_t radeon_kfd_read_reg(struct kfd_dev *dev, uint32_t reg);
+
+/* Interrupts */
+int radeon_kfd_interrupt_init(struct kfd_dev *dev);
+void radeon_kfd_interrupt_exit(struct kfd_dev *dev);
+void kgd2kfd_interrupt(struct kfd_dev *dev, const void *ih_ring_entry);
 
 #endif
