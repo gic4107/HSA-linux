@@ -137,6 +137,13 @@ struct cik_static_private {
 	 /* Queue q on pipe p is at bit QUEUES_PER_PIPE * p + q. */
 	unsigned long free_queues[DIV_ROUND_UP(CIK_MAX_PIPES * CIK_QUEUES_PER_PIPE, BITS_PER_LONG)];
 
+	/*
+	 * Dequeue waits for waves to finish so it could take a long time. We
+	 * defer through an interrupt. dequeue_wait is woken when a dequeue-
+	 * complete interrupt comes for that pipe.
+	 */
+	wait_queue_head_t dequeue_wait[CIK_MAX_PIPES];
+
 	kfd_mem_obj hpd_mem;	/* Single allocation for HPDs for all KFD pipes. */
 	kfd_mem_obj mqd_mem;	/* Single allocation for all MQDs for all KFD pipes. This is actually struct cik_mqd_padded. */
 	uint64_t hpd_addr;	/* GPU address for hpd_mem. */
@@ -405,6 +412,9 @@ static int cik_static_create(struct kfd_dev *dev, struct kfd_scheduler **schedul
 		__set_bit(i, priv->free_queues);
 
 	priv->free_vmid_mask = dev->shared_resources.compute_vmid_bitmap;
+
+	for (i = 0; i < priv->num_pipes; i++)
+		init_waitqueue_head(&priv->dequeue_wait[i]);
 
 	/*
 	 * Allocate memory for the HPDs. This is hardware-owned per-pipe data.
@@ -704,15 +714,18 @@ static void activate_queue(struct cik_static_private *priv, struct cik_static_qu
 	return;
 }
 
-static void drain_hqd(struct cik_static_private *priv)
+static bool queue_inactive(struct cik_static_private *priv, struct cik_static_queue *queue)
 {
-	WRITE_REG(priv->dev, CP_HQD_DEQUEUE_REQUEST, DEQUEUE_REQUEST_DRAIN);
-}
+	bool inactive;
 
-static void wait_hqd_inactive(struct cik_static_private *priv)
-{
-	while (READ_REG(priv->dev, CP_HQD_ACTIVE) != 0)
-		cpu_relax();
+	lock_srbm_index(priv);
+	queue_select(priv, queue->queue);
+
+	inactive = (READ_REG(priv->dev, CP_HQD_ACTIVE) == 0);
+
+	unlock_srbm_index(priv);
+
+	return inactive;
 }
 
 static void deactivate_queue(struct cik_static_private *priv, struct cik_static_queue *queue)
@@ -720,10 +733,12 @@ static void deactivate_queue(struct cik_static_private *priv, struct cik_static_
 	lock_srbm_index(priv);
 	queue_select(priv, queue->queue);
 
-	drain_hqd(priv);
-	wait_hqd_inactive(priv);
+	WRITE_REG(priv->dev, CP_HQD_DEQUEUE_REQUEST, DEQUEUE_REQUEST_DRAIN | DEQUEUE_INT);
 
 	unlock_srbm_index(priv);
+
+	wait_event(priv->dequeue_wait[queue->queue/CIK_QUEUES_PER_PIPE],
+		   queue_inactive(priv, queue));
 }
 
 #define BIT_MASK_64(high, low) (((1ULL << (high)) - 1) & ~((1ULL << (low)) - 1))
@@ -783,6 +798,14 @@ cik_static_destroy_queue(struct kfd_scheduler *scheduler, struct kfd_scheduler_q
 	release_hqd(priv, hwq->queue);
 }
 
+static void
+dequeue_int_received(struct cik_static_private *priv, uint32_t pipe_id)
+{
+	/* The waiting threads will check CP_HQD_ACTIVE to see whether their
+	 * queue completed. */
+	wake_up_all(&priv->dequeue_wait[pipe_id]);
+}
+
 /* Figure out the KFD compute pipe ID for an interrupt ring entry.
  * Returns true if it's a KFD compute pipe, false otherwise. */
 static bool int_compute_pipe(const struct cik_static_private *priv,
@@ -821,6 +844,10 @@ cik_static_interrupt_isr(struct kfd_scheduler *scheduler, const void *ih_ring_en
 		 ihre->source_id, ihre->data, pipe_id, ihre->vmid, ihre->pasid);
 
 	switch (source_id) {
+	case CIK_INTSRC_DEQUEUE_COMPLETE:
+		dequeue_int_received(priv, pipe_id);
+		return false; /* Already handled. */
+
 	default:
 		return false; /* Not interested. */
 	}
