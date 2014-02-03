@@ -25,9 +25,12 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
+#include <linux/device.h>
+#include <linux/sched.h>
 #include "kfd_priv.h"
 #include "kfd_scheduler.h"
 #include "cik_regs.h"
+#include "cik_int.h"
 
 /* CIK CP hardware is arranged with 8 queues per pipe and 8 pipes per MEC (microengine for compute).
  * The first MEC is ME 1 with the GFX ME as ME 0.
@@ -268,6 +271,8 @@ static void set_vmid_pasid_mapping(struct cik_static_private *priv, unsigned int
 	while (!(READ_REG(priv->dev, ATC_VMID_PASID_MAPPING_UPDATE_STATUS) & (1U << vmid)))
 		cpu_relax();
 	WRITE_REG(priv->dev, ATC_VMID_PASID_MAPPING_UPDATE_STATUS, 1U << vmid);
+
+	WRITE_REG(priv->dev, IH_VMID_0_LUT + vmid*sizeof(uint32_t), pasid);
 }
 
 static uint32_t compute_sh_mem_bases_64bit(unsigned int top_address_nybble)
@@ -778,6 +783,54 @@ cik_static_destroy_queue(struct kfd_scheduler *scheduler, struct kfd_scheduler_q
 	release_hqd(priv, hwq->queue);
 }
 
+/* Figure out the KFD compute pipe ID for an interrupt ring entry.
+ * Returns true if it's a KFD compute pipe, false otherwise. */
+static bool int_compute_pipe(const struct cik_static_private *priv,
+			     const struct cik_ih_ring_entry *ih_ring_entry,
+			     uint32_t *kfd_pipe)
+{
+	uint32_t pipe_id;
+
+	if (ih_ring_entry->meid == 0) /* Ignore graphics interrupts - compute only. */
+		return false;
+
+	pipe_id = (ih_ring_entry->meid - 1) * CIK_PIPES_PER_MEC + ih_ring_entry->pipeid;
+	if (pipe_id < priv->first_pipe)
+		return false;
+
+	pipe_id -= priv->first_pipe;
+
+	*kfd_pipe = pipe_id;
+
+	return true;
+}
+
+static bool
+cik_static_interrupt_isr(struct kfd_scheduler *scheduler, const void *ih_ring_entry)
+{
+	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
+	const struct cik_ih_ring_entry *ihre = ih_ring_entry;
+	uint32_t source_id = ihre->source_id;
+	uint32_t pipe_id;
+
+	/* We only care about CP interrupts here, they all come with a pipe. */
+	if (!int_compute_pipe(priv, ihre, &pipe_id))
+		return false;
+
+	dev_info(radeon_kfd_chardev(), "INT(ISR): src=%02x, data=0x%x, pipe=%u, vmid=%u, pasid=%u\n",
+		 ihre->source_id, ihre->data, pipe_id, ihre->vmid, ihre->pasid);
+
+	switch (source_id) {
+	default:
+		return false; /* Not interested. */
+	}
+}
+
+static void
+cik_static_interrupt_wq(struct kfd_scheduler *scheduler, const void *ih_ring_entry)
+{
+}
+
 const struct kfd_scheduler_class radeon_kfd_cik_static_scheduler_class = {
 	.name = "CIK static scheduler",
 	.create = cik_static_create,
@@ -789,4 +842,7 @@ const struct kfd_scheduler_class radeon_kfd_cik_static_scheduler_class = {
 	.queue_size = sizeof(struct cik_static_queue),
 	.create_queue = cik_static_create_queue,
 	.destroy_queue = cik_static_destroy_queue,
+
+	.interrupt_isr = cik_static_interrupt_isr,
+	.interrupt_wq = cik_static_interrupt_wq,
 };
