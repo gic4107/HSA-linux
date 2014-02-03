@@ -166,6 +166,7 @@
 
 #define CP_HQD_DEQUEUE_REQUEST				0xC974
 #define	DEQUEUE_REQUEST_DRAIN				1
+#define		DEQUEUE_INT					(1U << 8)
 
 #define CP_HQD_SEMA_CMD					0xC97Cu
 #define CP_HQD_MSG_TYPE					0xC980u
