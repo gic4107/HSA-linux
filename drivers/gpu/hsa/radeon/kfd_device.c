@@ -125,6 +125,9 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 
 	radeon_kfd_doorbell_init(kfd);
 
+	if (radeon_kfd_interrupt_init(kfd))
+		return false;
+
 	if (!device_iommu_pasid_init(kfd))
 		return false;
 
@@ -152,10 +155,13 @@ void kgd2kfd_device_exit(struct kfd_dev *kfd)
 	int err = kfd_topology_remove_device(kfd);
 	BUG_ON(err != 0);
 
-	if (kfd->init_complete) {
+	if (kfd->init_complete)
 		kfd->device_info->scheduler_class->stop(kfd->scheduler);
-		kfd->device_info->scheduler_class->destroy(kfd->scheduler);
 
+	radeon_kfd_interrupt_exit(kfd);
+
+	if (kfd->init_complete) {
+		kfd->device_info->scheduler_class->destroy(kfd->scheduler);
 		amd_iommu_free_device(kfd->pdev);
 	}
 
