@@ -23,6 +23,8 @@
 #ifndef CIK_REGS_H
 #define CIK_REGS_H
 
+#define IH_VMID_0_LUT					0x3D40u
+
 #define BIF_DOORBELL_CNTL				0x530Cu
 
 #define	SRBM_GFX_CNTL					0xE44
