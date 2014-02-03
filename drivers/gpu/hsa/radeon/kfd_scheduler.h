@@ -55,6 +55,9 @@ struct kfd_scheduler_class {
 			    unsigned int doorbell);
 
 	void (*destroy_queue)(struct kfd_scheduler *, struct kfd_scheduler_queue *);
+
+	bool (*interrupt_isr)(struct kfd_scheduler *, const void *ih_ring_entry);
+	void (*interrupt_wq)(struct kfd_scheduler *, const void *ih_ring_entry);
 };
 
 extern const struct kfd_scheduler_class radeon_kfd_cik_static_scheduler_class;
