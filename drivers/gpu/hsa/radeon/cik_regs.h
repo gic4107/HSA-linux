@@ -73,6 +73,7 @@
 #define CP_PQ_WPTR_POLL_CNTL				0xC20C
 #define	WPTR_POLL_EN					(1 << 31)
 
+#define CPC_INT_CNTL					0xC2D0
 #define CP_ME1_PIPE0_INT_CNTL				0xC214
 #define CP_ME1_PIPE1_INT_CNTL				0xC218
 #define CP_ME1_PIPE2_INT_CNTL				0xC21C
