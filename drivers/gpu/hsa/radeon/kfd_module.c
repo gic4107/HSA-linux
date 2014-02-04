@@ -35,6 +35,7 @@ static const struct kgd2kfd_calls kgd2kfd = {
 	.probe		= kgd2kfd_probe,
 	.device_init	= kgd2kfd_device_init,
 	.device_exit	= kgd2kfd_device_exit,
+	.interrupt	= kgd2kfd_interrupt,
 };
 
 bool kgd2kfd_init(unsigned interface_version,
