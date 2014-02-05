@@ -238,4 +238,8 @@ int radeon_kfd_interrupt_init(struct kfd_dev *dev);
 void radeon_kfd_interrupt_exit(struct kfd_dev *dev);
 void kgd2kfd_interrupt(struct kfd_dev *dev, const void *ih_ring_entry);
 
+/* Power Management */
+void kgd2kfd_suspend(struct kfd_dev *dev);
+int kgd2kfd_resume(struct kfd_dev *dev);
+
 #endif
