@@ -120,6 +120,22 @@ void radeon_kfd_device_fini(struct radeon_device *rdev)
 	}
 }
 
+void radeon_kfd_suspend(struct radeon_device *rdev)
+{
+	if (rdev->kfd)
+		kgd2kfd->suspend(rdev->kfd);
+}
+
+int radeon_kfd_resume(struct radeon_device *rdev)
+{
+	int r = 0;
+
+	if (rdev->kfd)
+		r = kgd2kfd->resume(rdev->kfd);
+
+	return r;
+}
+
 static u32 pool_to_domain(enum kgd_memory_pool p)
 {
 	switch (p) {
