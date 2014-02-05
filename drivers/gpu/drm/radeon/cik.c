@@ -138,6 +138,8 @@ static void cik_fini_pg(struct radeon_device *rdev);
 static void cik_fini_cg(struct radeon_device *rdev);
 static void cik_enable_gui_idle_interrupt(struct radeon_device *rdev,
 					  bool enable);
+extern void radeon_kfd_suspend(struct radeon_device *rdev);
+extern int radeon_kfd_resume(struct radeon_device *rdev);
 
 /* get temperature in millidegrees */
 int ci_get_temp(struct radeon_device *rdev)
@@ -8429,6 +8431,10 @@ static int cik_startup(struct radeon_device *rdev)
 	if (r)
 		return r;
 
+	r = radeon_kfd_resume(rdev);
+	if (r)
+		return r;
+
 	return 0;
 }
 
@@ -8477,6 +8483,7 @@ int cik_resume(struct radeon_device *rdev)
  */
 int cik_suspend(struct radeon_device *rdev)
 {
+	radeon_kfd_suspend(rdev);
 	radeon_pm_suspend(rdev);
 	dce6_audio_fini(rdev);
 	radeon_vm_manager_fini(rdev);
