@@ -739,6 +739,95 @@ kfd_ioctl_pmc_release_access(struct file *filp, struct kfd_process *p, void __us
 	return err;
 }
 
+static int
+kfd_ioctl_create_vidmem(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_create_vidmem_args args;
+	struct kfd_dev *dev;
+	struct kfd_process_device *pdd;
+	void *mem;
+	int idr_handle;
+	long err;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	if (args.size == 0)
+		return -EINVAL;
+
+	dev = radeon_kfd_device_by_id(args.gpu_id);
+	if (dev == NULL)
+		return -EINVAL;
+
+	mutex_lock(&p->mutex);
+
+	pdd = radeon_kfd_bind_process_to_device(dev, p);
+	if (IS_ERR(pdd) < 0) {
+		err = PTR_ERR(pdd);
+		goto bind_process_to_device_failed;
+	}
+
+	err = radeon_kfd_process_gpuvm_alloc(dev, args.va_addr, args.size, pdd->vm, &mem);
+	if (err != 0)
+		goto gpuvm_alloc_failed;
+
+	idr_handle = radeon_kfd_process_device_create_obj_handle(pdd, mem);
+	if (idr_handle < 0)
+		goto handle_creation_failed;
+
+	args.handle = MAKE_HANDLE(args.gpu_id, idr_handle);
+
+	if (copy_to_user(arg, &args, sizeof(args))) {
+		err = -EFAULT;
+		goto copy_to_usr_failed;
+	}
+
+	mutex_unlock(&p->mutex);
+
+	return 0;
+
+
+copy_to_usr_failed:
+	radeon_kfd_process_device_remove_obj_handle(pdd, idr_handle);
+handle_creation_failed:
+	radeon_kfd_process_gpuvm_free(dev, mem);
+gpuvm_alloc_failed:
+bind_process_to_device_failed:
+	mutex_unlock(&p->mutex);
+
+	return err;
+}
+
+static int
+kfd_ioctl_destroy_vidmem(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_destroy_vidmem_args args;
+	struct kfd_process_device *pdd;
+	void *mem;
+	struct kfd_dev *dev;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	dev = radeon_kfd_device_by_id(GET_GPU_ID(args.handle));
+	if (dev == NULL)
+		return -EINVAL;
+
+	mutex_lock(&p->mutex);
+
+	pdd = radeon_kfd_get_process_device_data(dev, p);
+	BUG_ON(pdd == NULL);
+
+	mem = radeon_kfd_process_device_translate_handle(pdd, GET_IDR_HANDLE(args.handle));
+	BUG_ON(mem == NULL);
+
+	radeon_kfd_process_device_remove_obj_handle(pdd, GET_IDR_HANDLE(args.handle));
+	radeon_kfd_process_gpuvm_free(dev, mem);
+
+	mutex_unlock(&p->mutex);
+	return 0;
+}
+
 static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
@@ -800,6 +889,14 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_PMC_RELEASE_ACCESS:
 		err = kfd_ioctl_pmc_release_access(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_CREATE_VIDMEM:
+		err = kfd_ioctl_create_vidmem(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_DESTROY_VIDMEM:
+		err = kfd_ioctl_destroy_vidmem(filep, process, (void __user *)arg);
 		break;
 
 	default:

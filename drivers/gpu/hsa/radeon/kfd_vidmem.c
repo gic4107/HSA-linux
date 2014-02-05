@@ -20,6 +20,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <linux/slab.h>
 #include "kfd_priv.h"
 
 int radeon_kfd_vidmem_alloc(struct kfd_dev *kfd, size_t size, size_t alignment, enum kfd_mempool pool, kfd_mem_obj *mem_obj)
@@ -50,13 +51,55 @@ int radeon_kfd_vidmem_kmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj, void **ptr)
 void radeon_kfd_vidmem_unkmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj)
 {
 	kfd2kgd->unkmap_mem(kfd->kgd, (struct kgd_mem *)mem_obj);
+
+}
+
+int radeon_kfd_process_create_vm(struct kfd_dev *kfd, void **vm)
+{
+	BUG_ON(kfd == NULL);
+	BUG_ON(vm == NULL);
+
+	return kfd2kgd->create_process_vm(kfd->kgd, (void **) vm);
+}
+
+void radeon_kfd_process_destroy_vm(struct kfd_dev *kfd, void *vm)
+{
+	BUG_ON(kfd == NULL);
+	BUG_ON(vm == NULL);
+
+	kfd2kgd->destroy_process_vm(kfd->kgd, vm);
+}
+
+uint64_t radeon_kfd_process_get_pd(void *vm)
+{
+	BUG_ON(vm == NULL);
+
+	return kfd2kgd->get_process_page_dir(vm);
+}
+
+int radeon_kfd_process_gpuvm_alloc(struct kfd_dev *kfd, uint64_t va, size_t size, void *vm, void **mem_obj)
+{
+
+	BUG_ON(kfd == NULL);
+	BUG_ON(vm == NULL);
+	BUG_ON(mem_obj == NULL);
+
+	return kfd2kgd->create_process_gpumem(kfd->kgd, va, size, vm, (struct kgd_mem **) mem_obj);
+
+}
+
+void radeon_kfd_process_gpuvm_free(struct kfd_dev *kfd, void *mem_obj)
+{
+	BUG_ON(kfd == NULL);
+	BUG_ON(mem_obj == NULL);
+
+	kfd2kgd->destroy_process_gpumem(kfd->kgd, mem_obj);
 }
 
 int radeon_kfd_vidmem_alloc_map(struct kfd_dev *kfd, kfd_mem_obj *mem_obj, void **ptr, uint64_t *vmid0_address, size_t size)
 {
 	int retval;
-	retval = radeon_kfd_vidmem_alloc(kfd, size, PAGE_SIZE, KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-			mem_obj);
+	retval = radeon_kfd_vidmem_alloc(kfd, size, PAGE_SIZE, KFD_MEMPOOL_SYSTEM_WRITECOMBINE, mem_obj);
 	if (retval != 0)
 		goto fail_vidmem_alloc;
 

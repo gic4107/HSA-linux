@@ -42,6 +42,10 @@ static struct kfd_process *find_process(const struct task_struct *thread);
 static struct kfd_process *create_process(const struct task_struct *thread);
 static struct kfd_process *insert_process(struct kfd_process *process);
 
+#define MIN_IDR_ID 1
+#define MAX_IDR_ID 0 /*0 - for unlimited*/
+
+
 struct kfd_process*
 radeon_kfd_create_process(const struct task_struct *thread)
 {
@@ -297,12 +301,16 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
 	if (pdd->bound)
 		return pdd;
 
-	err = amd_iommu_bind_pasid(dev->pdev, p->pasid, p->lead_thread);
-	if (err < 0)
+	idr_init(&pdd->alloc_idr);
+
+	/* Create the GPUVM context for this specific device */
+	err = radeon_kfd_process_create_vm(dev, &pdd->vm);
+	if (err != 0)
 		return ERR_PTR(err);
 
+	err = amd_iommu_bind_pasid(dev->pdev, p->pasid, p->lead_thread);
 	if (err < 0) {
-		amd_iommu_unbind_pasid(dev->pdev, p->pasid);
+		radeon_kfd_process_destroy_vm(dev, pdd->vm);
 		return ERR_PTR(err);
 	}
 
@@ -315,6 +323,8 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 {
 	struct kfd_process *p;
 	struct kfd_process_device *pdd;
+	void *mem;
+	int id;
 
 	p = find_process(current);
 	if (p == NULL)
@@ -334,6 +344,16 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 	/* We don't call amd_iommu_unbind_pasid because the IOMMU is calling us. */
 
 	list_del(&pdd->per_device_list);
+
+	/*Remove all handles from idr and release appropriate local memory object*/
+	idr_for_each_entry(&pdd->alloc_idr, mem, id) {
+		idr_remove(&pdd->alloc_idr, id);
+		radeon_kfd_process_gpuvm_free(dev, mem);
+	}
+
+	/* Destroy the GPUVM VM context */
+	radeon_kfd_process_destroy_vm(dev, pdd->vm);
+
 	kfree(pdd);
 
 	mutex_unlock(&p->mutex);
@@ -439,6 +459,7 @@ struct kfd_queue *radeon_kfd_get_queue(struct kfd_process *p, unsigned int queue
 	return (queue_id < p->queue_array_size && test_bit(queue_id, p->allocated_queue_bitmap)) ? p->queues[queue_id] : NULL;
 }
 
+
 struct kfd_process_device *kfd_get_first_process_device_data(struct kfd_process *p)
 {
 	return list_first_entry(&p->per_device_data, struct kfd_process_device, per_device_list);
@@ -455,3 +476,47 @@ bool kfd_has_process_device_data(struct kfd_process *p)
 {
 	return !(list_empty(&p->per_device_data));
 }
+
+
+/* Create specific handle mapped to mem from process local memory idr
+ * Assumes that the process lock is held. */
+int radeon_kfd_process_device_create_obj_handle(struct kfd_process_device *pdd, void *mem)
+{
+	int handle;
+
+	BUG_ON(pdd == NULL);
+	BUG_ON(mem == NULL);
+
+	idr_preload(GFP_KERNEL);
+
+	handle = idr_alloc(&pdd->alloc_idr, mem, MIN_IDR_ID, MAX_IDR_ID, GFP_NOWAIT);
+
+	idr_preload_end();
+
+	return handle;
+}
+
+/* Translate specific handle from process local memory idr
+ * Assumes that the process lock is held. */
+void *radeon_kfd_process_device_translate_handle(struct kfd_process_device *pdd, int handle)
+{
+	BUG_ON(pdd == NULL);
+
+	if (handle < 0)
+		return NULL;
+
+	return idr_find(&pdd->alloc_idr, handle);
+}
+
+/* Remove specific handle from process local memory idr
+ * Assumes that the process lock is held. */
+void radeon_kfd_process_device_remove_obj_handle(struct kfd_process_device *pdd, int handle)
+{
+	BUG_ON(pdd == NULL);
+
+	if (handle < 0)
+		return;
+
+	idr_remove(&pdd->alloc_idr, handle);
+}
+
