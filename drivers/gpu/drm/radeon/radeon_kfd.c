@@ -120,6 +120,12 @@ void radeon_kfd_device_fini(struct radeon_device *rdev)
 	}
 }
 
+void radeon_kfd_interrupt(struct radeon_device *rdev, const void *ih_ring_entry)
+{
+	if (rdev->kfd)
+		kgd2kfd->interrupt(rdev->kfd, ih_ring_entry);
+}
+
 void radeon_kfd_suspend(struct radeon_device *rdev)
 {
 	if (rdev->kfd)
