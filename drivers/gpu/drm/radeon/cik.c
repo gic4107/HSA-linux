@@ -140,6 +140,7 @@ static void cik_enable_gui_idle_interrupt(struct radeon_device *rdev,
 					  bool enable);
 extern void radeon_kfd_suspend(struct radeon_device *rdev);
 extern int radeon_kfd_resume(struct radeon_device *rdev);
+extern void radeon_kfd_interrupt(struct radeon_device *rdev, const void *ih_ring_entry);
 
 /* get temperature in millidegrees */
 int ci_get_temp(struct radeon_device *rdev)
@@ -7703,6 +7704,9 @@ restart_ih:
 	while (rptr != wptr) {
 		/* wptr/rptr are in bytes! */
 		ring_index = rptr / 4;
+
+		radeon_kfd_interrupt(rdev, (const void *) &rdev->ih.ring[ring_index]);
+
 		src_id =  le32_to_cpu(rdev->ih.ring[ring_index]) & 0xff;
 		src_data = le32_to_cpu(rdev->ih.ring[ring_index + 1]) & 0xfffffff;
 		ring_id = le32_to_cpu(rdev->ih.ring[ring_index + 2]) & 0xff;
