@@ -75,6 +75,7 @@ extern void si_init_uvd_internal_cg(struct radeon_device *rdev);
 extern int cik_sdma_resume(struct radeon_device *rdev);
 extern void cik_sdma_enable(struct radeon_device *rdev, bool enable);
 extern void cik_sdma_fini(struct radeon_device *rdev);
+extern void radeon_kfd_interrupt(struct radeon_device *rdev, const void *ih_ring_entry);
 static void cik_rlc_stop(struct radeon_device *rdev);
 static void cik_pcie_gen3_enable(struct radeon_device *rdev);
 static void cik_program_aspm(struct radeon_device *rdev);
@@ -7198,6 +7199,9 @@ restart_ih:
 	while (rptr != wptr) {
 		/* wptr/rptr are in bytes! */
 		ring_index = rptr / 4;
+
+		radeon_kfd_interrupt(rdev, (const void *) &rdev->ih.ring[ring_index]);
+
 		src_id =  le32_to_cpu(rdev->ih.ring[ring_index]) & 0xff;
 		src_data = le32_to_cpu(rdev->ih.ring[ring_index + 1]) & 0xfffffff;
 		ring_id = le32_to_cpu(rdev->ih.ring[ring_index + 2]) & 0xff;
