@@ -139,14 +139,6 @@ destroy_queues(struct kfd_process *p, struct kfd_dev *dev_filter)
 			dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
 
 			kfree(queue);
-
-			BUG_ON(pdd->queue_count == 0);
-			BUG_ON(pdd->scheduler_process == NULL);
-
-			if (--pdd->queue_count == 0) {
-				dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
-				pdd->scheduler_process = NULL;
-			}
 		}
 	}
 }
@@ -168,7 +160,15 @@ static void free_process(struct kfd_process *p)
 
 static void shutdown_process(struct kfd_process *p)
 {
+	struct kfd_process_device *pdd;
+
 	destroy_queues(p, NULL);
+
+	list_for_each_entry(pdd, &p->per_device_data, per_device_list) {
+		pdd->dev->device_info->scheduler_class->deregister_process(pdd->dev->scheduler, pdd->scheduler_process);
+		pdd->scheduler_process = NULL;
+	}
+
 	/* IOMMU bindings: automatic */
 	/* doorbell mappings: automatic */
 
@@ -316,6 +316,12 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
 	if (err < 0)
 		return ERR_PTR(err);
 
+	err = dev->device_info->scheduler_class->register_process(dev->scheduler, p, &pdd->scheduler_process);
+	if (err < 0) {
+		amd_iommu_unbind_pasid(dev->pdev, p->pasid);
+		return ERR_PTR(err);
+	}
+
 	pdd->bound = true;
 
 	return pdd;
@@ -337,19 +343,19 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 
 	mutex_lock(&p->mutex);
 
+	radeon_kfd_doorbell_unmap(pdd);
+
 	destroy_queues(p, dev);
 
-	/* All queues just got destroyed so this should be gone. */
-	BUG_ON(pdd->scheduler_process != NULL);
+	dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
+	pdd->scheduler_process = NULL;
 
-	radeon_kfd_doorbell_unmap(pdd);
+	/* We don't call amd_iommu_unbind_pasid because the IOMMU is calling us. */
 
 	list_del(&pdd->per_device_list);
 	kfree(pdd);
 
 	mutex_unlock(&p->mutex);
-
-	/* We don't call amd_iommu_unbind_pasid because the IOMMU called us. */
 
 	/* You may wonder what prevents new queues from being created now that
 	 * the locks have been released. Nothing does. This bug exists because
