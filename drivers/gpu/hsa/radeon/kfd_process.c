@@ -120,15 +120,6 @@ destroy_queues(struct kfd_process *p, struct kfd_dev *dev_filter)
 			dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
 
 			kfree(queue);
-
-			BUG_ON(pdd->queue_count == 0);
-			BUG_ON(pdd->scheduler_process == NULL);
-
-			if (--pdd->queue_count == 0) {
-				dev->device_info->scheduler_class->deregister_process(dev->scheduler,
-							pdd->scheduler_process);
-				pdd->scheduler_process = NULL;
-			}
 		}
 	}
 }
@@ -144,6 +135,8 @@ static void free_process(struct kfd_process *p)
 	/* doorbell mappings: automatic */
 
 	list_for_each_entry_safe(pdd, temp, &p->per_device_data, per_device_list) {
+		pdd->dev->device_info->scheduler_class->deregister_process(pdd->dev->scheduler, pdd->scheduler_process);
+		pdd->scheduler_process = NULL;
 		amd_iommu_unbind_pasid(pdd->dev->pdev, p->pasid);
 		list_del(&pdd->per_device_list);
 		kfree(pdd);
@@ -255,6 +248,12 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
 	if (err < 0)
 		return ERR_PTR(err);
 
+	err = dev->device_info->scheduler_class->register_process(dev->scheduler, p, &pdd->scheduler_process);
+	if (err < 0) {
+		amd_iommu_unbind_pasid(dev->pdev, p->pasid);
+		return ERR_PTR(err);
+	}
+
 	pdd->bound = true;
 
 	return pdd;
@@ -285,8 +284,8 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 
 	destroy_queues(p, dev);
 
-	/* All queues just got destroyed so this should be gone. */
-	BUG_ON(pdd->scheduler_process != NULL);
+	dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
+	pdd->scheduler_process = NULL;
 
 	/*
 	 * Just mark pdd as unbound, because we still need it to call
