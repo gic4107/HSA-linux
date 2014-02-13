@@ -153,9 +153,6 @@ struct kfd_process_device {
 	/* The user-mode address of the doorbell mapping for this device. */
 	doorbell_t __user *doorbell_mapping;
 
-	/* The number of queues created by this process for this device. */
-	uint32_t queue_count;
-
 	/* Scheduler process data for this device. */
 	struct kfd_scheduler_process *scheduler_process;
 

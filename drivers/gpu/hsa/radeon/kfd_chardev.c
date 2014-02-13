@@ -138,19 +138,12 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	pdd = radeon_kfd_bind_process_to_device(dev, p);
 	if (IS_ERR(pdd) < 0) {
 		err = PTR_ERR(pdd);
-		goto err_bind_pasid;
+		goto err_bind_process;
 	}
 
-	pr_debug("kfd: creating queue number %d for PASID %d on GPU 0x%x\n",
-			pdd->queue_count,
+	pr_debug("kfd: creating queue for PASID %d on GPU 0x%x\n",
 			p->pasid,
 			dev->id);
-
-	if (pdd->queue_count++ == 0) {
-		err = dev->device_info->scheduler_class->register_process(dev->scheduler, p, &pdd->scheduler_process);
-		if (err < 0)
-			goto err_register_process;
-	}
 
 	if (!radeon_kfd_allocate_queue_id(p, &queue_id))
 		goto err_allocate_queue_id;
@@ -195,12 +188,7 @@ err_copy_args_out:
 err_create_queue:
 	radeon_kfd_remove_queue(p, queue_id);
 err_allocate_queue_id:
-	if (--pdd->queue_count == 0) {
-		dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
-		pdd->scheduler_process = NULL;
-	}
-err_register_process:
-err_bind_pasid:
+err_bind_process:
 	kfree(queue);
 	mutex_unlock(&p->mutex);
 	return err;
@@ -212,7 +200,6 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 	struct kfd_ioctl_destroy_queue_args args;
 	struct kfd_queue *queue;
 	struct kfd_dev *dev;
-	struct kfd_process_device *pdd;
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
@@ -235,14 +222,6 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 	dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
 
 	kfree(queue);
-
-	pdd = radeon_kfd_get_process_device_data(dev, p);
-	BUG_ON(pdd == NULL); /* Because a queue exists. */
-
-	if (--pdd->queue_count == 0) {
-		dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
-		pdd->scheduler_process = NULL;
-	}
 
 	mutex_unlock(&p->mutex);
 	return 0;
