@@ -31,6 +31,11 @@ struct kfd_scheduler;
 struct kfd_scheduler_process;
 struct kfd_scheduler_queue;
 
+enum cache_policy {
+	cache_policy_coherent,
+	cache_policy_noncoherent
+};
+
 struct kfd_scheduler_class {
 	const char *name;
 
@@ -58,6 +63,13 @@ struct kfd_scheduler_class {
 
 	bool (*interrupt_isr)(struct kfd_scheduler *, const void *ih_ring_entry);
 	void (*interrupt_wq)(struct kfd_scheduler *, const void *ih_ring_entry);
+
+	bool (*set_cache_policy)(struct kfd_scheduler *scheduler,
+				 struct kfd_scheduler_process *process,
+				 enum cache_policy default_policy,
+				 enum cache_policy alternate_policy,
+				 void __user *alternate_aperture_base,
+				 uint64_t alternate_aperture_size);
 };
 
 extern const struct kfd_scheduler_class radeon_kfd_cik_static_scheduler_class;
