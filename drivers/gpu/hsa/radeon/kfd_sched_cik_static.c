@@ -157,6 +157,10 @@ struct cik_static_private {
 struct cik_static_process {
 	unsigned int vmid;
 	pasid_t pasid;
+
+	uint32_t sh_mem_config;
+	uint32_t ape1_base;
+	uint32_t ape1_limit;
 };
 
 struct cik_static_queue {
@@ -341,6 +345,7 @@ static void init_ats(struct cik_static_private *priv)
 
 			sh_mem_config = ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED);
 			sh_mem_config |= DEFAULT_MTYPE(MTYPE_NONCACHED);
+			sh_mem_config |= APE1_MTYPE(MTYPE_NONCACHED);
 
 			WRITE_REG(priv->dev, SH_MEM_CONFIG, sh_mem_config);
 
@@ -556,11 +561,26 @@ static void release_vmid(struct cik_static_private *priv, unsigned int vmid)
 	set_bit(vmid, &priv->free_vmid_mask);
 }
 
+static void program_sh_mem_settings(struct cik_static_private *sched,
+				    struct cik_static_process *proc)
+{
+	lock_srbm_index(sched);
+
+	vmid_select(sched, proc->vmid);
+
+	WRITE_REG(sched->dev, SH_MEM_CONFIG, proc->sh_mem_config);
+
+	WRITE_REG(sched->dev, SH_MEM_APE1_BASE, proc->ape1_base);
+	WRITE_REG(sched->dev, SH_MEM_APE1_LIMIT, proc->ape1_limit);
+
+	unlock_srbm_index(sched);
+}
+
 static void setup_vmid_for_process(struct cik_static_private *priv, struct cik_static_process *p)
 {
 	set_vmid_pasid_mapping(priv, p->vmid, p->pasid);
 
-	/* SH_MEM_CONFIG and others need to be programmed differently for 32/64-bit processes. And maybe other reasons. */
+	program_sh_mem_settings(priv, p);
 }
 
 static int
@@ -581,6 +601,12 @@ cik_static_register_process(struct kfd_scheduler *scheduler, struct kfd_process 
 	}
 
 	hwp->pasid = process->pasid;
+
+	hwp->sh_mem_config = ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED)
+			     | DEFAULT_MTYPE(MTYPE_NONCACHED)
+			     | APE1_MTYPE(MTYPE_NONCACHED);
+	hwp->ape1_base = 1;
+	hwp->ape1_limit = 0;
 
 	setup_vmid_for_process(priv, hwp);
 
@@ -886,6 +912,64 @@ cik_static_interrupt_wq(struct kfd_scheduler *scheduler, const void *ih_ring_ent
 {
 }
 
+/* Low bits must be 0000/FFFF as required by HW, high bits must be 0 to stay in user mode. */
+#define APE1_FIXED_BITS_MASK 0xFFFF80000000FFFFULL
+#define APE1_LIMIT_ALIGNMENT 0xFFFF /* APE1 limit is inclusive and 64K aligned. */
+
+static bool cik_static_set_cache_policy(struct kfd_scheduler *scheduler,
+					struct kfd_scheduler_process *process,
+					enum cache_policy default_policy,
+					enum cache_policy alternate_policy,
+					void __user *alternate_aperture_base,
+					uint64_t alternate_aperture_size)
+{
+	struct cik_static_private *sched = kfd_scheduler_to_private(scheduler);
+	struct cik_static_process *proc = kfd_process_to_private(process);
+
+	uint32_t default_mtype;
+	uint32_t ape1_mtype;
+
+	if (alternate_aperture_size == 0) {
+		/* base > limit disables APE1 */
+		proc->ape1_base = 1;
+		proc->ape1_limit = 0;
+	} else {
+		/*
+		 * In FSA64, APE1_Base[63:0] = { 16{SH_MEM_APE1_BASE[31]}, SH_MEM_APE1_BASE[31:0], 0x0000 }
+		 * APE1_Limit[63:0] = { 16{SH_MEM_APE1_LIMIT[31]}, SH_MEM_APE1_LIMIT[31:0], 0xFFFF }
+		 * Verify that the base and size parameters can be represented in this format
+		 * and convert them. Additionally restrict APE1 to user-mode addresses.
+		 */
+
+		uint64_t base = (uintptr_t)alternate_aperture_base;
+		uint64_t limit = base + alternate_aperture_size - 1;
+
+		if (limit <= base)
+			return false;
+
+		if ((base & APE1_FIXED_BITS_MASK) != 0)
+			return false;
+
+		if ((limit & APE1_FIXED_BITS_MASK) != APE1_LIMIT_ALIGNMENT)
+			return false;
+
+		proc->ape1_base = base >> 16;
+		proc->ape1_limit = limit >> 16;
+	}
+
+	default_mtype = (default_policy == cache_policy_coherent) ? MTYPE_NONCACHED : MTYPE_CACHED;
+	ape1_mtype = (alternate_policy == cache_policy_coherent) ? MTYPE_NONCACHED : MTYPE_CACHED;
+
+	proc->sh_mem_config = ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED)
+			      | DEFAULT_MTYPE(default_mtype)
+			      | APE1_MTYPE(ape1_mtype);
+
+	program_sh_mem_settings(sched, proc);
+
+	return true;
+}
+
+
 const struct kfd_scheduler_class radeon_kfd_cik_static_scheduler_class = {
 	.name = "CIK static scheduler",
 	.create = cik_static_create,
@@ -900,4 +984,6 @@ const struct kfd_scheduler_class radeon_kfd_cik_static_scheduler_class = {
 
 	.interrupt_isr = cik_static_interrupt_isr,
 	.interrupt_wq = cik_static_interrupt_wq,
+
+	.set_cache_policy = cik_static_set_cache_policy,
 };

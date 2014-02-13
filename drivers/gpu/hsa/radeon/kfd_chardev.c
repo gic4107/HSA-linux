@@ -228,6 +228,61 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 }
 
 static long
+kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_set_memory_policy_args args;
+	struct kfd_dev *dev;
+	int err = 0;
+	struct kfd_process_device *pdd;
+	enum cache_policy default_policy, alternate_policy;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	if (args.default_policy != KFD_IOC_CACHE_POLICY_COHERENT
+	    && args.default_policy != KFD_IOC_CACHE_POLICY_NONCOHERENT) {
+		return -EINVAL;
+	}
+
+	if (args.alternate_policy != KFD_IOC_CACHE_POLICY_COHERENT
+	    && args.alternate_policy != KFD_IOC_CACHE_POLICY_NONCOHERENT) {
+		return -EINVAL;
+	}
+
+	dev = radeon_kfd_device_by_id(args.gpu_id);
+	if (dev == NULL)
+		return -EINVAL;
+
+	mutex_lock(&p->mutex);
+
+	pdd = radeon_kfd_bind_process_to_device(dev, p);
+	if (IS_ERR(pdd) < 0) {
+		err = PTR_ERR(pdd);
+		goto out;
+	}
+
+	default_policy = (args.default_policy == KFD_IOC_CACHE_POLICY_COHERENT)
+			 ? cache_policy_coherent : cache_policy_noncoherent;
+
+	alternate_policy = (args.alternate_policy == KFD_IOC_CACHE_POLICY_COHERENT)
+			   ? cache_policy_coherent : cache_policy_noncoherent;
+
+	if (!dev->device_info->scheduler_class->set_cache_policy(dev->scheduler,
+								 pdd->scheduler_process,
+								 default_policy,
+								 alternate_policy,
+								 (void __user *)args.alternate_aperture_base,
+								 args.alternate_aperture_size))
+		err = -EINVAL;
+
+out:
+	mutex_unlock(&p->mutex);
+
+	return err;
+}
+
+
+static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 	struct kfd_process *process;
@@ -248,6 +303,10 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_DESTROY_QUEUE:
 		err = kfd_ioctl_destroy_queue(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_SET_MEMORY_POLICY:
+		err = kfd_ioctl_set_memory_policy(filep, process, (void __user *)arg);
 		break;
 
 	default:
