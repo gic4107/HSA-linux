@@ -466,10 +466,10 @@ static int kfd_parse_crat_table(void *crat_image)
 		if (!top_dev) {
 			kfd_release_live_view();
 			return -ENOMEM;
+		}
 	}
-}
 
-	sys_props.platform_id = *((uint64_t *)crat_table->oem_id);
+	sys_props.platform_id = (*((uint64_t *)crat_table->oem_id)) & CRAT_OEMID_64BIT_MASK;
 	sys_props.platform_oem = *((uint64_t *)crat_table->oem_table_id);
 	sys_props.platform_rev = crat_table->revision;
 
