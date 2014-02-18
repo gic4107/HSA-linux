@@ -42,6 +42,8 @@
 #define CRAT_OEMTABLEID_LENGTH	8
 #define CRAT_RESERVED_LENGTH	6
 
+#define CRAT_OEMID_64BIT_MASK ((1ULL << (CRAT_OEMID_LENGTH * 8)) - 1)
+
 struct crat_header {
 	uint32_t	signature;
 	uint32_t	length;
