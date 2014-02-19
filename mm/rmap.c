@@ -1231,13 +1231,17 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	} else
 		dec_mm_counter(mm, MM_FILEPAGES);
 
+	pte_unmap_unlock(pte, ptl);
+
+	mmu_notifier_invalidate_page(vma, address, event);
+
 	page_remove_rmap(page);
 	page_cache_release(page);
 
+	return ret;
+
 out_unmap:
 	pte_unmap_unlock(pte, ptl);
-	if (ret != SWAP_FAIL && !(flags & TTU_MUNLOCK))
-		mmu_notifier_invalidate_page(vma, address, event);
 out:
 	return ret;
 
