@@ -90,13 +90,6 @@ static DEFINE_SPINLOCK(ps_lock);
 
 static struct workqueue_struct *iommu_wq;
 
-/*
- * Empty page table - Used between
- * mmu_notifier_invalidate_range_start and
- * mmu_notifier_invalidate_range_end
- */
-static u64 *empty_page_table;
-
 static void free_pasid_states(struct device_state *dev_state);
 static void unbind_pasid(struct device_state *dev_state, int pasid);
 static int task_exit(struct notifier_block *nb, unsigned long e, void *data);
@@ -443,22 +436,11 @@ static void mn_invalidate_range_start(struct mmu_notifier *mn,
 	pasid_state = mn_to_state(mn);
 	dev_state   = pasid_state->device_state;
 
-	amd_iommu_domain_set_gcr3(dev_state->domain, pasid_state->pasid,
-				  __pa(empty_page_table));
-}
-
-static void mn_invalidate_range_end(struct mmu_notifier *mn,
-				    struct mm_struct *mm,
-				    unsigned long start, unsigned long end)
-{
-	struct pasid_state *pasid_state;
-	struct device_state *dev_state;
-
-	pasid_state = mn_to_state(mn);
-	dev_state   = pasid_state->device_state;
-
-	amd_iommu_domain_set_gcr3(dev_state->domain, pasid_state->pasid,
-				  __pa(pasid_state->mm->pgd));
+	/*
+	 * Invalidate IOMMU TLB and IOTLB (FIXME: invalidate range only)
+	 * FIXME: races if IOTLB actively using page range being invalidated
+	 */
+	amd_iommu_flush_tlb(dev_state->domain, pasid_state->pasid);
 }
 
 static struct mmu_notifier_ops iommu_mn = {
@@ -466,7 +448,6 @@ static struct mmu_notifier_ops iommu_mn = {
 	.change_pte             = mn_change_pte,
 	.invalidate_page        = mn_invalidate_page,
 	.invalidate_range_start = mn_invalidate_range_start,
-	.invalidate_range_end   = mn_invalidate_range_end,
 };
 
 static void set_pri_tag_status(struct pasid_state *pasid_state,
@@ -947,18 +928,10 @@ static int __init amd_iommu_v2_init(void)
 	if (iommu_wq == NULL)
 		goto out_free;
 
-	ret = -ENOMEM;
-	empty_page_table = (u64 *)get_zeroed_page(GFP_KERNEL);
-	if (empty_page_table == NULL)
-		goto out_destroy_wq;
-
 	amd_iommu_register_ppr_notifier(&ppr_nb);
 	profile_event_register(PROFILE_TASK_EXIT, &profile_nb);
 
 	return 0;
-
-out_destroy_wq:
-	destroy_workqueue(iommu_wq);
 
 out_free:
 	free_pages((unsigned long)state_table, get_order(state_table_size));
@@ -1000,8 +973,6 @@ static void __exit amd_iommu_v2_exit(void)
 
 	state_table_size = MAX_DEVICES * sizeof(struct device_state *);
 	free_pages((unsigned long)state_table, get_order(state_table_size));
-
-	free_page((unsigned long)empty_page_table);
 }
 
 module_init(amd_iommu_v2_init);
