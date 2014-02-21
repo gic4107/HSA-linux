@@ -428,7 +428,7 @@ static int cik_static_create(struct kfd_dev *dev, struct kfd_scheduler **schedul
 	 * are no active queues.
 	 */
 	err = radeon_kfd_vidmem_alloc(dev,
-				      CIK_HPD_SIZE * priv->num_pipes * 2,
+				      CIK_HPD_SIZE * priv->num_pipes,
 				      PAGE_SIZE,
 				      KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
 				      &priv->hpd_mem);
