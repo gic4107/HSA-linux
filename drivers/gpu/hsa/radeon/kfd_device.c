@@ -27,7 +27,7 @@
 #include "kfd_priv.h"
 #include "kfd_scheduler.h"
 
-static const struct kfd_device_info bonaire_device_info = {
+static const struct kfd_device_info kaveri_device_info = {
 	.scheduler_class = &radeon_kfd_cik_static_scheduler_class,
 	.max_pasid_bits = 16,
 	.ih_ring_entry_size = 4 * sizeof(uint32_t)
@@ -40,10 +40,28 @@ struct kfd_deviceid {
 
 /* Please keep this sorted by increasing device id. */
 static const struct kfd_deviceid supported_devices[] = {
-	{ 0x1305, &bonaire_device_info },	/* Kaveri */
-	{ 0x1307, &bonaire_device_info },	/* Kaveri */
-	{ 0x130F, &bonaire_device_info },	/* Kaveri */
-	{ 0x665C, &bonaire_device_info },	/* Bonaire */
+	{ 0x1304, &kaveri_device_info },	/* Kaveri */
+	{ 0x1305, &kaveri_device_info },	/* Kaveri */
+	{ 0x1306, &kaveri_device_info },	/* Kaveri */
+	{ 0x1307, &kaveri_device_info },	/* Kaveri */
+	{ 0x1309, &kaveri_device_info },	/* Kaveri */
+	{ 0x130A, &kaveri_device_info },	/* Kaveri */
+	{ 0x130B, &kaveri_device_info },	/* Kaveri */
+	{ 0x130C, &kaveri_device_info },	/* Kaveri */
+	{ 0x130D, &kaveri_device_info },	/* Kaveri */
+	{ 0x130E, &kaveri_device_info },	/* Kaveri */
+	{ 0x130F, &kaveri_device_info },	/* Kaveri */
+	{ 0x1310, &kaveri_device_info },	/* Kaveri */
+	{ 0x1311, &kaveri_device_info },	/* Kaveri */
+	{ 0x1312, &kaveri_device_info },	/* Kaveri */
+	{ 0x1313, &kaveri_device_info },	/* Kaveri */
+	{ 0x1315, &kaveri_device_info },	/* Kaveri */
+	{ 0x1316, &kaveri_device_info },	/* Kaveri */
+	{ 0x1317, &kaveri_device_info },	/* Kaveri */
+	{ 0x1318, &kaveri_device_info },	/* Kaveri */
+	{ 0x131B, &kaveri_device_info },	/* Kaveri */
+	{ 0x131C, &kaveri_device_info },	/* Kaveri */
+	{ 0x131D, &kaveri_device_info },	/* Kaveri */
 };
 
 static const struct kfd_device_info *
