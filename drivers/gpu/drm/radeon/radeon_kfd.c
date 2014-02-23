@@ -40,6 +40,7 @@ static int kmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem, void **ptr);
 static void unkmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem);
 
 static uint64_t get_vmem_size(struct kgd_dev *kgd);
+static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd);
 
 static void lock_srbm_gfx_cntl(struct kgd_dev *kgd);
 static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd);
@@ -53,6 +54,7 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.kmap_mem = kmap_mem,
 	.unkmap_mem = unkmap_mem,
 	.get_vmem_size = get_vmem_size,
+	.get_gpu_clock_counter = get_gpu_clock_counter,
 	.lock_srbm_gfx_cntl = lock_srbm_gfx_cntl,
 	.unlock_srbm_gfx_cntl = unlock_srbm_gfx_cntl,
 };
@@ -242,4 +244,11 @@ static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd)
 {
 	struct radeon_device *rdev = (struct radeon_device *)kgd;
 	mutex_unlock(&rdev->srbm_mutex);
+}
+
+static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+
+	return rdev->asic->get_gpu_clock_counter(rdev);
 }
