@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <uapi/linux/kfd_ioctl.h>
+#include <linux/time.h>
 #include "kfd_priv.h"
 #include "kfd_scheduler.h"
 
@@ -281,6 +282,38 @@ out:
 	return err;
 }
 
+static long
+kfd_ioctl_get_clock_counters(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_get_clock_counters_args args;
+	struct kfd_dev *dev;
+	struct timespec time;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	dev = radeon_kfd_device_by_id(args.gpu_id);
+	if (dev == NULL)
+		return -EINVAL;
+
+	/* Reading GPU clock counter from KGD */
+	args.gpu_clock_counter = kfd2kgd->get_gpu_clock_counter(dev->kgd);
+
+	/* No access to rdtsc. Using raw monotonic time */
+	getrawmonotonic(&time);
+	args.cpu_clock_counter = time.tv_nsec;
+
+	get_monotonic_boottime(&time);
+	args.system_clock_counter = time.tv_nsec;
+
+	/* Since the counter is in nano-seconds we use 1GHz frequency */
+	args.system_clock_freq = 1000000000;
+
+	if (copy_to_user(arg, &args, sizeof(args)))
+		return -EFAULT;
+
+	return 0;
+}
 
 static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -307,6 +340,10 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_SET_MEMORY_POLICY:
 		err = kfd_ioctl_set_memory_policy(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_GET_CLOCK_COUNTERS:
+		err = kfd_ioctl_get_clock_counters(filep, process, (void __user *)arg);
 		break;
 
 	default:
