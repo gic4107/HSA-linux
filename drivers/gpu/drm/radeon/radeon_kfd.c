@@ -45,6 +45,9 @@ static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd);
 static void lock_srbm_gfx_cntl(struct kgd_dev *kgd);
 static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd);
 
+static void lock_grbm_gfx_idx(struct kgd_dev *kgd);
+static void unlock_grbm_gfx_idx(struct kgd_dev *kgd);
+
 
 static const struct kfd2kgd_calls kfd2kgd = {
 	.allocate_mem = allocate_mem,
@@ -57,6 +60,8 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.get_gpu_clock_counter = get_gpu_clock_counter,
 	.lock_srbm_gfx_cntl = lock_srbm_gfx_cntl,
 	.unlock_srbm_gfx_cntl = unlock_srbm_gfx_cntl,
+	.lock_grbm_gfx_idx = lock_grbm_gfx_idx,
+	.unlock_grbm_gfx_idx = unlock_grbm_gfx_idx,
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -244,6 +249,22 @@ static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd)
 {
 	struct radeon_device *rdev = (struct radeon_device *)kgd;
 	mutex_unlock(&rdev->srbm_mutex);
+}
+
+static void lock_grbm_gfx_idx(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+	BUG_ON(kgd == NULL);
+
+	mutex_lock(&rdev->grbm_idx_mutex);
+}
+
+static void unlock_grbm_gfx_idx(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+	BUG_ON(kgd == NULL);
+
+	mutex_unlock(&rdev->grbm_idx_mutex);
 }
 
 static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd)
