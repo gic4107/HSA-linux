@@ -158,6 +158,16 @@ struct kfd_process_device {
 
 	/* Is this process/pasid bound to this device? (amd_iommu_bind_pasid) */
 	bool bound;
+
+	/*Apertures*/
+	uint64_t lds_base;
+	uint64_t lds_limit;
+	uint64_t gpuvm_base;
+	uint64_t gpuvm_limit;
+	uint64_t scratch_base;
+	uint64_t scratch_limit;
+
+
 };
 
 /* Process data */
@@ -202,6 +212,10 @@ void radeon_kfd_install_queue(struct kfd_process *p, unsigned int queue_id, stru
 void radeon_kfd_remove_queue(struct kfd_process *p, unsigned int queue_id);
 struct kfd_queue *radeon_kfd_get_queue(struct kfd_process *p, unsigned int queue_id);
 
+/* Process device data iterator */
+struct kfd_process_device *kfd_get_first_process_device_data(struct kfd_process *p);
+struct kfd_process_device *kfd_get_next_process_device_data(struct kfd_process *p, struct kfd_process_device *pdd);
+bool kfd_has_process_device_data(struct kfd_process *p);
 
 /* PASIDs */
 int radeon_kfd_pasid_init(void);
@@ -228,6 +242,7 @@ int kfd_topology_add_device(struct kfd_dev *gpu);
 int kfd_topology_remove_device(struct kfd_dev *gpu);
 struct kfd_dev *radeon_kfd_device_by_id(uint32_t gpu_id);
 struct kfd_dev *radeon_kfd_device_by_pci_dev(const struct pci_dev *pdev);
+struct kfd_dev *kfd_topology_enum_kfd_devices(uint8_t idx);
 
 /* MMIO registers */
 #define WRITE_REG(dev, reg, value) radeon_kfd_write_reg((dev), (reg), (value))
@@ -243,5 +258,8 @@ void kgd2kfd_interrupt(struct kfd_dev *dev, const void *ih_ring_entry);
 /* Power Management */
 void kgd2kfd_suspend(struct kfd_dev *dev);
 int kgd2kfd_resume(struct kfd_dev *dev);
+
+/*HSA apertures*/
+int kfd_init_apertures(struct kfd_process *process);
 
 #endif

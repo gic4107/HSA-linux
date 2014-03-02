@@ -1199,3 +1199,29 @@ int kfd_topology_remove_device(struct kfd_dev *gpu)
 
 	return res;
 }
+
+/*
+ * When idx is out of bounds, the function will return NULL
+ */
+struct kfd_dev *kfd_topology_enum_kfd_devices(uint8_t idx)
+{
+
+	struct kfd_topology_device *top_dev;
+	struct kfd_dev *device = NULL;
+	uint8_t device_idx = 0;
+
+	down_read(&topology_lock);
+
+	list_for_each_entry(top_dev, &topology_device_list, list)
+		if (device_idx == idx) {
+			device = top_dev->gpu;
+			break;
+		} else {
+			device_idx++;
+		}
+
+	up_read(&topology_lock);
+
+	return device;
+
+}
