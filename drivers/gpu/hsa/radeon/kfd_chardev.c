@@ -32,6 +32,9 @@
 #include <linux/time.h>
 #include "kfd_priv.h"
 #include "kfd_scheduler.h"
+#include <linux/mm.h>
+#include <uapi/asm-generic/mman-common.h>
+#include <asm/processor.h>
 
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
 static int kfd_open(struct inode *, struct file *);
@@ -107,8 +110,12 @@ kfd_open(struct inode *inode, struct file *filep)
 	process = radeon_kfd_create_process(current);
 	if (IS_ERR(process))
 		return PTR_ERR(process);
+
 	process->is_32bit_user_mode = is_compat_task();
+
 	dev_info(kfd_device, "process %d opened, compat mode (32 bit) - %d\n", process->pasid, process->is_32bit_user_mode);
+
+	kfd_init_apertures(process);
 
 	return 0;
 }
@@ -317,6 +324,50 @@ kfd_ioctl_get_clock_counters(struct file *filep, struct kfd_process *p, void __u
 	return 0;
 }
 
+
+static int kfd_ioctl_get_process_apertures(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_get_process_apertures_args args;
+	struct kfd_process_device *pdd;
+
+	dev_dbg(kfd_device, "get apertures for PASID %d", p->pasid);
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	args.num_of_nodes = 0;
+
+	mutex_lock(&p->mutex);
+
+	/*if the process-device list isn't empty*/
+	if (kfd_has_process_device_data(p)) {
+		/* Run over all pdd of the process */
+		pdd = kfd_get_first_process_device_data(p);
+		do {
+
+			args.process_apertures[args.num_of_nodes].gpu_id = pdd->dev->id;
+			args.process_apertures[args.num_of_nodes].lds_base = pdd->lds_base;
+			args.process_apertures[args.num_of_nodes].lds_limit = pdd->lds_limit;
+			args.process_apertures[args.num_of_nodes].gpuvm_base = pdd->gpuvm_base;
+			args.process_apertures[args.num_of_nodes].gpuvm_limit = pdd->gpuvm_limit;
+			args.process_apertures[args.num_of_nodes].scratch_base = pdd->scratch_base;
+			args.process_apertures[args.num_of_nodes].scratch_limit = pdd->scratch_limit;
+
+			dev_dbg(kfd_device, "node id %u, gpu id %u, lds_base %llX lds_limit %llX gpuvm_base %llX gpuvm_limit %llX scratch_base %llX scratch_limit %llX",
+					args.num_of_nodes, pdd->dev->id, pdd->lds_base, pdd->lds_limit, pdd->gpuvm_base, pdd->gpuvm_limit, pdd->scratch_base, pdd->scratch_limit);
+			args.num_of_nodes++;
+		} while ((pdd = kfd_get_next_process_device_data(p, pdd)) != NULL && (args.num_of_nodes < NUM_OF_SUPPORTED_GPUS));
+	}
+
+	mutex_unlock(&p->mutex);
+
+	if (copy_to_user(arg, &args, sizeof(args)))
+		return -EFAULT;
+
+	return 0;
+}
+
+
 static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
@@ -346,6 +397,10 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_GET_CLOCK_COUNTERS:
 		err = kfd_ioctl_get_clock_counters(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_GET_PROCESS_APERTURES:
+		err = kfd_ioctl_get_process_apertures(filep, process, (void __user *)arg);
 		break;
 
 	default:

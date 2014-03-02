@@ -457,3 +457,20 @@ struct kfd_queue *radeon_kfd_get_queue(struct kfd_process *p, unsigned int queue
 	 * remove_queue would have to NULL removed queues. */
 	return (queue_id < p->queue_array_size && test_bit(queue_id, p->allocated_queue_bitmap)) ? p->queues[queue_id] : NULL;
 }
+
+struct kfd_process_device *kfd_get_first_process_device_data(struct kfd_process *p)
+{
+	return list_first_entry(&p->per_device_data, struct kfd_process_device, per_device_list);
+}
+
+struct kfd_process_device *kfd_get_next_process_device_data(struct kfd_process *p, struct kfd_process_device *pdd)
+{
+	if (list_is_last(&pdd->per_device_list, &p->per_device_data))
+		return NULL;
+	return list_next_entry(pdd, per_device_list);
+}
+
+bool kfd_has_process_device_data(struct kfd_process *p)
+{
+	return !(list_empty(&p->per_device_data));
+}

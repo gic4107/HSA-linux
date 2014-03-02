@@ -78,6 +78,23 @@ struct kfd_ioctl_get_clock_counters_args {
 	uint64_t system_clock_freq;	/* from KFD */
 };
 
+#define NUM_OF_SUPPORTED_GPUS 7
+
+struct kfd_process_device_apertures{
+	uint64_t lds_base;/* from KFD */
+	uint64_t lds_limit;/* from KFD */
+	uint64_t scratch_base;/* from KFD */
+	uint64_t scratch_limit;/* from KFD */
+	uint64_t gpuvm_base;/* from KFD */
+	uint64_t gpuvm_limit;/* from KFD */
+	uint32_t gpu_id;/* from KFD */
+};
+
+struct kfd_ioctl_get_process_apertures_args{
+	struct kfd_process_device_apertures process_apertures[NUM_OF_SUPPORTED_GPUS];/* from KFD */
+	uint8_t num_of_nodes; /* from KFD, should be in the range [1 - NUM_OF_SUPPORTED_GPUS]*/
+};
+
 #define KFD_IOC_MAGIC 'K'
 
 #define KFD_IOC_GET_VERSION	_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
@@ -85,6 +102,7 @@ struct kfd_ioctl_get_clock_counters_args {
 #define KFD_IOC_DESTROY_QUEUE	_IOWR(KFD_IOC_MAGIC, 3, struct kfd_ioctl_destroy_queue_args)
 #define KFD_IOC_SET_MEMORY_POLICY	_IOW(KFD_IOC_MAGIC, 4, struct kfd_ioctl_set_memory_policy_args)
 #define KFD_IOC_GET_CLOCK_COUNTERS	_IOWR(KFD_IOC_MAGIC, 5, struct kfd_ioctl_get_clock_counters_args)
+#define KFD_IOC_GET_PROCESS_APERTURES _IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
 
 #pragma pack(pop)
 
