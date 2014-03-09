@@ -301,10 +301,10 @@ kfd_ioctl_get_clock_counters(struct file *filep, struct kfd_process *p, void __u
 
 	/* No access to rdtsc. Using raw monotonic time */
 	getrawmonotonic(&time);
-	args.cpu_clock_counter = time.tv_nsec;
+	args.cpu_clock_counter = (uint64_t)timespec_to_ns(&time);
 
 	get_monotonic_boottime(&time);
-	args.system_clock_counter = time.tv_nsec;
+	args.system_clock_counter = (uint64_t)timespec_to_ns(&time);
 
 	/* Since the counter is in nano-seconds we use 1GHz frequency */
 	args.system_clock_freq = 1000000000;
