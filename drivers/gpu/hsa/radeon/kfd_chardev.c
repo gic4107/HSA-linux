@@ -321,9 +321,9 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	struct kfd_process *process;
 	long err = -EINVAL;
 
-	dev_info(kfd_device,
-		 "ioctl cmd 0x%x (#%d), arg 0x%lx\n",
-		 cmd, _IOC_NR(cmd), arg);
+	dev_dbg(kfd_device,
+		"ioctl cmd 0x%x (#%d), arg 0x%lx\n",
+		cmd, _IOC_NR(cmd), arg);
 
 	process = radeon_kfd_get_process(current);
 	if (IS_ERR(process))
