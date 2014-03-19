@@ -894,7 +894,7 @@ cik_static_interrupt_isr(struct kfd_scheduler *scheduler, const void *ih_ring_en
 	if (!int_compute_pipe(priv, ihre, &pipe_id))
 		return false;
 
-	dev_info(radeon_kfd_chardev(), "INT(ISR): src=%02x, data=0x%x, pipe=%u, vmid=%u, pasid=%u\n",
+	dev_dbg(radeon_kfd_chardev(), "INT(ISR): src=%02x, data=0x%x, pipe=%u, vmid=%u, pasid=%u\n",
 		 ihre->source_id, ihre->data, pipe_id, ihre->vmid, ihre->pasid);
 
 	switch (source_id) {
