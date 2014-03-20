@@ -203,6 +203,7 @@ struct kfd_queue *radeon_kfd_get_queue(struct kfd_process *p, unsigned int queue
 int radeon_kfd_pasid_init(void);
 void radeon_kfd_pasid_exit(void);
 bool radeon_kfd_set_pasid_limit(pasid_t new_limit);
+pasid_t radeon_kfd_get_pasid_limit(void);
 pasid_t radeon_kfd_pasid_alloc(void);
 void radeon_kfd_pasid_free(pasid_t pasid);
 
