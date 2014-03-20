@@ -188,3 +188,32 @@ void kgd2kfd_device_exit(struct kfd_dev *kfd)
 
 	kfree(kfd);
 }
+
+void kgd2kfd_suspend(struct kfd_dev *kfd)
+{
+	BUG_ON(kfd == NULL);
+
+	if (kfd->init_complete) {
+		kfd->device_info->scheduler_class->stop(kfd->scheduler);
+		amd_iommu_free_device(kfd->pdev);
+	}
+}
+
+int kgd2kfd_resume(struct kfd_dev *kfd)
+{
+	pasid_t pasid_limit;
+	int err;
+	BUG_ON(kfd == NULL);
+
+	pasid_limit = radeon_kfd_get_pasid_limit();
+
+	if (kfd->init_complete) {
+		err = amd_iommu_init_device(kfd->pdev, pasid_limit);
+		if (err < 0)
+			return -ENXIO;
+		amd_iommu_set_invalidate_ctx_cb(kfd->pdev, iommu_pasid_shutdown_callback);
+		kfd->device_info->scheduler_class->start(kfd->scheduler);
+	}
+
+	return 0;
+}

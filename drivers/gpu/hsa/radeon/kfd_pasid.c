@@ -70,6 +70,11 @@ bool radeon_kfd_set_pasid_limit(pasid_t new_limit)
 	}
 }
 
+inline pasid_t radeon_kfd_get_pasid_limit(void)
+{
+	return pasid_limit;
+}
+
 pasid_t radeon_kfd_pasid_alloc(void)
 {
 	pasid_t found;
