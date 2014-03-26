@@ -48,6 +48,8 @@ static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd);
 static void lock_grbm_gfx_idx(struct kgd_dev *kgd);
 static void unlock_grbm_gfx_idx(struct kgd_dev *kgd);
 
+static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd);
+
 
 static const struct kfd2kgd_calls kfd2kgd = {
 	.allocate_mem = allocate_mem,
@@ -62,6 +64,7 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.unlock_srbm_gfx_cntl = unlock_srbm_gfx_cntl,
 	.lock_grbm_gfx_idx = lock_grbm_gfx_idx,
 	.unlock_grbm_gfx_idx = unlock_grbm_gfx_idx,
+	.get_max_engine_clock_in_mhz = get_max_engine_clock_in_mhz,
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -272,4 +275,12 @@ static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd)
 	struct radeon_device *rdev = (struct radeon_device *)kgd;
 
 	return rdev->asic->get_gpu_clock_counter(rdev);
+}
+
+static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev = (struct radeon_device *)kgd;
+
+	/* The sclk is in quantas of 10kHz */
+	return rdev->pm.power_state->clock_info->sclk / 100;
 }

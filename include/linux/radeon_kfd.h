@@ -88,6 +88,8 @@ struct kfd2kgd_calls {
 	/* GRBM_GFX_INDEX mutex */
 	void (*lock_grbm_gfx_idx)(struct kgd_dev *kgd);
 	void (*unlock_grbm_gfx_idx)(struct kgd_dev *kgd);
+
+	uint32_t (*get_max_engine_clock_in_mhz)(struct kgd_dev *kgd);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
