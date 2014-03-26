@@ -26,6 +26,7 @@
 #include <linux/errno.h>
 #include <linux/acpi.h>
 #include <linux/hash.h>
+#include <linux/cpufreq.h>
 
 #include "kfd_priv.h"
 #include "kfd_crat.h"
@@ -711,9 +712,10 @@ static ssize_t node_show(struct kobject *kobj, struct attribute *attr,
 		sysfs_show_32bit_prop(buffer, "location_id",
 				dev->node_props.location_id);
 		sysfs_show_32bit_prop(buffer, "max_engine_clk_fcompute",
-				dev->node_props.max_engine_clk_fcompute);
+				kfd2kgd->get_max_engine_clock_in_mhz(
+					dev->gpu->kgd));
 		ret = sysfs_show_32bit_prop(buffer, "max_engine_clk_ccompute",
-				dev->node_props.max_engine_clk_ccompute);
+				cpufreq_quick_get_max(0)/1000);
 	}
 
 	return ret;
