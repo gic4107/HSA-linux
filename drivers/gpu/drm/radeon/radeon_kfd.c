@@ -282,5 +282,5 @@ static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd)
 	struct radeon_device *rdev = (struct radeon_device *)kgd;
 
 	/* The sclk is in quantas of 10kHz */
-	return rdev->pm.power_state->clock_info->sclk / 100;
+	return rdev->pm.dpm.dyn_state.max_clock_voltage_on_ac.sclk / 100;
 }
