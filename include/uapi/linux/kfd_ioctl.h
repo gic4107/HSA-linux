@@ -29,7 +29,7 @@
 #define KFD_IOCTL_CURRENT_VERSION 1
 
 /* The 64-bit ABI is the authoritative version. */
-#pragma pack(push, 8)
+#pragma pack(push, 1)
 
 struct kfd_ioctl_get_version_args {
 	uint32_t min_supported_version;	/* from KFD */
