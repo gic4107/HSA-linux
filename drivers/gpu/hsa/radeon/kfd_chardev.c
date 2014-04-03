@@ -27,6 +27,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/compat.h>
 #include <uapi/linux/kfd_ioctl.h>
 #include <linux/time.h>
 #include "kfd_priv.h"
@@ -41,6 +42,7 @@ static const char kfd_dev_name[] = "kfd";
 static const struct file_operations kfd_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = kfd_ioctl,
+	.compat_ioctl = kfd_ioctl,
 	.open = kfd_open,
 	.mmap = kfd_mmap,
 };
@@ -105,8 +107,8 @@ kfd_open(struct inode *inode, struct file *filep)
 	process = radeon_kfd_create_process(current);
 	if (IS_ERR(process))
 		return PTR_ERR(process);
-
-	pr_debug("\nkfd: process %d opened dev/kfd", process->pasid);
+	process->is_32bit_user_mode = is_compat_task();
+	dev_info(kfd_device, "process %d opened, compat mode (32 bit) - %d\n", process->pasid, process->is_32bit_user_mode);
 
 	return 0;
 }

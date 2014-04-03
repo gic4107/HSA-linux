@@ -184,6 +184,10 @@ struct kfd_process {
 	size_t queue_array_size;
 	struct kfd_queue **queues;	/* Size is queue_array_size, up to MAX_PROCESS_QUEUES. */
 	unsigned long allocated_queue_bitmap[DIV_ROUND_UP(MAX_PROCESS_QUEUES, BITS_PER_LONG)];
+
+	/*Is the user space process 32 bit?*/
+	bool is_32bit_user_mode;
+
 };
 
 struct kfd_process *radeon_kfd_create_process(const struct task_struct *);
