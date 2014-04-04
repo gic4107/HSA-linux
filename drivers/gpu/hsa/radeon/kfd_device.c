@@ -106,20 +106,30 @@ device_iommu_pasid_init(struct kfd_dev *kfd)
 	int err;
 
 	err = amd_iommu_device_info(kfd->pdev, &iommu_info);
-	if (err < 0)
+	if (err < 0) {
+		dev_err(kfd_device, "error getting iommu info. is the iommu enabled?\n");
 		return false;
+	}
 
-	if ((iommu_info.flags & required_iommu_flags) != required_iommu_flags)
+	if ((iommu_info.flags & required_iommu_flags) != required_iommu_flags) {
+		dev_err(kfd_device, "error required iommu flags ats(%i), pri(%i), pasid(%i)\n",
+		       (iommu_info.flags & AMD_IOMMU_DEVICE_FLAG_ATS_SUP) != 0,
+		       (iommu_info.flags & AMD_IOMMU_DEVICE_FLAG_PRI_SUP) != 0,
+		       (iommu_info.flags & AMD_IOMMU_DEVICE_FLAG_PASID_SUP) != 0);
 		return false;
+	}
 
 	pasid_limit = min_t(pasid_t, (pasid_t)1 << kfd->device_info->max_pasid_bits, iommu_info.max_pasids);
 	pasid_limit = min_t(pasid_t, pasid_limit, kfd->doorbell_process_limit);
 
 	err = amd_iommu_init_device(kfd->pdev, pasid_limit);
-	if (err < 0)
+	if (err < 0) {
+		dev_err(kfd_device, "error initializing iommu device\n");
 		return false;
+	}
 
 	if (!radeon_kfd_set_pasid_limit(pasid_limit)) {
+		dev_err(kfd_device, "error setting pasid limit\n");
 		amd_iommu_free_device(kfd->pdev);
 		return false;
 	}
@@ -164,6 +174,8 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 	kfd->device_info->scheduler_class->start(kfd->scheduler);
 
 	kfd->init_complete = true;
+	dev_info(kfd_device, "added device (%x:%x)\n", kfd->pdev->vendor,
+		 kfd->pdev->device);
 
 	return true;
 }
