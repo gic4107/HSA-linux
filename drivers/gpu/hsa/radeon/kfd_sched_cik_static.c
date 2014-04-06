@@ -620,8 +620,10 @@ static void cik_static_deregister_process(struct kfd_scheduler *scheduler, struc
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
 	struct cik_static_process *pp = kfd_process_to_private(scheduler_process);
 
-	release_vmid(priv, pp->vmid);
-	kfree(pp);
+	if (priv && pp) {
+		release_vmid(priv, pp->vmid);
+		kfree(pp);
+	}
 }
 
 static bool allocate_hqd(struct cik_static_private *priv, unsigned int *queue)
