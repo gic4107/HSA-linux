@@ -49,6 +49,15 @@ struct kfd_scheduler_class;
 #define KFD_MMAP_WPTR_START	KFD_MMAP_RPTR_END
 #define KFD_MMAP_WPTR_END	(((1ULL << 32)*4) >> PAGE_SHIFT)
 
+/*
+ * When working with cp scheduler we should assign the HIQ manually or via the radeon driver
+ * to a fixed hqd slot, here are the fixed HIQ hqd slot definitions for Kaveri.
+ * In Kaveri only the first ME queues participates in the cp scheduling taking that in mind
+ * we set the HIQ slot in the second ME.
+ */
+#define KFD_CIK_HIQ_PIPE 4
+#define KFD_CIK_HIQ_QUEUE 0
+
 /* GPU ID hash width in bits */
 #define KFD_GPU_ID_HASH_WIDTH 16
 
@@ -61,6 +70,11 @@ typedef unsigned int pasid_t;
 
 /* Type that represents a HW doorbell slot. */
 typedef u32 doorbell_t;
+
+enum cache_policy {
+	cache_policy_coherent,
+	cache_policy_noncoherent
+};
 
 struct kfd_device_info {
 	const struct kfd_scheduler_class *scheduler_class;
@@ -97,6 +111,9 @@ struct kfd_dev {
 	atomic_t interrupt_ring_wptr;
 	struct work_struct interrupt_work;
 	spinlock_t interrupt_lock;
+
+	/* QCM Device instance */
+	struct device_queue_manager *dqm;
 };
 
 /* KGD2KFD callbacks */
@@ -347,4 +364,21 @@ void print_queue_properties(struct queue_properties *q);
 void print_queue(struct queue *q);
 
 struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev);
+
+/* Packet Manager */
+
+#define KFD_HIQ_TIMEOUT (500)
+
+#define KFD_FENCE_COMPLETED (100)
+#define KFD_FENCE_INIT   (10)
+#define KFD_UNMAP_LATENCY (15)
+
+struct packet_manager {
+	struct device_queue_manager *dqm;
+	struct kernel_queue *priv_queue;
+	struct mutex lock;
+	bool allocated;
+	kfd_mem_obj ib_buffer_obj;
+};
+
 #endif

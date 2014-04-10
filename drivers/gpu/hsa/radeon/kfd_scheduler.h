@@ -31,11 +31,6 @@ struct kfd_scheduler;
 struct kfd_scheduler_process;
 struct kfd_scheduler_queue;
 
-enum cache_policy {
-	cache_policy_coherent,
-	cache_policy_noncoherent
-};
-
 struct kfd_scheduler_class {
 	const char *name;
 
