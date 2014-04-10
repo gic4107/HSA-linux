@@ -297,6 +297,9 @@ struct kfd_process_device {
 	/* Scheduler process data for this device. */
 	struct kfd_scheduler_process *scheduler_process;
 
+	/* per-process-per device QCM data structure */
+	struct qcm_process_device qpd;
+
 	/* Is this process/pasid bound to this device? (amd_iommu_bind_pasid) */
 	bool bound;
 
@@ -330,6 +333,11 @@ struct kfd_process {
 
 	/* List of kfd_process_device structures, one for each device the process is using. */
 	struct list_head per_device_data;
+
+	struct hw_pointer_store_properties write_ptr;
+	struct hw_pointer_store_properties read_ptr;
+
+	struct process_queue_manager pqm;
 
 	/* The process's queues. */
 	size_t queue_array_size;
@@ -420,6 +428,27 @@ void print_queue(struct queue *q);
 struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev);
 struct kernel_queue *kernel_queue_init(struct kfd_dev *dev, enum kfd_queue_type type);
 void kernel_queue_uninit(struct kernel_queue *kq);
+
+/* Process Queue Manager */
+struct process_queue_node {
+	struct queue *q;
+	struct kernel_queue *kq;
+	struct list_head process_queue_list;
+};
+
+int pqm_init(struct process_queue_manager *pqm, struct kfd_process *p);
+void pqm_uninit(struct process_queue_manager *pqm);
+int pqm_create_queue(struct process_queue_manager *pqm,
+			    struct kfd_dev *dev,
+			    struct file *f,
+			    struct queue_properties *properties,
+			    unsigned int flags,
+			    enum kfd_queue_type type,
+			    unsigned int *qid);
+int pqm_destroy_queue(struct process_queue_manager *pqm, unsigned int qid);
+int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid, struct queue_properties *p);
+struct kernel_queue *pqm_get_kernel_queue(struct process_queue_manager *pqm, unsigned int qid);
+void test_diq(struct kfd_dev *dev, struct process_queue_manager *pqm);
 
 /* Packet Manager */
 
