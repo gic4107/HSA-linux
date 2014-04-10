@@ -43,7 +43,6 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include "kfd_priv.h"
-#include "kfd_scheduler.h"
 
 #define KFD_INTERRUPT_RING_SIZE 256
 
@@ -161,7 +160,7 @@ static void interrupt_wq(struct work_struct *work)
 	uint32_t ih_ring_entry[DIV_ROUND_UP(dev->device_info->ih_ring_entry_size, sizeof(uint32_t))];
 
 	while (dequeue_ih_ring_entry(dev, ih_ring_entry))
-		dev->device_info->scheduler_class->interrupt_wq(dev->scheduler, ih_ring_entry);
+		;
 }
 
 /* This is called directly from KGD at ISR. */
@@ -170,7 +169,6 @@ void kgd2kfd_interrupt(struct kfd_dev *kfd, const void *ih_ring_entry)
 	spin_lock(&kfd->interrupt_lock);
 
 	if (kfd->interrupts_active
-	    && kfd->device_info->scheduler_class->interrupt_isr(kfd->scheduler, ih_ring_entry)
 	    && enqueue_ih_ring_entry(kfd, ih_ring_entry))
 		schedule_work(&kfd->interrupt_work);
 

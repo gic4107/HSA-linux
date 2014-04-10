@@ -31,10 +31,11 @@
 #include <uapi/linux/kfd_ioctl.h>
 #include <linux/time.h>
 #include "kfd_priv.h"
-#include "kfd_scheduler.h"
 #include <linux/mm.h>
 #include <uapi/asm-generic/mman-common.h>
 #include <asm/processor.h>
+#include "kfd_hw_pointer_store.h"
+#include "kfd_device_queue_manager.h"
 
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
 static int kfd_open(struct inode *, struct file *);
@@ -127,21 +128,36 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	struct kfd_dev *dev;
 	int err = 0;
 	unsigned int queue_id;
-	struct kfd_queue *queue;
 	struct kfd_process_device *pdd;
+	struct queue_properties q_properties;
+
+	memset(&q_properties, 0, sizeof(struct queue_properties));
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
 
+	/* need to validate parameters */
+
+	q_properties.is_interop = false;
+	q_properties.queue_percent = args.queue_percentage;
+	q_properties.priority = args.queue_priority;
+	q_properties.queue_address = args.ring_base_address;
+	q_properties.queue_size = args.ring_size;
+
+
+	pr_debug("%s Arguments: Queue Percentage (%d, %d)\n"
+			"Queue Priority (%d, %d)\n"
+			"Queue Address (0x%llX, 0x%llX)\n"
+			"Queue Size (%u64, %ll)\n",
+			__func__,
+			q_properties.queue_percent, args.queue_percentage,
+			q_properties.priority, args.queue_priority,
+			q_properties.queue_address, args.ring_base_address,
+			q_properties.queue_size, args.ring_size);
+
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
 		return -EINVAL;
-
-	queue = kzalloc(offsetof(struct kfd_queue, scheduler_queue) + dev->device_info->scheduler_class->queue_size, GFP_KERNEL);
-	if (!queue)
-		return -ENOMEM;
-
-	queue->dev = dev;
 
 	mutex_lock(&p->mutex);
 
@@ -155,23 +171,14 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 			p->pasid,
 			dev->id);
 
-	if (!radeon_kfd_allocate_queue_id(p, &queue_id))
-		goto err_allocate_queue_id;
-
-	err = dev->device_info->scheduler_class->create_queue(dev->scheduler, pdd->scheduler_process,
-							      &queue->scheduler_queue,
-							      (void __user *)args.ring_base_address,
-							      args.ring_size,
-							      (void __user *)args.read_pointer_address,
-							      (void __user *)args.write_pointer_address,
-							      radeon_kfd_queue_id_to_doorbell(dev, p, queue_id));
-	if (err)
+	err = pqm_create_queue(&p->pqm, dev, filep, &q_properties, 0, KFD_QUEUE_TYPE_COMPUTE, &queue_id);
+	if (err != 0)
 		goto err_create_queue;
 
-	radeon_kfd_install_queue(p, queue_id, queue);
-
 	args.queue_id = queue_id;
-	args.doorbell_address = (uint64_t)(uintptr_t)radeon_kfd_get_doorbell(filep, p, dev, queue_id);
+	args.read_pointer_address = (uint64_t)q_properties.read_ptr;
+	args.write_pointer_address = (uint64_t)q_properties.write_ptr;
+	args.doorbell_address = (uint64_t)q_properties.doorbell_ptr;
 
 	if (copy_to_user(arg, &args, sizeof(args))) {
 		err = -EFAULT;
@@ -194,12 +201,9 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	return 0;
 
 err_copy_args_out:
-	dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
+	pqm_destroy_queue(&p->pqm, queue_id);
 err_create_queue:
-	radeon_kfd_remove_queue(p, queue_id);
-err_allocate_queue_id:
 err_bind_process:
-	kfree(queue);
 	mutex_unlock(&p->mutex);
 	return err;
 }
@@ -207,35 +211,24 @@ err_bind_process:
 static int
 kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *arg)
 {
+	int retval;
 	struct kfd_ioctl_destroy_queue_args args;
-	struct kfd_queue *queue;
-	struct kfd_dev *dev;
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
 
+	pr_debug("kfd: destroying queue id %d for PASID %d\n",
+				args.queue_id,
+				p->pasid);
+
 	mutex_lock(&p->mutex);
 
-	queue = radeon_kfd_get_queue(p, args.queue_id);
-	if (!queue) {
-		mutex_unlock(&p->mutex);
-		return -EINVAL;
-	}
-
-	dev = queue->dev;
-
-	pr_debug("kfd: destroying queue id %d for PASID %d\n",
-			args.queue_id,
-			p->pasid);
-
-	radeon_kfd_remove_queue(p, args.queue_id);
-	dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
-
-	kfree(queue);
+	retval = pqm_destroy_queue(&p->pqm, args.queue_id);
 
 	mutex_unlock(&p->mutex);
-	return 0;
+	return retval;
 }
+
 
 static long
 kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __user *arg)
@@ -277,12 +270,12 @@ kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __us
 	alternate_policy = (args.alternate_policy == KFD_IOC_CACHE_POLICY_COHERENT)
 			   ? cache_policy_coherent : cache_policy_noncoherent;
 
-	if (!dev->device_info->scheduler_class->set_cache_policy(dev->scheduler,
-								 pdd->scheduler_process,
-								 default_policy,
-								 alternate_policy,
-								 (void __user *)args.alternate_aperture_base,
-								 args.alternate_aperture_size))
+	if (!dev->dqm->set_cache_memory_policy(dev->dqm,
+					 &pdd->qpd,
+					 default_policy,
+					 alternate_policy,
+					 (void __user *)args.alternate_aperture_base,
+					 args.alternate_aperture_size))
 		err = -EINVAL;
 
 out:
@@ -427,10 +420,12 @@ kfd_mmap(struct file *filp, struct vm_area_struct *vma)
 	if (IS_ERR(process))
 		return PTR_ERR(process);
 
-	if (pgoff < KFD_MMAP_DOORBELL_START)
-		return -EINVAL;
-	else if (pgoff < KFD_MMAP_DOORBELL_END)
+	if (pgoff >= KFD_MMAP_DOORBELL_START && pgoff < KFD_MMAP_DOORBELL_END)
 		return radeon_kfd_doorbell_mmap(process, vma);
-	else
-		return -EINVAL;
+	else if (pgoff >= KFD_MMAP_RPTR_START && pgoff < KFD_MMAP_RPTR_END)
+		return radeon_kfd_hw_pointer_store_mmap(&process->read_ptr, vma);
+	else if (pgoff >= KFD_MMAP_WPTR_START && pgoff < KFD_MMAP_WPTR_END)
+		return radeon_kfd_hw_pointer_store_mmap(&process->write_ptr, vma);
+
+	return -EINVAL;
 }

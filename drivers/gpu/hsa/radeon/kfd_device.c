@@ -25,10 +25,9 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include "kfd_priv.h"
-#include "kfd_scheduler.h"
+#include "kfd_device_queue_manager.h"
 
 static const struct kfd_device_info kaveri_device_info = {
-	.scheduler_class = &radeon_kfd_cik_static_scheduler_class,
 	.max_pasid_bits = 16,
 	.ih_ring_entry_size = 4 * sizeof(uint32_t)
 };
@@ -120,7 +119,11 @@ device_iommu_pasid_init(struct kfd_dev *kfd)
 	}
 
 	pasid_limit = min_t(pasid_t, (pasid_t)1 << kfd->device_info->max_pasid_bits, iommu_info.max_pasids);
-	pasid_limit = min_t(pasid_t, pasid_limit, kfd->doorbell_process_limit);
+	/*
+	 * last pasid is used for kernel queues doorbells
+	 * in the future the last pasid might be used for a kernel thread.
+	 */
+	pasid_limit = min_t(pasid_t, pasid_limit, kfd->doorbell_process_limit - 1);
 
 	err = amd_iommu_init_device(kfd->pdev, pasid_limit);
 	if (err < 0) {
@@ -166,16 +169,25 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 
 	amd_iommu_set_invalidate_ctx_cb(kfd->pdev, iommu_pasid_shutdown_callback);
 
-	if (kfd->device_info->scheduler_class->create(kfd, &kfd->scheduler)) {
+	kfd->dqm = device_queue_manager_init(kfd);
+	if (!kfd->dqm) {
+		kfd_topology_remove_device(kfd);
 		amd_iommu_free_device(kfd->pdev);
 		return false;
 	}
 
-	kfd->device_info->scheduler_class->start(kfd->scheduler);
+	if (kfd->dqm->start(kfd->dqm) != 0) {
+		device_queue_manager_uninit(kfd->dqm);
+		kfd_topology_remove_device(kfd);
+		amd_iommu_free_device(kfd->pdev);
+		return false;
+	}
 
 	kfd->init_complete = true;
 	dev_info(kfd_device, "added device (%x:%x)\n", kfd->pdev->vendor,
 		 kfd->pdev->device);
+
+	pr_debug("kfd: Starting kfd with the following scheduling policy %d\n", sched_policy);
 
 	return true;
 }
@@ -185,13 +197,10 @@ void kgd2kfd_device_exit(struct kfd_dev *kfd)
 	int err = kfd_topology_remove_device(kfd);
 	BUG_ON(err != 0);
 
-	if (kfd->init_complete)
-		kfd->device_info->scheduler_class->stop(kfd->scheduler);
-
 	radeon_kfd_interrupt_exit(kfd);
 
 	if (kfd->init_complete) {
-		kfd->device_info->scheduler_class->destroy(kfd->scheduler);
+		device_queue_manager_uninit(kfd->dqm);
 		amd_iommu_free_device(kfd->pdev);
 	}
 
@@ -203,7 +212,7 @@ void kgd2kfd_suspend(struct kfd_dev *kfd)
 	BUG_ON(kfd == NULL);
 
 	if (kfd->init_complete) {
-		kfd->device_info->scheduler_class->stop(kfd->scheduler);
+		kfd->dqm->stop(kfd->dqm);
 		amd_iommu_free_device(kfd->pdev);
 	}
 }
@@ -221,7 +230,7 @@ int kgd2kfd_resume(struct kfd_dev *kfd)
 		if (err < 0)
 			return -ENXIO;
 		amd_iommu_set_invalidate_ctx_cb(kfd->pdev, iommu_pasid_shutdown_callback);
-		kfd->device_info->scheduler_class->start(kfd->scheduler);
+		kfd->dqm->start(kfd->dqm);
 	}
 
 	return 0;

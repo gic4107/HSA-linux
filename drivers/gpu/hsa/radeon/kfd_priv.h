@@ -431,6 +431,8 @@ void device_queue_manager_uninit(struct device_queue_manager *dqm);
 struct kernel_queue *kernel_queue_init(struct kfd_dev *dev, enum kfd_queue_type type);
 void kernel_queue_uninit(struct kernel_queue *kq);
 
+int get_vmid_from_pasid(struct kfd_dev *dev, pasid_t pasid , unsigned int *vmid);
+
 /* Process Queue Manager */
 struct process_queue_node {
 	struct queue *q;
