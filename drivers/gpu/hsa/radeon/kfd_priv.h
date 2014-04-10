@@ -31,6 +31,7 @@
 #include <linux/atomic.h>
 #include <linux/workqueue.h>
 #include <linux/spinlock.h>
+#include "kfd_hw_pointer_store.h"
 
 struct kfd_scheduler_class;
 
@@ -43,6 +44,10 @@ struct kfd_scheduler_class;
 ** We figure out what type of memory the caller wanted by comparing the mmap page offset to known ranges. */
 #define KFD_MMAP_DOORBELL_START	(((1ULL << 32)*1) >> PAGE_SHIFT)
 #define KFD_MMAP_DOORBELL_END	(((1ULL << 32)*2) >> PAGE_SHIFT)
+#define KFD_MMAP_RPTR_START	KFD_MMAP_DOORBELL_END
+#define KFD_MMAP_RPTR_END	(((1ULL << 32)*3) >> PAGE_SHIFT)
+#define KFD_MMAP_WPTR_START	KFD_MMAP_RPTR_END
+#define KFD_MMAP_WPTR_END	(((1ULL << 32)*4) >> PAGE_SHIFT)
 
 /* GPU ID hash width in bits */
 #define KFD_GPU_ID_HASH_WIDTH 16
@@ -140,6 +145,49 @@ struct kfd_queue {
 
 	/* scheduler_queue must be last. It is variable sized (dev->device_info->scheduler_class->queue_size) */
 	struct kfd_scheduler_queue scheduler_queue;
+};
+
+enum kfd_queue_type  {
+	KFD_QUEUE_TYPE_COMPUTE,
+	KFD_QUEUE_TYPE_SDMA,
+	KFD_QUEUE_TYPE_HIQ,
+	KFD_QUEUE_TYPE_DIQ
+};
+
+struct queue_properties {
+	enum kfd_queue_type type;
+	unsigned int queue_id;
+	uint64_t queue_address;
+	uint64_t  queue_size;
+	uint32_t priority;
+	uint32_t queue_percent;
+	qptr_t *read_ptr;
+	qptr_t *write_ptr;
+	qptr_t *doorbell_ptr;
+	qptr_t doorbell_off;
+	bool is_interop;
+	bool is_active;
+	/* Not relevant for user mode queues in cp scheduling */
+	unsigned int vmid;
+};
+
+struct queue {
+	struct list_head list;
+	void *mqd;
+	/* kfd_mem_obj contains the mqd */
+	kfd_mem_obj mqd_mem_obj;
+	uint64_t gart_mqd_addr; /* needed for cp scheduling */
+	struct queue_properties properties;
+
+	/* Used by the queue device manager to track the hqd slot per queue
+	 * when using no cp scheduling
+	 */
+	uint32_t mec;
+	uint32_t pipe;
+	uint32_t queue;
+
+	struct kfd_process	*process;
+	struct kfd_dev		*device;
 };
 
 /* Data that is per-process-per device. */
@@ -261,5 +309,12 @@ int kgd2kfd_resume(struct kfd_dev *dev);
 
 /*HSA apertures*/
 int kfd_init_apertures(struct kfd_process *process);
+
+/* Queue Context Management */
+
+int init_queue(struct queue **q, struct queue_properties properties);
+void uninit_queue(struct queue *q);
+void print_queue_properties(struct queue_properties *q);
+void print_queue(struct queue *q);
 
 #endif
