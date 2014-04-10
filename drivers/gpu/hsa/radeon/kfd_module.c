@@ -21,6 +21,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include "kfd_priv.h"
 
 #define DRIVER_AUTHOR		"Andrew Lewycky, Oded Gabbay, Evgeny Pinchuk, others."
@@ -39,6 +40,10 @@ static const struct kgd2kfd_calls kgd2kfd = {
 	.suspend	= kgd2kfd_suspend,
 	.resume		= kgd2kfd_resume,
 };
+
+int sched_policy = 0;
+module_param(sched_policy, int, S_IRUSR | S_IWUSR);
+MODULE_PARM_DESC(sched_policy, "Kernel comline parameter define the kfd scheduling policy");
 
 bool kgd2kfd_init(unsigned interface_version,
 		  const struct kfd2kgd_calls *f2g,
