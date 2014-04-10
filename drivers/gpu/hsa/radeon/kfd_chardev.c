@@ -229,6 +229,31 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 	return retval;
 }
 
+static int
+kfd_ioctl_update_queue(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	int retval;
+	struct kfd_ioctl_update_queue_args args;
+	struct queue_properties properties;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	properties.queue_address = args.ring_base_address;
+	properties.queue_size = args.ring_size;
+	properties.queue_percent = args.queue_percentage;
+	properties.priority = args.queue_priority;
+
+	pr_debug("kfd: updating queue id %d for PASID %d\n", args.queue_id, p->pasid);
+
+	mutex_lock(&p->mutex);
+
+	retval = pqm_update_queue(&p->pqm, args.queue_id, &properties);
+
+	mutex_unlock(&p->mutex);
+
+	return retval;
+}
 
 static long
 kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __user *arg)
@@ -394,6 +419,10 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_GET_PROCESS_APERTURES:
 		err = kfd_ioctl_get_process_apertures(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_UPDATE_QUEUE:
+		err = kfd_ioctl_update_queue(filep, process, (void __user *)arg);
 		break;
 
 	default:

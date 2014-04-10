@@ -58,6 +58,14 @@ struct kfd_ioctl_destroy_queue_args {
 	uint32_t queue_id;		/* to KFD */
 };
 
+struct kfd_ioctl_update_queue_args {
+	uint32_t queue_id;		/* to KFD */
+	uint64_t ring_base_address;	/* to KFD */
+	uint32_t ring_size;		/* to KFD */
+	uint32_t queue_percentage;	/* to KFD */
+	uint32_t queue_priority;	/* to KFD */
+};
+
 /* For kfd_ioctl_set_memory_policy_args.default_policy and alternate_policy */
 #define KFD_IOC_CACHE_POLICY_COHERENT 0
 #define KFD_IOC_CACHE_POLICY_NONCOHERENT 1
@@ -103,6 +111,7 @@ struct kfd_ioctl_get_process_apertures_args{
 #define KFD_IOC_SET_MEMORY_POLICY	_IOW(KFD_IOC_MAGIC, 4, struct kfd_ioctl_set_memory_policy_args)
 #define KFD_IOC_GET_CLOCK_COUNTERS	_IOWR(KFD_IOC_MAGIC, 5, struct kfd_ioctl_get_clock_counters_args)
 #define KFD_IOC_GET_PROCESS_APERTURES _IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
+#define KFD_IOC_UPDATE_QUEUE	_IOW(KFD_IOC_MAGIC, 7, struct kfd_ioctl_update_queue_args)
 
 #pragma pack(pop)
 
