@@ -29,7 +29,6 @@
 struct mm_struct;
 
 #include "kfd_priv.h"
-#include "kfd_scheduler.h"
 
 /* Initial size for the array of queues.
  * The allocated size is doubled each time it is exceeded up to MAX_PROCESS_QUEUES. */
@@ -91,52 +90,15 @@ radeon_kfd_get_process(const struct task_struct *thread)
 	return process;
 }
 
-/* Assumes that the kfd_process mutex is held.
- * (Or that it doesn't need to be held because the process is exiting.)
- *
- * dev_filter can be set to only destroy queues for one device.
- * Otherwise all queues for the process are destroyed.
- */
-static void
-destroy_queues(struct kfd_process *p, struct kfd_dev *dev_filter)
-{
-	unsigned long queue_id;
-
-	for_each_set_bit(queue_id, p->allocated_queue_bitmap, MAX_PROCESS_QUEUES) {
-
-		struct kfd_queue *queue = radeon_kfd_get_queue(p, queue_id);
-		struct kfd_dev *dev;
-
-		BUG_ON(queue == NULL);
-
-		dev = queue->dev;
-
-		if (!dev_filter || dev == dev_filter) {
-			struct kfd_process_device *pdd = radeon_kfd_get_process_device_data(dev, p);
-
-			BUG_ON(pdd == NULL); /* A queue exists so pdd must. */
-
-			radeon_kfd_remove_queue(p, queue_id);
-			dev->device_info->scheduler_class->destroy_queue(dev->scheduler, &queue->scheduler_queue);
-
-			kfree(queue);
-		}
-	}
-}
-
 static void free_process(struct kfd_process *p)
 {
 	struct kfd_process_device *pdd, *temp;
 
 	BUG_ON(p == NULL);
 
-	destroy_queues(p, NULL);
-
 	/* doorbell mappings: automatic */
 
 	list_for_each_entry_safe(pdd, temp, &p->per_device_data, per_device_list) {
-		pdd->dev->device_info->scheduler_class->deregister_process(pdd->dev->scheduler, pdd->scheduler_process);
-		pdd->scheduler_process = NULL;
 		amd_iommu_unbind_pasid(pdd->dev->pdev, p->pasid);
 		list_del(&pdd->per_device_list);
 		kfree(pdd);
@@ -202,8 +164,17 @@ static struct kfd_process *create_process(const struct task_struct *thread)
 
 	INIT_LIST_HEAD(&process->per_device_data);
 
+	process->read_ptr.page_mapping = process->write_ptr.page_mapping = NULL;
+	err = pqm_init(&process->pqm, process);
+	if (err != 0)
+		goto err_process_pqm_init;
+
 	return process;
 
+err_process_pqm_init:
+	radeon_kfd_pasid_free(process->pasid);
+	list_del(&process->processes_list);
+	thread->mm->kfd_process = NULL;
 err_alloc:
 	kfree(process->queues);
 	kfree(process);
@@ -222,6 +193,9 @@ radeon_kfd_get_process_device_data(struct kfd_dev *dev, struct kfd_process *p)
 	pdd = kzalloc(sizeof(*pdd), GFP_KERNEL);
 	if (pdd != NULL) {
 		pdd->dev = dev;
+		INIT_LIST_HEAD(&pdd->qpd.queues_list);
+		INIT_LIST_HEAD(&pdd->qpd.priv_queue_list);
+		pdd->qpd.dqm = dev->dqm;
 		list_add(&pdd->per_device_list, &p->per_device_data);
 	}
 
@@ -248,7 +222,6 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
 	if (err < 0)
 		return ERR_PTR(err);
 
-	err = dev->device_info->scheduler_class->register_process(dev->scheduler, p, &pdd->scheduler_process);
 	if (err < 0) {
 		amd_iommu_unbind_pasid(dev->pdev, p->pasid);
 		return ERR_PTR(err);
@@ -282,10 +255,7 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 
 	mutex_lock(&p->mutex);
 
-	destroy_queues(p, dev);
-
-	dev->device_info->scheduler_class->deregister_process(dev->scheduler, pdd->scheduler_process);
-	pdd->scheduler_process = NULL;
+	pqm_uninit(&p->pqm);
 
 	/*
 	 * Just mark pdd as unbound, because we still need it to call

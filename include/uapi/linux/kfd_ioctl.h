@@ -47,9 +47,9 @@ struct kfd_ioctl_create_queue_args {
 	uint32_t queue_type;		/* to KFD */
 	uint32_t queue_percentage;	/* to KFD */
 	uint32_t queue_priority;	/* to KFD */
-	uint64_t write_pointer_address;	/* to KFD */
-	uint64_t read_pointer_address;	/* to KFD */
 
+	uint64_t write_pointer_address;	/* from KFD */
+	uint64_t read_pointer_address;	/* from KFD */
 	uint64_t doorbell_address;	/* from KFD */
 	uint32_t queue_id;		/* from KFD */
 };
