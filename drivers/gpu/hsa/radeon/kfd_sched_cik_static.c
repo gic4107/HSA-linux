@@ -177,16 +177,6 @@ struct cik_static_queue {
 	uint32_t queue_size_encoded; /* CP_HQD_PQ_CONTROL.QUEUE_SIZE takes the queue size as log2(size) - 3. */
 };
 
-static uint32_t lower_32(uint64_t x)
-{
-	return (uint32_t)x;
-}
-
-static uint32_t upper_32(uint64_t x)
-{
-	return (uint32_t)(x >> 32);
-}
-
 /* SRBM_GFX_CNTL provides the MEC/pipe/queue and vmid for many registers that are
  * In particular, CP_HQD_* and CP_MQD_* are instanced for each queue. CP_HPD_* are instanced for each pipe.
  * SH_MEM_* are instanced per-VMID.

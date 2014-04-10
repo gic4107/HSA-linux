@@ -51,3 +51,36 @@ void radeon_kfd_vidmem_unkmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj)
 {
 	kfd2kgd->unkmap_mem(kfd->kgd, (struct kgd_mem *)mem_obj);
 }
+
+int radeon_kfd_vidmem_alloc_map(struct kfd_dev *kfd, kfd_mem_obj *mem_obj, void **ptr, uint64_t *vmid0_address, size_t size)
+{
+	int retval;
+	retval = radeon_kfd_vidmem_alloc(kfd, size, PAGE_SIZE, KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
+			mem_obj);
+	if (retval != 0)
+		goto fail_vidmem_alloc;
+
+	retval = radeon_kfd_vidmem_kmap(kfd, *mem_obj, ptr);
+	if (retval != 0)
+		goto fail_vidmem_kmap;
+
+	retval = radeon_kfd_vidmem_gpumap(kfd, *mem_obj, vmid0_address);
+	if (retval != 0)
+		goto fail_vidmem_gpumap;
+
+	return 0;
+
+fail_vidmem_gpumap:
+	radeon_kfd_vidmem_unkmap(kfd, *mem_obj);
+fail_vidmem_kmap:
+	radeon_kfd_vidmem_free(kfd, *mem_obj);
+fail_vidmem_alloc:
+	return retval;
+}
+
+void radeon_kfd_vidmem_free_unmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj)
+{
+	radeon_kfd_vidmem_ungpumap(kfd, mem_obj);
+	radeon_kfd_vidmem_unkmap(kfd, mem_obj);
+	radeon_kfd_vidmem_free(kfd, mem_obj);
+}

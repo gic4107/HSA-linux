@@ -128,6 +128,8 @@ int radeon_kfd_vidmem_gpumap(struct kfd_dev *kfd, kfd_mem_obj mem_obj, uint64_t 
 void radeon_kfd_vidmem_ungpumap(struct kfd_dev *kfd, kfd_mem_obj mem_obj);
 int radeon_kfd_vidmem_kmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj, void **ptr);
 void radeon_kfd_vidmem_unkmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj);
+int radeon_kfd_vidmem_alloc_map(struct kfd_dev *kfd, kfd_mem_obj *mem_obj, void **ptr, uint64_t *vmid0_address, size_t size);
+void radeon_kfd_vidmem_free_unmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj);
 
 /* Character device interface */
 int radeon_kfd_chardev_init(void);
@@ -146,6 +148,17 @@ struct kfd_queue {
 
 	/* scheduler_queue must be last. It is variable sized (dev->device_info->scheduler_class->queue_size) */
 	struct kfd_scheduler_queue scheduler_queue;
+};
+
+enum kfd_preempt_type_filter {
+	KFD_PREEMPT_TYPE_FILTER_SINGLE_QUEUE,
+	KFD_PRERMPT_TYPE_FILTER_ALL_QUEUES,
+	KFD_PRERMPT_TYPE_FILTER_BY_PASID
+};
+
+enum kfd_preempt_type {
+	KFD_PREEMPT_TYPE_WAVEFRONT,
+	KFD_PREEMPT_TYPE_WAVEFRONT_RESET
 };
 
 enum kfd_queue_type  {
@@ -189,6 +202,14 @@ struct queue {
 
 	struct kfd_process	*process;
 	struct kfd_dev		*device;
+};
+
+enum KFD_MQD_TYPE {
+	KFD_MQD_TYPE_CIK_COMPUTE = 0, /* for no cp scheduling */
+	KFD_MQD_TYPE_CIK_HIQ, /* for hiq */
+	KFD_MQD_TYPE_CIK_CP, /* for cp queues and diq */
+	KFD_MQD_TYPE_CIK_SDMA, /* for sdma queues */
+	KFD_MQD_TYPE_MAX
 };
 
 /* Data that is per-process-per device. */
@@ -316,10 +337,14 @@ int kgd2kfd_resume(struct kfd_dev *dev);
 int kfd_init_apertures(struct kfd_process *process);
 
 /* Queue Context Management */
+inline uint32_t lower_32(uint64_t x);
+inline uint32_t upper_32(uint64_t x);
+inline void busy_wait(unsigned long ms);
 
 int init_queue(struct queue **q, struct queue_properties properties);
 void uninit_queue(struct queue *q);
 void print_queue_properties(struct queue_properties *q);
 void print_queue(struct queue *q);
 
+struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev);
 #endif
