@@ -8,6 +8,6 @@ radeon_kfd-y	:= kfd_module.o kfd_device.o kfd_chardev.o \
 		kfd_vidmem.o kfd_interrupt.o kfd_aperture.o \
 		kfd_queue.o kfd_hw_pointer_store.o kfd_mqd_manager.o \
 		kfd_kernel_queue.o kfd_packet_manager.o \
-		kfd_process_queue_manager.o
+		kfd_process_queue_manager.o kfd_device_queue_manager.o
 
 obj-$(CONFIG_HSA_RADEON)	+= radeon_kfd.o
