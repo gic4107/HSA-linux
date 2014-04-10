@@ -744,7 +744,7 @@ out:
 	return retval;
 }
 
-static void fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsigned long timeout)
+void fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsigned long timeout)
 {
 	BUG_ON(!fence_addr);
 	timeout += jiffies;

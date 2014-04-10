@@ -48,3 +48,12 @@ void radeon_kfd_unlock_srbm_index(struct kfd_dev *dev)
 {
 	kfd2kgd->unlock_srbm_gfx_cntl(dev->kgd);
 }
+void radeon_kfd_lock_grbm_index(struct kfd_dev *dev)
+{
+	kfd2kgd->lock_grbm_gfx_idx(dev->kgd);
+}
+
+void radeon_kfd_unlock_grbm_index(struct kfd_dev *dev)
+{
+	kfd2kgd->unlock_grbm_gfx_idx(dev->kgd);
+}

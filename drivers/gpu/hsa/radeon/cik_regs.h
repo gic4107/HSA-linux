@@ -216,4 +216,22 @@
 #define ATC_VM_APERTURE1_HIGH_ADDR			0x330Cu
 #define ATC_VM_APERTURE1_LOW_ADDR			0x3304u
 
+#define SQ_IND_INDEX					0x8DE0
+#define SQ_CMD						0x8DEC
+#define SQ_IND_DATA					0x8DE4
+
+#define TCP_WATCH0_ADDR_H				(0x32A0*4)
+#define TCP_WATCH1_ADDR_H				(0x32A3*4)
+#define TCP_WATCH2_ADDR_H				(0x32A6*4)
+#define TCP_WATCH3_ADDR_H				(0x32A9*4)
+#define TCP_WATCH0_ADDR_L				(0x32A1*4)
+#define TCP_WATCH1_ADDR_L				(0x32A4*4)
+#define TCP_WATCH2_ADDR_L				(0x32A7*4)
+#define TCP_WATCH3_ADDR_L				(0x32AA*4)
+#define TCP_WATCH0_CNTL					(0x32A2*4)
+#define TCP_WATCH1_CNTL					(0x32A5*4)
+#define TCP_WATCH2_CNTL					(0x32A8*4)
+#define TCP_WATCH3_CNTL					(0x32AB*4)
+
+
 #endif

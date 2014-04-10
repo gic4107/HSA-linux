@@ -655,7 +655,7 @@ typedef struct _PM4__SET_SH_REG {
 #ifndef _PM4__SET_CONFIG_REG_DEFINED
 #define _PM4__SET_CONFIG_REG_DEFINED
 
-typedef struct _PM4__SET_CONFIG_REG {
+struct pm4__set_config_reg {
 	union {
 		PM4_TYPE_3_HEADER header;
 		unsigned int ordinal1;
@@ -674,6 +674,11 @@ typedef struct _PM4__SET_CONFIG_REG {
 
 	unsigned int reg_data[1];	/* 1..N of these fields */
 
-}  PM4_SET_CONFIG_REG, *PPM4_SET_CONFIG_REG;
+};
 #endif
+
+enum {
+	CACHE_FLUSH_AND_INV_TS_EVENT = 0x00000014
+};
+
 #endif

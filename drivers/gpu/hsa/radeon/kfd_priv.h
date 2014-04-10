@@ -123,6 +123,7 @@ struct kfd_dev {
 
 	/* QCM Device instance */
 	struct device_queue_manager *dqm;
+	struct kfd_dbgmgr           *dbgmgr;
 };
 
 /* KGD2KFD callbacks */
@@ -138,6 +139,8 @@ extern const struct kfd2kgd_calls *kfd2kgd;
 /* KFD2KGD callback wrappers */
 void radeon_kfd_lock_srbm_index(struct kfd_dev *kfd);
 void radeon_kfd_unlock_srbm_index(struct kfd_dev *kfd);
+void radeon_kfd_lock_grbm_index(struct kfd_dev *kfd);
+void radeon_kfd_unlock_grbm_index(struct kfd_dev *kfd);
 
 enum kfd_mempool {
 	KFD_MEMPOOL_SYSTEM_CACHEABLE = 1,
@@ -453,6 +456,8 @@ int pqm_destroy_queue(struct process_queue_manager *pqm, unsigned int qid);
 int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid, struct queue_properties *p);
 struct kernel_queue *pqm_get_kernel_queue(struct process_queue_manager *pqm, unsigned int qid);
 void test_diq(struct kfd_dev *dev, struct process_queue_manager *pqm);
+
+void fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsigned long timeout);
 
 /* Packet Manager */
 
