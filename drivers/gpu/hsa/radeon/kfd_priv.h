@@ -83,6 +83,7 @@ struct kfd_dev {
 	phys_addr_t doorbell_base;	/* Start of actual doorbells used by KFD. It is aligned for mapping into user mode. */
 	size_t doorbell_id_offset;	/* Doorbell offset (from KFD doorbell to HW doorbell, GFX reserved some at the start). */
 	size_t doorbell_process_limit;	/* Number of processes we have doorbell space for. */
+	u32 __iomem *doorbell_kernel_ptr; /* this is a pointer for a doorbells page used by kernel queue */
 
 	struct kgd2kfd_shared_resources shared_resources;
 
@@ -278,6 +279,10 @@ void radeon_kfd_doorbell_init(struct kfd_dev *kfd);
 int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct *vma);
 doorbell_t __user *radeon_kfd_get_doorbell(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev,
 					   unsigned int doorbell_index);
+u32 __iomem *radeon_kfd_get_kernel_doorbell(struct kfd_dev *kfd, unsigned int *doorbell_off);
+void radeon_kfd_release_kernel_doorbell(struct kfd_dev *kfd, u32 __iomem *db_addr);
+u32 read_kernel_doorbell(u32 __iomem *db);
+void write_kernel_doorbell(u32 __iomem *db, u32 value);
 unsigned int radeon_kfd_queue_id_to_doorbell(struct kfd_dev *kfd, struct kfd_process *process, unsigned int queue_id);
 void radeon_kfd_doorbell_unmap(struct kfd_process_device *pdd);
 

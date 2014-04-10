@@ -23,6 +23,16 @@
 #include "kfd_priv.h"
 #include <linux/mm.h>
 #include <linux/mman.h>
+#include <linux/slab.h>
+
+/*
+ * This extension supports a kernel level doorbells management for the kernel queues
+ * basically the last doorbells page is devoted to kernel queues and that's assures
+ * that any user process won't get access to the kernel doorbells page
+ */
+static DEFINE_MUTEX(doorbell_mutex);
+static unsigned long doorbell_available_index[DIV_ROUND_UP(MAX_PROCESS_QUEUES, BITS_PER_LONG)] = { 0 };
+#define KERNEL_DOORBELL_PASID 1
 
 /* Each device exposes a doorbell aperture, a PCI MMIO aperture that receives 32-bit writes that are passed to queues
 ** as wptr values.
@@ -60,7 +70,22 @@ void radeon_kfd_doorbell_init(struct kfd_dev *kfd)
 
 	kfd->doorbell_base = kfd->shared_resources.doorbell_physical_address + doorbell_start_offset;
 	kfd->doorbell_id_offset = doorbell_start_offset / sizeof(doorbell_t);
-	kfd->doorbell_process_limit = doorbell_process_limit;
+	kfd->doorbell_process_limit = doorbell_process_limit - 1;
+
+	kfd->doorbell_kernel_ptr = ioremap(kfd->doorbell_base, doorbell_process_allocation());
+	BUG_ON(!kfd->doorbell_kernel_ptr);
+
+	pr_debug("kfd: doorbell initialization\n"
+				 "     doorbell base           == 0x%08lX\n"
+				 "     doorbell_id_offset      == 0x%08lu\n"
+				 "     doorbell_process_limit  == 0x%08lu\n"
+				 "     doorbell_kernel_offset  == 0x%08lX\n"
+				 "     doorbell aperture size  == 0x%08lX\n"
+				 "     doorbell kernel address == 0x%08lX\n",
+				 (uintptr_t)kfd->doorbell_base, kfd->doorbell_id_offset, doorbell_process_limit,
+				 (uintptr_t)kfd->doorbell_base, kfd->shared_resources.doorbell_aperture_size,
+				 (uintptr_t)kfd->doorbell_kernel_ptr);
+
 }
 
 /* This is the /dev/kfd mmap (for doorbell) implementation. We intend that this is only called through map_doorbells,
@@ -125,6 +150,51 @@ map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *
 	return 0;
 }
 
+/* get kernel iomem pointer for a doorbell */
+u32 __iomem *radeon_kfd_get_kernel_doorbell(struct kfd_dev *kfd, unsigned int *doorbell_off)
+{
+	u32 inx;
+	BUG_ON(!kfd || !doorbell_off);
+
+	mutex_lock(&doorbell_mutex);
+	inx = find_first_zero_bit(doorbell_available_index, MAX_PROCESS_QUEUES);
+	__set_bit(inx, doorbell_available_index);
+	mutex_unlock(&doorbell_mutex);
+
+	if (inx >= MAX_PROCESS_QUEUES)
+		return NULL;
+
+	/* caluculating the kernel doorbell offset using "faked" kernel pasid that allocated for kernel queues only */
+	*doorbell_off = KERNEL_DOORBELL_PASID * (doorbell_process_allocation()/sizeof(doorbell_t)) + inx;
+
+	pr_debug("kfd: get kernel queue doorbell\n"
+			 "     doorbell offset   == 0x%08d\n"
+			 "     kernel address    == 0x%08lX\n",
+			 *doorbell_off, (uintptr_t)(kfd->doorbell_kernel_ptr + inx));
+
+	return kfd->doorbell_kernel_ptr + inx;
+}
+
+void radeon_kfd_release_kernel_doorbell(struct kfd_dev *kfd, u32 __iomem *db_addr)
+{
+	unsigned int inx;
+	BUG_ON(!kfd || !db_addr);
+
+	inx = (unsigned int)(db_addr - kfd->doorbell_kernel_ptr);
+
+	mutex_lock(&doorbell_mutex);
+	__clear_bit(inx, doorbell_available_index);
+	mutex_unlock(&doorbell_mutex);
+}
+
+inline void write_kernel_doorbell(u32 __iomem *db, u32 value)
+{
+	if (db) {
+		writel(value, db);
+		pr_debug("writing %d to doorbell address 0x%p\n", value, db);
+	}
+}
+
 /* Get the user-mode address of a doorbell. Assumes that the process mutex is being held. */
 doorbell_t __user *radeon_kfd_get_doorbell(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev,
 					   unsigned int doorbell_index)
@@ -140,6 +210,8 @@ doorbell_t __user *radeon_kfd_get_doorbell(struct file *devkfd, struct kfd_proce
 
 	pdd = radeon_kfd_get_process_device_data(dev, process);
 	BUG_ON(pdd == NULL); /* map_doorbells would have failed otherwise */
+
+	pr_debug("doorbell value on creation 0x%x\n", pdd->doorbell_mapping[doorbell_index]);
 
 	return &pdd->doorbell_mapping[doorbell_index];
 }
