@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/notifier.h>
+#include <linux/moduleparam.h>
 
 #include "kfd_priv.h"
 
@@ -42,6 +43,10 @@ static const struct kgd2kfd_calls kgd2kfd = {
 	.suspend	= kgd2kfd_suspend,
 	.resume		= kgd2kfd_resume,
 };
+
+int sched_policy = KFD_SCHED_POLICY_HWS_NO_OVERSUBSCRIPTION;
+module_param(sched_policy, int, S_IRUSR | S_IWUSR);
+MODULE_PARM_DESC(sched_policy, "Kernel comline parameter define the kfd scheduling policy");
 
 bool kgd2kfd_init(unsigned interface_version,
 		  const struct kfd2kgd_calls *f2g,
