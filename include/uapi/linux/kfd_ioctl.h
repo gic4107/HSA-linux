@@ -88,7 +88,7 @@ struct kfd_ioctl_get_clock_counters_args {
 
 #define NUM_OF_SUPPORTED_GPUS 7
 
-struct kfd_process_device_apertures{
+struct kfd_process_device_apertures {
 	uint64_t lds_base;/* from KFD */
 	uint64_t lds_limit;/* from KFD */
 	uint64_t scratch_base;/* from KFD */
@@ -98,9 +98,33 @@ struct kfd_process_device_apertures{
 	uint32_t gpu_id;/* from KFD */
 };
 
-struct kfd_ioctl_get_process_apertures_args{
+struct kfd_ioctl_get_process_apertures_args {
 	struct kfd_process_device_apertures process_apertures[NUM_OF_SUPPORTED_GPUS];/* from KFD */
 	uint8_t num_of_nodes; /* from KFD, should be in the range [1 - NUM_OF_SUPPORTED_GPUS]*/
+};
+
+#define MAX_ALLOWED_NUM_POINTS    100
+#define MAX_ALLOWED_AW_BUFF_SIZE 4096
+#define MAX_ALLOWED_WAC_BUFF_SIZE  128
+
+struct kfd_ioctl_dbg_register_args {
+	uint32_t gpu_id;		/* to KFD */
+};
+
+struct kfd_ioctl_dbg_unregister_args {
+	uint32_t gpu_id;		/* to KFD */
+};
+
+struct kfd_ioctl_dbg_address_watch_args {
+	uint32_t gpu_id;		/* to KFD */
+	uint32_t buf_size_in_bytes; /*including gpu_id and buf_size */
+	unsigned char content[0];
+};
+
+struct kfd_ioctl_dbg_wave_control_args {
+	uint32_t gpu_id;		/* to KFD */
+	uint32_t buf_size_in_bytes; /*including gpu_id and buf_size */
+	unsigned char content[0];
 };
 
 #define KFD_IOC_MAGIC 'K'
@@ -112,6 +136,10 @@ struct kfd_ioctl_get_process_apertures_args{
 #define KFD_IOC_GET_CLOCK_COUNTERS	_IOWR(KFD_IOC_MAGIC, 5, struct kfd_ioctl_get_clock_counters_args)
 #define KFD_IOC_GET_PROCESS_APERTURES _IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
 #define KFD_IOC_UPDATE_QUEUE	_IOW(KFD_IOC_MAGIC, 7, struct kfd_ioctl_update_queue_args)
+#define KFD_IOC_DBG_REGISTER	_IOW(KFD_IOC_MAGIC, 8, struct kfd_ioctl_dbg_register_args)
+#define KFD_IOC_DBG_UNREGISTER	_IOW(KFD_IOC_MAGIC, 9, struct kfd_ioctl_dbg_unregister_args)
+#define KFD_IOC_DBG_ADDRESS_WATCH	_IOW(KFD_IOC_MAGIC, 10, struct kfd_ioctl_dbg_address_watch_args)
+#define KFD_IOC_DBG_WAVE_CONTROL	_IOW(KFD_IOC_MAGIC, 11, struct kfd_ioctl_dbg_wave_control_args)
 
 #pragma pack(pop)
 
