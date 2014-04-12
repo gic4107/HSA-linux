@@ -67,7 +67,7 @@ void print_queue(struct queue *q)
 			"Queue Doorbell Pointer: 0x%p\n"
 			"Queue Doorbell Offset: %u\n"
 			"Queue MQD Address: 0x%p\n"
-			"Queue MQD Gart: 0x%p\n"
+			"Queue MQD Gart: 0x%llX\n"
 			"Queue Process Address: 0x%p\n"
 			"Queue Device Address: 0x%p\n",
 					q->properties.type,
