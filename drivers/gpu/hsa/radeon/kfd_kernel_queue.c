@@ -88,8 +88,8 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 	prop.type = type;
 	prop.vmid = 0;
 	prop.queue_address = kq->pq_gpu_addr;
-	prop.read_ptr = kq->rptr_gpu_addr;
-	prop.write_ptr = kq->wptr_gpu_addr;
+	prop.read_ptr = (qptr_t *) kq->rptr_gpu_addr;
+	prop.write_ptr = (qptr_t *) kq->wptr_gpu_addr;
 
 	if (init_queue(&kq->queue, prop) != 0)
 		goto err_init_queue;

@@ -67,22 +67,23 @@ void print_queue(struct queue *q)
 			"Queue Doorbell Pointer: 0x%p\n"
 			"Queue Doorbell Offset: %u\n"
 			"Queue MQD Address: 0x%p\n"
-			"Queue MQD Gart: 0x%p\n"
+			"Queue MQD Gart: 0x%llX\n"
 			"Queue Process Address: 0x%p\n"
-			"Queue Device Address: 0x%p\n", q->properties.type,
-							q->properties.queue_size,
-							q->properties.queue_percent,
-							q->properties.queue_address,
-							q->properties.queue_id,
-							q->properties.vmid,
-							q->properties.read_ptr,
-							q->properties.write_ptr,
-							q->properties.doorbell_ptr,
-							q->properties.doorbell_off,
-							q->mqd,
-							q->gart_mqd_addr,
-							q->process,
-							q->device);
+			"Queue Device Address: 0x%p\n",
+			q->properties.type,
+			q->properties.queue_size,
+			q->properties.queue_percent,
+			q->properties.queue_address,
+			q->properties.queue_id,
+			q->properties.vmid,
+			q->properties.read_ptr,
+			q->properties.write_ptr,
+			q->properties.doorbell_ptr,
+			q->properties.doorbell_off,
+			q->mqd,
+			q->gart_mqd_addr,
+			q->process,
+			q->device);
 }
 
 int init_queue(struct queue **q, struct queue_properties properties)

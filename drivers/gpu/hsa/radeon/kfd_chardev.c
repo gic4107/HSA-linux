@@ -115,7 +115,8 @@ kfd_open(struct inode *inode, struct file *filep)
 
 	process->is_32bit_user_mode = is_compat_task();
 
-	dev_info(kfd_device, "process %d opened, compat mode (32 bit) - %d\n", process->pasid, process->is_32bit_user_mode);
+	dev_dbg(kfd_device, "process %d opened, compat mode (32 bit) - %d\n",
+		process->pasid, process->is_32bit_user_mode);
 
 	kfd_init_apertures(process);
 
@@ -149,7 +150,7 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	pr_debug("%s Arguments: Queue Percentage (%d, %d)\n"
 			"Queue Priority (%d, %d)\n"
 			"Queue Address (0x%llX, 0x%llX)\n"
-			"Queue Size (%u64, %ll)\n",
+			"Queue Size (%llX, %u)\n",
 			__func__,
 			q_properties.queue_percent, args.queue_percentage,
 			q_properties.priority, args.queue_priority,
