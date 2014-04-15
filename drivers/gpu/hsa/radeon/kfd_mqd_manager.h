@@ -21,8 +21,8 @@
  *
  */
 
-#ifndef MQD_MANAGER_H_
-#define MQD_MANAGER_H_
+#ifndef KFD_MQD_MANAGER_H_
+#define KFD_MQD_MANAGER_H_
 
 #include "kfd_priv.h"
 
@@ -44,4 +44,4 @@ struct mqd_manager {
 };
 
 
-#endif /* MQD_MANAGER_H_ */
+#endif /* KFD_MQD_MANAGER_H_ */

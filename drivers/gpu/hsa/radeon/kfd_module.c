@@ -24,7 +24,7 @@
 #include <linux/sched.h>
 #include <linux/notifier.h>
 #include <linux/moduleparam.h>
-
+#include <linux/device.h>
 #include "kfd_priv.h"
 
 #define DRIVER_AUTHOR		"Andrew Lewycky, Oded Gabbay, Evgeny Pinchuk, others."
@@ -46,7 +46,7 @@ static const struct kgd2kfd_calls kgd2kfd = {
 
 int sched_policy = KFD_SCHED_POLICY_HWS_NO_OVERSUBSCRIPTION;
 module_param(sched_policy, int, S_IRUSR | S_IWUSR);
-MODULE_PARM_DESC(sched_policy, "Kernel comline parameter define the kfd scheduling policy");
+MODULE_PARM_DESC(sched_policy, "Kernel cmdline parameter define the kfd scheduling policy");
 
 bool kgd2kfd_init(unsigned interface_version,
 		  const struct kfd2kgd_calls *f2g,
@@ -95,7 +95,7 @@ static int __init kfd_module_init(void)
 	if (err < 0)
 		goto err_topology;
 
-	pr_info("[hsa] Initialized kfd module");
+	dev_info(kfd_device, "Initialized module\n");
 
 	return 0;
 err_topology:
@@ -114,7 +114,7 @@ static void __exit kfd_module_exit(void)
 	mmput_unregister_notifier(&kfd_mmput_nb);
 	radeon_kfd_chardev_exit();
 	radeon_kfd_pasid_exit();
-	pr_info("[hsa] Removed kfd module");
+	dev_info(kfd_device, "Removed module\n");
 }
 
 module_init(kfd_module_init);

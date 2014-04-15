@@ -21,8 +21,8 @@
  *
  */
 
-#ifndef F32_MES_PM4_PACKETS_72_H
-#define F32_MES_PM4_PACKETS_72_H
+#ifndef KFD_PM4_HEADERS_H_
+#define KFD_PM4_HEADERS_H_
 
 #ifndef PM4_HEADER_DEFINED
 #define PM4_HEADER_DEFINED
@@ -657,7 +657,7 @@ typedef struct _PM4__SET_SH_REG {
 #ifndef _PM4__SET_CONFIG_REG_DEFINED
 #define _PM4__SET_CONFIG_REG_DEFINED
 
-typedef struct _PM4__SET_CONFIG_REG {
+struct pm4__set_config_reg {
 	union {
 		PM4_TYPE_3_HEADER header;
 		unsigned int ordinal1;
@@ -676,6 +676,7 @@ typedef struct _PM4__SET_CONFIG_REG {
 
 	unsigned int reg_data[1];	/* 1..N of these fields */
 
-}  PM4_SET_CONFIG_REG, *PPM4_SET_CONFIG_REG;
+};
 #endif
-#endif
+
+#endif /* KFD_PM4_HEADERS_H_ */

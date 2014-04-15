@@ -21,8 +21,8 @@
  *
  */
 
-#ifndef HW_POINTER_STORE_H_
-#define HW_POINTER_STORE_H_
+#ifndef KFD_HW_POINTER_STORE_H_
+#define KFD_HW_POINTER_STORE_H_
 
 #include <linux/mutex.h>
 
@@ -61,4 +61,4 @@ radeon_kfd_hw_pointer_store_mmap(struct hw_pointer_store_properties *ptr,
 		struct vm_area_struct *vma);
 
 
-#endif /* HW_POINTER_STORE_H_ */
+#endif /* KFD_HW_POINTER_STORE_H_ */

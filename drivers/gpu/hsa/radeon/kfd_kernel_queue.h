@@ -21,8 +21,8 @@
  *
  */
 
-#ifndef KERNEL_QUEUE_H_
-#define KERNEL_QUEUE_H_
+#ifndef KFD_KERNEL_QUEUE_H_
+#define KFD_KERNEL_QUEUE_H_
 
 #include <linux/list.h>
 #include <linux/types.h>
@@ -63,4 +63,4 @@ struct kernel_queue {
 	struct list_head	list;
 };
 
-#endif /* KERNEL_QUEUE_H_ */
+#endif /* KFD_KERNEL_QUEUE_H_ */

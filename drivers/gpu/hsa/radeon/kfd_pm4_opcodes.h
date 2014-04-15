@@ -22,8 +22,8 @@
  */
 
 
-#ifndef PM4_IT_OPCODES_H
-#define PM4_IT_OPCODES_H
+#ifndef KFD_PM4_OPCODES_H
+#define KFD_PM4_OPCODES_H
 
 enum it_opcode_type {
 	IT_NOP                               = 0x10,
@@ -103,5 +103,5 @@ enum it_opcode_type {
 #define PM4_TYPE_2 2
 #define PM4_TYPE_3 3
 
-#endif /* PM4_IT_OPCODES_H */
+#endif /* KFD_PM4_OPCODES_H */
 
