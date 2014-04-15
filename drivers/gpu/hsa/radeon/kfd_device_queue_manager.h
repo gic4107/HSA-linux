@@ -21,8 +21,8 @@
  *
  */
 
-#ifndef DEVICE_QUEUE_MANAGER_H_
-#define DEVICE_QUEUE_MANAGER_H_
+#ifndef KFD_DEVICE_QUEUE_MANAGER_H_
+#define KFD_DEVICE_QUEUE_MANAGER_H_
 
 #include <linux/rwsem.h>
 #include <linux/list.h>
@@ -86,4 +86,4 @@ struct device_queue_manager {
 
 
 
-#endif /* DEVICE_QUEUE_MANAGER_H_ */
+#endif /* KFD_DEVICE_QUEUE_MANAGER_H_ */

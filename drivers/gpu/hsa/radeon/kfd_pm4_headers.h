@@ -21,8 +21,8 @@
  *
  */
 
-#ifndef F32_MES_PM4_PACKETS_72_H
-#define F32_MES_PM4_PACKETS_72_H
+#ifndef KFD_PM4_HEADERS_H_
+#define KFD_PM4_HEADERS_H_
 
 #ifndef PM4_HEADER_DEFINED
 #define PM4_HEADER_DEFINED
@@ -681,4 +681,4 @@ enum {
 	CACHE_FLUSH_AND_INV_TS_EVENT = 0x00000014
 };
 
-#endif
+#endif /* KFD_PM4_HEADERS_H_ */
