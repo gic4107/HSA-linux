@@ -21,6 +21,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/device.h>
 #include "kfd_priv.h"
 
 #define DRIVER_AUTHOR		"Andrew Lewycky, Oded Gabbay, Evgeny Pinchuk, others."
@@ -72,7 +73,7 @@ kfd_module_init(void)
 	if (err < 0)
 		goto err_ioctl;
 
-	pr_info("[hsa] Initialized kfd module");
+	dev_info(kfd_device, "Initialized module\n");
 
 	err = kfd_topology_init();
 	if (err < 0)
@@ -93,7 +94,7 @@ kfd_module_exit(void)
 	kfd_topology_shutdown();
 	radeon_kfd_chardev_exit();
 	radeon_kfd_pasid_exit();
-	pr_info("[hsa] Removed kfd module");
+	dev_info(kfd_device, "Removed module\n");
 }
 
 module_init(kfd_module_init);
