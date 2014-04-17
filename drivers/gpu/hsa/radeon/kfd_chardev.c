@@ -113,7 +113,7 @@ kfd_open(struct inode *inode, struct file *filep)
 
 	process->is_32bit_user_mode = is_compat_task();
 
-	dev_info(kfd_device, "process %d opened, compat mode (32 bit) - %d\n", process->pasid, process->is_32bit_user_mode);
+	dev_dbg(kfd_device, "process %d opened, compat mode (32 bit) - %d\n", process->pasid, process->is_32bit_user_mode);
 
 	kfd_init_apertures(process);
 
