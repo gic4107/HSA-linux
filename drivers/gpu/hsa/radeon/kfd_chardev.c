@@ -677,6 +677,59 @@ static int kfd_ioctl_get_process_apertures(struct file *filp, struct kfd_process
 	return 0;
 }
 
+static long
+kfd_ioctl_pmc_acquire_access(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_pmc_acquire_access_args args;
+	struct kfd_dev *dev;
+	int err = -EBUSY;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	dev = radeon_kfd_device_by_id(args.gpu_id);
+	if (dev == NULL)
+		return -EINVAL;
+
+	spin_lock(&dev->pmc_access_lock);
+	if (dev->pmc_locking_process == NULL) {
+		dev->pmc_locking_process = p;
+		dev->pmc_locking_trace = args.trace_id;
+		err = 0;
+	} else if (dev->pmc_locking_process == p && dev->pmc_locking_trace == args.trace_id) {
+		/* Same trace already has an access. Returning success */
+		err = 0;
+	}
+
+	spin_unlock(&dev->pmc_access_lock);
+
+	return err;
+}
+
+static long
+kfd_ioctl_pmc_release_access(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_pmc_release_access_args args;
+	struct kfd_dev *dev;
+	int err = -EINVAL;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	dev = radeon_kfd_device_by_id(args.gpu_id);
+	if (dev == NULL)
+		return -EINVAL;
+
+	spin_lock(&dev->pmc_access_lock);
+	if (dev->pmc_locking_process == p && dev->pmc_locking_trace == args.trace_id) {
+		dev->pmc_locking_process = NULL;
+		dev->pmc_locking_trace = 0;
+		err = 0;
+	}
+	spin_unlock(&dev->pmc_access_lock);
+
+	return err;
+}
 
 static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -731,6 +784,14 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_DBG_WAVE_CONTROL:
 		err = kfd_ioctl_dbg_wave_control(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_PMC_ACQUIRE_ACCESS:
+		err = kfd_ioctl_pmc_acquire_access(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_PMC_RELEASE_ACCESS:
+		err = kfd_ioctl_pmc_release_access(filep, process, (void __user *) arg);
 		break;
 
 	default:

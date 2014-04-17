@@ -127,6 +127,16 @@ struct kfd_ioctl_dbg_wave_control_args {
 	unsigned char content[0];
 };
 
+struct kfd_ioctl_pmc_acquire_access_args {
+	uint32_t gpu_id;	/* to KFD */
+	uint64_t trace_id;	/* to KFD */
+};
+
+struct kfd_ioctl_pmc_release_access_args {
+	uint32_t gpu_id;	/* to KFD */
+	uint64_t trace_id;	/* to KFD */
+};
+
 #define KFD_IOC_MAGIC 'K'
 
 #define KFD_IOC_GET_VERSION	_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
@@ -140,6 +150,8 @@ struct kfd_ioctl_dbg_wave_control_args {
 #define KFD_IOC_DBG_UNREGISTER	_IOW(KFD_IOC_MAGIC, 9, struct kfd_ioctl_dbg_unregister_args)
 #define KFD_IOC_DBG_ADDRESS_WATCH	_IOW(KFD_IOC_MAGIC, 10, struct kfd_ioctl_dbg_address_watch_args)
 #define KFD_IOC_DBG_WAVE_CONTROL	_IOW(KFD_IOC_MAGIC, 11, struct kfd_ioctl_dbg_wave_control_args)
+#define KFD_IOC_PMC_ACQUIRE_ACCESS	_IOW(KFD_IOC_MAGIC, 12, struct kfd_ioctl_pmc_acquire_access_args)
+#define KFD_IOC_PMC_RELEASE_ACCESS	_IOW(KFD_IOC_MAGIC, 13, struct kfd_ioctl_pmc_release_access_args)
 
 #pragma pack(pop)
 

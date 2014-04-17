@@ -127,8 +127,15 @@ static void free_process(struct kfd_process *p)
 
 	radeon_kfd_pasid_free(p->pasid);
 
-	list_for_each_entry_safe(pdd, temp, &p->per_device_data, per_device_list)
+	list_for_each_entry_safe(pdd, temp, &p->per_device_data, per_device_list) {
+		spin_lock(&pdd->dev->pmc_access_lock);
+		if (pdd->dev->pmc_locking_process == p) {
+			pdd->dev->pmc_locking_process = NULL;
+			pdd->dev->pmc_locking_trace = 0;
+		}
+		spin_unlock(&pdd->dev->pmc_access_lock);
 		kfree(pdd);
+	}
 
 	mutex_destroy(&p->mutex);
 
