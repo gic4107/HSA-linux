@@ -91,6 +91,11 @@ struct kfd_dev {
 	atomic_t interrupt_ring_wptr;
 	struct work_struct interrupt_work;
 	spinlock_t interrupt_lock;
+
+	/* Performance counters exclusivity lock */
+	spinlock_t pmc_access_lock;
+	struct kfd_process *pmc_locking_process;
+	uint64_t pmc_locking_trace;
 };
 
 /* KGD2KFD callbacks */
