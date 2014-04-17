@@ -185,6 +185,8 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 		return false;
 	}
 
+	spin_lock_init(&kfd->pmc_access_lock);
+
 	kfd->init_complete = true;
 	dev_info(kfd_device, "added device (%x:%x)\n", kfd->pdev->vendor,
 		 kfd->pdev->device);

@@ -135,6 +135,11 @@ struct kfd_dev {
 
 	/* QCM Device instance */
 	struct device_queue_manager *dqm;
+
+	/* Performance counters exclusivity lock */
+	spinlock_t pmc_access_lock;
+	struct kfd_process *pmc_locking_process;
+	uint64_t pmc_locking_trace;
 };
 
 /* KGD2KFD callbacks */

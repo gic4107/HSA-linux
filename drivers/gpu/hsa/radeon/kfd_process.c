@@ -96,9 +96,13 @@ static void free_process(struct kfd_process *p)
 
 	BUG_ON(p == NULL);
 
-	/* doorbell mappings: automatic */
-
 	list_for_each_entry_safe(pdd, temp, &p->per_device_data, per_device_list) {
+		spin_lock(&pdd->dev->pmc_access_lock);
+		if (pdd->dev->pmc_locking_process == p) {
+			pdd->dev->pmc_locking_process = NULL;
+			pdd->dev->pmc_locking_trace = 0;
+		}
+		spin_unlock(&pdd->dev->pmc_access_lock);
 		amd_iommu_unbind_pasid(pdd->dev->pdev, p->pasid);
 		list_del(&pdd->per_device_list);
 		kfree(pdd);

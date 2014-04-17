@@ -103,6 +103,16 @@ struct kfd_ioctl_get_process_apertures_args {
 	uint8_t num_of_nodes; /* from KFD, should be in the range [1 - NUM_OF_SUPPORTED_GPUS]*/
 };
 
+struct kfd_ioctl_pmc_acquire_access_args {
+	uint32_t gpu_id;	/* to KFD */
+	uint64_t trace_id;	/* to KFD */
+};
+
+struct kfd_ioctl_pmc_release_access_args {
+	uint32_t gpu_id;	/* to KFD */
+	uint64_t trace_id;	/* to KFD */
+};
+
 #define KFD_IOC_MAGIC 'K'
 
 #define KFD_IOC_GET_VERSION	_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
@@ -112,6 +122,8 @@ struct kfd_ioctl_get_process_apertures_args {
 #define KFD_IOC_GET_CLOCK_COUNTERS	_IOWR(KFD_IOC_MAGIC, 5, struct kfd_ioctl_get_clock_counters_args)
 #define KFD_IOC_GET_PROCESS_APERTURES _IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
 #define KFD_IOC_UPDATE_QUEUE	_IOW(KFD_IOC_MAGIC, 7, struct kfd_ioctl_update_queue_args)
+#define KFD_IOC_PMC_ACQUIRE_ACCESS	_IOW(KFD_IOC_MAGIC, 12, struct kfd_ioctl_pmc_acquire_access_args)
+#define KFD_IOC_PMC_RELEASE_ACCESS	_IOW(KFD_IOC_MAGIC, 13, struct kfd_ioctl_pmc_release_access_args)
 
 #pragma pack(pop)
 
