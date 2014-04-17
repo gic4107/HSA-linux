@@ -42,15 +42,15 @@ struct kfd_ioctl_get_version_args {
 
 struct kfd_ioctl_create_queue_args {
 	uint64_t ring_base_address;	/* to KFD */
+	uint64_t write_pointer_address;	/* from KFD */
+	uint64_t read_pointer_address;	/* from KFD */
+	uint64_t doorbell_address;	/* from KFD */
+
 	uint32_t ring_size;		/* to KFD */
 	uint32_t gpu_id;		/* to KFD */
 	uint32_t queue_type;		/* to KFD */
 	uint32_t queue_percentage;	/* to KFD */
 	uint32_t queue_priority;	/* to KFD */
-
-	uint64_t write_pointer_address;	/* from KFD */
-	uint64_t read_pointer_address;	/* from KFD */
-	uint64_t doorbell_address;	/* from KFD */
 	uint32_t queue_id;		/* from KFD */
 };
 
@@ -59,8 +59,9 @@ struct kfd_ioctl_destroy_queue_args {
 };
 
 struct kfd_ioctl_update_queue_args {
-	uint32_t queue_id;		/* to KFD */
 	uint64_t ring_base_address;	/* to KFD */
+
+	uint32_t queue_id;		/* to KFD */
 	uint32_t ring_size;		/* to KFD */
 	uint32_t queue_percentage;	/* to KFD */
 	uint32_t queue_priority;	/* to KFD */
@@ -71,31 +72,33 @@ struct kfd_ioctl_update_queue_args {
 #define KFD_IOC_CACHE_POLICY_NONCOHERENT 1
 
 struct kfd_ioctl_set_memory_policy_args {
+	uint64_t alternate_aperture_base;	/* to KFD */
+	uint64_t alternate_aperture_size;	/* to KFD */
+
 	uint32_t gpu_id;			/* to KFD */
 	uint32_t default_policy;		/* to KFD */
 	uint32_t alternate_policy;		/* to KFD */
-	uint64_t alternate_aperture_base;	/* to KFD */
-	uint64_t alternate_aperture_size;	/* to KFD */
 };
 
 struct kfd_ioctl_get_clock_counters_args {
-	uint32_t gpu_id;		/* to KFD */
 	uint64_t gpu_clock_counter;	/* from KFD */
 	uint64_t cpu_clock_counter;	/* from KFD */
 	uint64_t system_clock_counter;	/* from KFD */
 	uint64_t system_clock_freq;	/* from KFD */
+
+	uint32_t gpu_id;		/* to KFD */
 };
 
 #define NUM_OF_SUPPORTED_GPUS 7
 
 struct kfd_process_device_apertures {
-	uint64_t lds_base;/* from KFD */
-	uint64_t lds_limit;/* from KFD */
-	uint64_t scratch_base;/* from KFD */
-	uint64_t scratch_limit;/* from KFD */
-	uint64_t gpuvm_base;/* from KFD */
-	uint64_t gpuvm_limit;/* from KFD */
-	uint32_t gpu_id;/* from KFD */
+	uint64_t lds_base;		/* from KFD */
+	uint64_t lds_limit;		/* from KFD */
+	uint64_t scratch_base;		/* from KFD */
+	uint64_t scratch_limit;		/* from KFD */
+	uint64_t gpuvm_base;		/* from KFD */
+	uint64_t gpuvm_limit;		/* from KFD */
+	uint32_t gpu_id;		/* from KFD */
 };
 
 struct kfd_ioctl_get_process_apertures_args {
@@ -117,37 +120,37 @@ struct kfd_ioctl_dbg_unregister_args {
 
 struct kfd_ioctl_dbg_address_watch_args {
 	uint32_t gpu_id;		/* to KFD */
-	uint32_t buf_size_in_bytes; /*including gpu_id and buf_size */
+	uint32_t buf_size_in_bytes;	/*including gpu_id and buf_size */
 	unsigned char content[0];
 };
 
 struct kfd_ioctl_dbg_wave_control_args {
 	uint32_t gpu_id;		/* to KFD */
-	uint32_t buf_size_in_bytes; /*including gpu_id and buf_size */
+	uint32_t buf_size_in_bytes;	/*including gpu_id and buf_size */
 	unsigned char content[0];
 };
 
 struct kfd_ioctl_pmc_acquire_access_args {
-	uint32_t gpu_id;	/* to KFD */
-	uint64_t trace_id;	/* to KFD */
+	uint64_t trace_id;		/* to KFD */
+	uint32_t gpu_id;		/* to KFD */
 };
 
 struct kfd_ioctl_pmc_release_access_args {
-	uint32_t gpu_id;	/* to KFD */
-	uint64_t trace_id;	/* to KFD */
+	uint64_t trace_id;		/* to KFD */
+	uint32_t gpu_id;		/* to KFD */
 };
 
 #define KFD_IOC_MAGIC 'K'
 
-#define KFD_IOC_GET_VERSION	_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
-#define KFD_IOC_CREATE_QUEUE	_IOWR(KFD_IOC_MAGIC, 2, struct kfd_ioctl_create_queue_args)
-#define KFD_IOC_DESTROY_QUEUE	_IOWR(KFD_IOC_MAGIC, 3, struct kfd_ioctl_destroy_queue_args)
+#define KFD_IOC_GET_VERSION		_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
+#define KFD_IOC_CREATE_QUEUE		_IOWR(KFD_IOC_MAGIC, 2, struct kfd_ioctl_create_queue_args)
+#define KFD_IOC_DESTROY_QUEUE		_IOWR(KFD_IOC_MAGIC, 3, struct kfd_ioctl_destroy_queue_args)
 #define KFD_IOC_SET_MEMORY_POLICY	_IOW(KFD_IOC_MAGIC, 4, struct kfd_ioctl_set_memory_policy_args)
 #define KFD_IOC_GET_CLOCK_COUNTERS	_IOWR(KFD_IOC_MAGIC, 5, struct kfd_ioctl_get_clock_counters_args)
-#define KFD_IOC_GET_PROCESS_APERTURES _IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
-#define KFD_IOC_UPDATE_QUEUE	_IOW(KFD_IOC_MAGIC, 7, struct kfd_ioctl_update_queue_args)
-#define KFD_IOC_DBG_REGISTER	_IOW(KFD_IOC_MAGIC, 8, struct kfd_ioctl_dbg_register_args)
-#define KFD_IOC_DBG_UNREGISTER	_IOW(KFD_IOC_MAGIC, 9, struct kfd_ioctl_dbg_unregister_args)
+#define KFD_IOC_GET_PROCESS_APERTURES	_IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
+#define KFD_IOC_UPDATE_QUEUE		_IOW(KFD_IOC_MAGIC, 7, struct kfd_ioctl_update_queue_args)
+#define KFD_IOC_DBG_REGISTER		_IOW(KFD_IOC_MAGIC, 8, struct kfd_ioctl_dbg_register_args)
+#define KFD_IOC_DBG_UNREGISTER		_IOW(KFD_IOC_MAGIC, 9, struct kfd_ioctl_dbg_unregister_args)
 #define KFD_IOC_DBG_ADDRESS_WATCH	_IOW(KFD_IOC_MAGIC, 10, struct kfd_ioctl_dbg_address_watch_args)
 #define KFD_IOC_DBG_WAVE_CONTROL	_IOW(KFD_IOC_MAGIC, 11, struct kfd_ioctl_dbg_wave_control_args)
 #define KFD_IOC_PMC_ACQUIRE_ACCESS	_IOW(KFD_IOC_MAGIC, 12, struct kfd_ioctl_pmc_acquire_access_args)
