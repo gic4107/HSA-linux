@@ -25,11 +25,13 @@
 #include <linux/device.h>
 #include "kfd_priv.h"
 
-#define DRIVER_AUTHOR		"Andrew Lewycky, Oded Gabbay, Evgeny Pinchuk, others."
+#define KFD_DRIVER_AUTHOR	"AMD Inc. and others"
 
-#define DRIVER_NAME		"kfd"
-#define DRIVER_DESC		"AMD HSA Kernel Fusion Driver"
-#define DRIVER_DATE		"20140127"
+#define KFD_DRIVER_DESC		"Standalone HSA driver for AMD's GPUs"
+#define KFD_DRIVER_DATE		"20140424"
+#define KFD_DRIVER_MAJOR	0
+#define KFD_DRIVER_MINOR	5
+#define KFD_DRIVER_PATCHLEVEL	0
 
 const struct kfd2kgd_calls *kfd2kgd;
 static const struct kgd2kfd_calls kgd2kfd = {
@@ -105,6 +107,9 @@ kfd_module_exit(void)
 module_init(kfd_module_init);
 module_exit(kfd_module_exit);
 
-MODULE_AUTHOR(DRIVER_AUTHOR);
-MODULE_DESCRIPTION(DRIVER_DESC);
-MODULE_LICENSE("GPL");
+MODULE_AUTHOR(KFD_DRIVER_AUTHOR);
+MODULE_DESCRIPTION(KFD_DRIVER_DESC);
+MODULE_LICENSE("GPL and additional rights");
+MODULE_VERSION(__stringify(KFD_DRIVER_MAJOR) "."
+	       __stringify(KFD_DRIVER_MINOR) "."
+	       __stringify(KFD_DRIVER_PATCHLEVEL));
