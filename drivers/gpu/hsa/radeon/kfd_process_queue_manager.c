@@ -326,6 +326,7 @@ int pqm_destroy_queue(struct process_queue_manager *pqm, unsigned int qid)
 
 int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid, struct queue_properties *p)
 {
+	int retval;
 	struct process_queue_node *pqn;
 	BUG_ON(!pqm);
 
@@ -337,9 +338,17 @@ int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid, struct
 	pqn->q->properties.queue_percent = p->queue_percent;
 	pqn->q->properties.priority = p->priority;
 
-	pqn->q->device->dqm->destroy_queues(pqn->q->device->dqm);
-	pqn->q->device->dqm->update_queue(pqn->q->device->dqm, pqn->q);
-	pqn->q->device->dqm->execute_queues(pqn->q->device->dqm);
+	retval = pqn->q->device->dqm->destroy_queues(pqn->q->device->dqm);
+	if (retval != 0)
+		return retval;
+
+	retval = pqn->q->device->dqm->update_queue(pqn->q->device->dqm, pqn->q);
+	if (retval != 0)
+		return retval;
+
+	retval = pqn->q->device->dqm->execute_queues(pqn->q->device->dqm);
+	if (retval != 0)
+		return retval;
 
 	return 0;
 }
