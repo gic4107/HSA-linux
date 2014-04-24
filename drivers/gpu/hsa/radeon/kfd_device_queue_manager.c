@@ -90,15 +90,17 @@ static void init_process_memory(struct device_queue_manager *dqm, struct qcm_pro
 	if (qpd->pqm->process->is_32bit_user_mode) {
 		temp = get_sh_mem_bases_32(qpd->pqm->process, dqm->dev);
 		qpd->sh_mem_bases = SHARED_BASE(temp);
+		qpd->sh_mem_config = PTR32;
 	} else {
 		temp = get_sh_mem_bases_nybble_64(qpd->pqm->process, dqm->dev);
 		qpd->sh_mem_bases = compute_sh_mem_bases_64bit(temp);
+		qpd->sh_mem_config = 0;
 	}
 
-	qpd->sh_mem_config = ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED);
+	qpd->sh_mem_config |= ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED);
 	qpd->sh_mem_config |= DEFAULT_MTYPE(MTYPE_NONCACHED);
 	qpd->sh_mem_ape1_limit = 0;
-	qpd->sh_mem_ape1_base = 1;
+	qpd->sh_mem_ape1_base = 0;
 
 	pr_debug("kfd: is32bit process: %d sh_mem_bases nybble: 0x%X and register 0x%X\n", qpd->pqm->process->is_32bit_user_mode,
 		  temp, qpd->sh_mem_bases);
@@ -834,7 +836,7 @@ static int execute_queues_cpsch(struct device_queue_manager *dqm)
 	}
 
 	if (dqm->queue_count <= 0 || dqm->processes_count <= 0)
-				return 0;
+		return 0;
 
 	mutex_lock(&dqm->lock);
 	if (dqm->active_runlist) {

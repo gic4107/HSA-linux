@@ -45,6 +45,7 @@
 /* if PTR32, this is the upper limit of GPUVM */
 #define	SH_MEM_CONFIG					0x8C34
 #define	PTR32						(1 << 0)
+#define PRIVATE_ATC					(1 << 1)
 #define	ALIGNMENT_MODE(x)				((x) << 2)
 #define	SH_MEM_ALIGNMENT_MODE_DWORD			0
 #define	SH_MEM_ALIGNMENT_MODE_DWORD_STRICT		1
