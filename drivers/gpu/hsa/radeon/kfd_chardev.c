@@ -126,7 +126,7 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
-
+printk("args.gpu_id%d\n", args.gpu_id);
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
 		return -EINVAL;
@@ -145,11 +145,12 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 		goto err_bind_process;
 	}
 
+	printk("kfd: creating queue for PASID %d on GPU 0x%x\n", p->pasid, dev->id);
 	pr_debug("kfd: creating queue for PASID %d on GPU 0x%x\n",
 			p->pasid,
 			dev->id);
 
-	if (!radeon_kfd_allocate_queue_id(p, &queue_id))
+	if (!radeon_kfd_allocate_queue_id(p, &queue_id))	// Get queue_id in kfd_process’ queue array
 		goto err_allocate_queue_id;
 
 	err = dev->device_info->scheduler_class->create_queue(dev->scheduler, pdd->scheduler_process,
@@ -162,7 +163,7 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	if (err)
 		goto err_create_queue;
 
-	radeon_kfd_install_queue(p, queue_id, queue);
+	radeon_kfd_install_queue(p, queue_id, queue);		// p->queue[queue_id] = queue
 
 	args.queue_id = queue_id;
 	args.doorbell_address = (uint64_t)(uintptr_t)radeon_kfd_get_doorbell(filep, p, dev, queue_id);
@@ -174,6 +175,17 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 
 	mutex_unlock(&p->mutex);
 
+
+        printk("kfd: queue id %d was created successfully.\n"                                       
+                 "     ring buffer address == 0x%016llX\n"                                            
+                 "     read ptr address    == 0x%016llX\n"                                            
+                 "     write ptr address   == 0x%016llX\n"                                            
+                 "     doorbell address    == 0x%016llX\n",                                           
+                        args.queue_id,                                                                
+                        args.ring_base_address,                                                       
+                        args.read_pointer_address,                                                    
+                        args.write_pointer_address,                                                   
+                        args.doorbell_address);
 	pr_debug("kfd: queue id %d was created successfully.\n"
 		 "     ring buffer address == 0x%016llX\n"
 		 "     read ptr address    == 0x%016llX\n"
@@ -334,18 +346,21 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 	case KFD_IOC_CREATE_QUEUE:
+		printk(" ===== KFD_IOC_CREATE_QUEUE ===== \n");
 		err = kfd_ioctl_create_queue(filep, process, (void __user *)arg);
 		break;
-
 	case KFD_IOC_DESTROY_QUEUE:
+		printk(" ===== KFD_IOC_DESTROY_QUEUE ===== \n");
 		err = kfd_ioctl_destroy_queue(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_SET_MEMORY_POLICY:
+		printk(" ===== KFD_IOC_SET_MEMORY_POLICY ===== \n");
 		err = kfd_ioctl_set_memory_policy(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_GET_CLOCK_COUNTERS:
+		printk(" ===== KFD_IOC_GET_CLOCK_COUNTERS ===== \n");
 		err = kfd_ioctl_get_clock_counters(filep, process, (void __user *)arg);
 		break;
 

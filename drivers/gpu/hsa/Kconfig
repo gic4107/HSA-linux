@@ -16,5 +16,7 @@ config HSA_RADEON
 	default m
 	help
 	  Enable this if you want to support HSA on AMD Radeon devices.
+config PR_DEBUG
+	bool "Enable pr_debug()"
 
 endif # HSA

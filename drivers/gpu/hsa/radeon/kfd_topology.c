@@ -1008,6 +1008,7 @@ int kfd_topology_init(void)
 	/*
 	 * Get the CRAT image from the ACPI
 	 */
+	// ACPI is advanced configuration and power interface
 	ret = kfd_topology_get_crat_acpi(crat_image, &image_size);
 	if (ret == 0 && image_size > 0) {
 		pr_info("Found CRAT image with size=%zd\n", image_size);

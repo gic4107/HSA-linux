@@ -41,6 +41,7 @@ int radeon_kfd_pasid_init(void)
 		return -ENOMEM;
 
 	set_bit(0, pasid_bitmap); /* PASID 0 is reserved. */
+	// set pasid_bitmap's bit0 to 1
 
 	return 0;
 }
