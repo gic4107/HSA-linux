@@ -55,7 +55,7 @@ static inline unsigned int get_first_pipe(struct device_queue_manager *dqm)
 
 static inline unsigned int get_pipes_num_cpsch(void)
 {
-	return PIPE_PER_ME_CP_SCHEDULING - 1;
+	return PIPE_PER_ME_CP_SCHEDULING;
 }
 
 static unsigned int get_sh_mem_bases_nybble_64(struct kfd_process *process, struct kfd_dev *dev)
