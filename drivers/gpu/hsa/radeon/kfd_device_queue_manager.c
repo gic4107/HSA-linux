@@ -562,6 +562,23 @@ static int init_pipelines(struct device_queue_manager *dqm, unsigned int pipes_n
 	return 0;
 }
 
+static void init_interrupts(struct device_queue_manager *dqm)
+{
+	unsigned int i;
+
+	struct mqd_manager *mqd;
+
+	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_COMPUTE);
+	BUG_ON(mqd == NULL);
+
+	for (i = 0 ; i < get_pipes_num(dqm) ; i++) {
+		mqd->acquire_hqd(mqd, i + get_first_pipe(dqm), 0, 0);
+
+		WRITE_REG(dqm->dev, CPC_INT_CNTL, TIME_STAMP_INT_ENABLE);
+
+		mqd->release_hqd(mqd);
+	}
+}
 
 static int init_scheduler(struct device_queue_manager *dqm)
 {
@@ -573,6 +590,7 @@ static int init_scheduler(struct device_queue_manager *dqm)
 	retval = init_pipelines(dqm, get_pipes_num(dqm), KFD_DQM_FIRST_PIPE);
 	if (retval != 0)
 		return retval;
+
 	/* should be later integrated with Evgeny/Alexey memory management code */
 	retval = init_memory(dqm);
 	return retval;
@@ -616,6 +634,7 @@ static void uninitialize_nocpsch(struct device_queue_manager *dqm)
 
 static int start_nocpsch(struct device_queue_manager *dqm)
 {
+	init_interrupts(dqm);
 	return 0;
 }
 
@@ -694,6 +713,8 @@ static int start_cpsch(struct device_queue_manager *dqm)
 					     sizeof(*dqm->fence_addr));
 	if (retval != 0)
 		goto fail_allocate_vidmem;
+
+	init_interrupts(dqm);
 
 	list_for_each_entry(node, &dqm->queues, list) {
 	if (node->qpd->pqm->process && dqm->dev)

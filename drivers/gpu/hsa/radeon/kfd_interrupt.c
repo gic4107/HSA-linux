@@ -160,7 +160,17 @@ static void interrupt_wq(struct work_struct *work)
 	uint32_t ih_ring_entry[DIV_ROUND_UP(dev->device_info->ih_ring_entry_size, sizeof(uint32_t))];
 
 	while (dequeue_ih_ring_entry(dev, ih_ring_entry))
-		;
+		dev->device_info->event_interrupt_class->interrupt_wq(dev, ih_ring_entry);
+}
+
+static bool interrupt_is_wanted(struct kfd_dev *dev, const uint32_t *ih_ring_entry)
+{
+	/* integer and bitwise OR so there is no boolean short-circuiting */
+	unsigned wanted = 0;
+
+	wanted |= dev->device_info->event_interrupt_class->interrupt_isr(dev, ih_ring_entry);
+
+	return wanted != 0;
 }
 
 /* This is called directly from KGD at ISR. */
@@ -169,6 +179,7 @@ void kgd2kfd_interrupt(struct kfd_dev *kfd, const void *ih_ring_entry)
 	spin_lock(&kfd->interrupt_lock);
 
 	if (kfd->interrupts_active
+	    && interrupt_is_wanted(kfd, ih_ring_entry)
 	    && enqueue_ih_ring_entry(kfd, ih_ring_entry))
 		schedule_work(&kfd->interrupt_work);
 

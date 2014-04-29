@@ -138,6 +138,8 @@ static void free_process(struct kfd_process *p)
 		kfree(pdd);
 	}
 
+	kfd_event_free_process(p);
+
 	mutex_destroy(&p->mutex);
 
 	kfree(p->queues);
@@ -214,6 +216,8 @@ create_process(const struct task_struct *thread)
 	process->queue_array_size = INITIAL_QUEUE_ARRAY_SIZE;
 
 	INIT_LIST_HEAD(&process->per_device_data);
+
+	kfd_event_init_process(process);
 
 	err = pqm_init(&process->pqm, process);
 	if (err != 0)
@@ -516,4 +520,24 @@ void radeon_kfd_process_device_remove_obj_handle(struct kfd_process_device *pdd,
 		return;
 
 	idr_remove(&pdd->alloc_idr, handle);
+}
+
+/* This returns with process->mutex locked. */
+struct kfd_process *kfd_lookup_process_by_pasid(pasid_t pasid)
+{
+	struct kfd_process *p;
+	unsigned int temp;
+
+	rcu_read_lock();
+
+	hash_for_each_rcu(kfd_processes, temp, p, kfd_processes) {
+		if (p->pasid == pasid) {
+			mutex_lock(&p->mutex);
+			break;
+		}
+	}
+
+	rcu_read_unlock();
+
+	return p;
 }

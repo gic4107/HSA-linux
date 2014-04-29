@@ -151,6 +151,53 @@ struct kfd_ioctl_pmc_release_access_args {
 	uint32_t gpu_id;		/* to KFD */
 };
 
+/* Matching HSA_EVENTTYPE */
+#define KFD_IOC_EVENT_SIGNAL		0
+#define KFD_IOC_EVENT_NODECHANGE	1
+#define KFD_IOC_EVENT_DEVICESTATECHANGE	2
+#define KFD_IOC_EVENT_HW_EXCEPTION	3
+#define KFD_IOC_EVENT_SYSTEM_EVENT	4
+#define KFD_IOC_EVENT_DEBUG_EVENT	5
+#define KFD_IOC_EVENT_PROFILE_EVENT	6
+#define KFD_IOC_EVENT_QUEUE_EVENT	7
+#define KFD_IOC_EVENT_MEMORY		8
+
+#define KFD_IOC_WAIT_RESULT_COMPLETE	0
+#define KFD_IOC_WAIT_RESULT_TIMEOUT	1
+#define KFD_IOC_WAIT_RESULT_FAIL	2
+
+struct kfd_ioctl_create_event_args {
+	uint64_t event_trigger_address;	/* from KFD - signal events only */
+	uint32_t event_trigger_data;	/* from KFD - signal events only */
+
+	uint32_t event_type;		/* to KFD */
+	uint32_t auto_reset;		/* to KFD */
+	uint32_t node_id;		/* to KFD - only valid for certain event types */
+
+	uint32_t event_id;		/* from KFD */
+};
+
+struct kfd_ioctl_destroy_event_args {
+	uint32_t event_id;		/* to KFD */
+};
+
+struct kfd_ioctl_set_event_args {
+	uint32_t event_id;		/* to KFD */
+};
+
+struct kfd_ioctl_reset_event_args {
+	uint32_t event_id;		/* to KFD */
+};
+
+struct kfd_ioctl_wait_events_args {
+	uint64_t events_ptr;		/* to KFD */
+	uint32_t num_events;		/* to KFD */
+	uint32_t wait_for_all;		/* to KFD */
+	uint32_t timeout;		/* to KFD */
+
+	uint32_t wait_result;		/* from KFD */
+};
+
 #define KFD_IOC_MAGIC 'K'
 
 #define KFD_IOC_GET_VERSION		_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
@@ -168,6 +215,11 @@ struct kfd_ioctl_pmc_release_access_args {
 #define KFD_IOC_PMC_RELEASE_ACCESS	_IOW(KFD_IOC_MAGIC, 13, struct kfd_ioctl_pmc_release_access_args)
 #define KFD_IOC_CREATE_VIDMEM		_IOWR(KFD_IOC_MAGIC, 14, struct kfd_ioctl_create_vidmem_args)
 #define KFD_IOC_DESTROY_VIDMEM		_IOW(KFD_IOC_MAGIC, 15, struct kfd_ioctl_destroy_vidmem_args)
+#define KFD_IOC_CREATE_EVENT		_IOWR(KFD_IOC_MAGIC, 16, struct kfd_ioctl_create_event_args)
+#define KFD_IOC_DESTROY_EVENT		_IOW(KFD_IOC_MAGIC, 17, struct kfd_ioctl_destroy_event_args)
+#define KFD_IOC_SET_EVENT		_IOW(KFD_IOC_MAGIC, 18, struct kfd_ioctl_set_event_args)
+#define KFD_IOC_RESET_EVENT		_IOW(KFD_IOC_MAGIC, 19, struct kfd_ioctl_reset_event_args)
+#define KFD_IOC_WAIT_EVENTS		_IOWR(KFD_IOC_MAGIC, 20, struct kfd_ioctl_wait_events_args)
 
 #pragma pack(pop)
 

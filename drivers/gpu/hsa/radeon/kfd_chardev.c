@@ -829,6 +829,86 @@ kfd_ioctl_destroy_vidmem(struct file *filep, struct kfd_process *p, void __user 
 }
 
 static long
+kfd_ioctl_create_event(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_create_event_args args;
+	void __user *event_trigger_address;
+	int err;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	err = kfd_event_create(filp, p, args.event_type, args.auto_reset != 0, args.node_id,
+			       &args.event_id,
+			       &event_trigger_address, &args.event_trigger_data);
+
+	args.event_trigger_address = (uint64_t)(uintptr_t)event_trigger_address;
+
+	if (err)
+		return err;
+
+	if (copy_to_user(arg, &args, sizeof(args)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long
+kfd_ioctl_destroy_event(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_destroy_event_args args;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	return  kfd_event_destroy(p, args.event_id);
+}
+
+static long
+kfd_ioctl_set_event(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_set_event_args args;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	return  kfd_set_event(p, args.event_id);
+}
+
+static long
+kfd_ioctl_reset_event(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_reset_event_args args;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	return  kfd_reset_event(p, args.event_id);
+}
+
+static long
+kfd_ioctl_wait_events(struct file *filp, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_wait_events_args args;
+	enum kfd_event_wait_result wait_result;
+	int err;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	err = kfd_wait_on_events(p, args.num_events, (uint32_t __user *)args.events_ptr,
+				 (args.wait_for_all != 0), args.timeout, &wait_result);
+
+	args.wait_result = wait_result;
+
+	if (copy_to_user(arg, &args, sizeof(args)))
+		return -EFAULT;
+
+	return err;
+}
+
+
+static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 	struct kfd_process *process;
@@ -899,6 +979,26 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		err = kfd_ioctl_destroy_vidmem(filep, process, (void __user *)arg);
 		break;
 
+	case KFD_IOC_CREATE_EVENT:
+		err = kfd_ioctl_create_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_DESTROY_EVENT:
+		err = kfd_ioctl_destroy_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_SET_EVENT:
+		err = kfd_ioctl_set_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_RESET_EVENT:
+		err = kfd_ioctl_reset_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_WAIT_EVENTS:
+		err = kfd_ioctl_wait_events(filep, process, (void __user *) arg);
+		break;
+
 	default:
 		dev_err(kfd_device,
 			"unknown ioctl cmd 0x%x, arg 0x%lx)\n",
@@ -925,6 +1025,8 @@ kfd_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	if (pgoff >= KFD_MMAP_DOORBELL_START && pgoff < KFD_MMAP_DOORBELL_END)
 		return radeon_kfd_doorbell_mmap(process, vma);
+	else if (pgoff >= KFD_MMAP_EVENTS_START && pgoff < KFD_MMAP_EVENTS_END)
+		return radeon_kfd_event_mmap(process, vma);
 
 	return -EINVAL;
 }

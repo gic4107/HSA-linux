@@ -45,6 +45,8 @@ struct kfd_scheduler_class;
 ** We figure out what type of memory the caller wanted by comparing the mmap page offset to known ranges. */
 #define KFD_MMAP_DOORBELL_START	(((1ULL << 32)*1) >> PAGE_SHIFT)
 #define KFD_MMAP_DOORBELL_END	(((1ULL << 32)*2) >> PAGE_SHIFT)
+#define KFD_MMAP_EVENTS_START	KFD_MMAP_DOORBELL_END
+#define KFD_MMAP_EVENTS_END	(KFD_MMAP_EVENTS_START + (1ULL << (32 - PAGE_SHIFT)))
 
 /*
  * When working with cp scheduler we should assign the HIQ manually or via the radeon driver
@@ -79,13 +81,21 @@ typedef u32 doorbell_t;
 /* Type that represents queue pointer */
 typedef u32 qptr_t;
 
+typedef u32 kfd_event_id;
+
 enum cache_policy {
 	cache_policy_coherent,
 	cache_policy_noncoherent
 };
 
+struct kfd_event_interrupt_class {
+	bool (*interrupt_isr)(struct kfd_dev *dev, const uint32_t *ih_ring_entry);
+	void (*interrupt_wq)(struct kfd_dev *dev, const uint32_t *ih_ring_entry);
+};
+
 struct kfd_device_info {
 	const struct kfd_scheduler_class *scheduler_class;
+	const struct kfd_event_interrupt_class *event_interrupt_class;
 	unsigned int max_pasid_bits;
 	size_t ih_ring_entry_size;
 };
@@ -372,10 +382,17 @@ struct kfd_process {
 	/*Is the user space process 32 bit?*/
 	bool is_32bit_user_mode;
 
+	/* Event-related data */
+	struct mutex event_mutex;
+	/* All events in process hashed by ID, linked on kfd_event.events. */
+	DECLARE_HASHTABLE(events, 4);
+	struct list_head signal_event_pages;	/* struct slot_page_header.event_pages */
+	kfd_event_id next_nonsignal_event_id;
 };
 
 struct kfd_process *radeon_kfd_create_process(const struct task_struct *);
 struct kfd_process *radeon_kfd_get_process(const struct task_struct *);
+struct kfd_process *kfd_lookup_process_by_pasid(pasid_t pasid);
 
 struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev, struct kfd_process *p);
 void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid);
@@ -510,5 +527,27 @@ int pm_send_query_status(struct packet_manager *pm, uint64_t fence_address, uint
 int pm_send_unmap_queue(struct packet_manager *pm, enum kfd_queue_type type,
 			enum kfd_preempt_type_filter mode, uint32_t filter_param, bool reset);
 void pm_release_ib(struct packet_manager *pm);
+
+/* Events */
+enum kfd_event_wait_result {
+	KFD_WAIT_COMPLETE,
+	KFD_WAIT_TIMEOUT,
+	KFD_WAIT_ERROR
+};
+
+void kfd_event_init_process(struct kfd_process *p);
+void kfd_event_free_process(struct kfd_process *p);
+int radeon_kfd_event_mmap(struct kfd_process *process, struct vm_area_struct *vma);
+int kfd_wait_on_events(struct kfd_process *p,
+		       uint32_t num_events, const uint32_t __user *event_ids,
+		       bool all, uint32_t user_timeout_ms,
+		       enum kfd_event_wait_result *wait_result);
+void kfd_signal_event_interrupt(pasid_t pasid, uint32_t partial_id, uint32_t valid_id_bits);
+int kfd_set_event(struct kfd_process *p, uint32_t event_id);
+int kfd_reset_event(struct kfd_process *p, uint32_t event_id);
+int kfd_event_create(struct file *devkfd, struct kfd_process *p,
+		     uint32_t event_type, bool auto_reset, uint32_t node_id,
+		     uint32_t *event_id, void __user **event_trigger_address, uint32_t *event_trigger_data);
+int kfd_event_destroy(struct kfd_process *p, uint32_t event_id);
 
 #endif

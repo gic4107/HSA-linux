@@ -20,33 +20,49 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef HSA_RADEON_CIK_INT_H_INCLUDED
-#define HSA_RADEON_CIK_INT_H_INCLUDED
+#ifndef KFD_EVENTS_H_INCLUDED
+#define KFD_EVENTS_H_INCLUDED
 
+#include <linux/kernel.h>
+#include <linux/hashtable.h>
 #include <linux/types.h>
+#include <linux/list.h>
+#include "kfd_priv.h"
 
-struct cik_ih_ring_entry {
-	uint32_t source_id:8;
-	uint32_t reserved1:8;
-	uint32_t reserved2:16;
+#define KFD_EVENT_ID_NONSIGNAL_MASK 0x80000000U
+#define KFD_FIRST_NONSIGNAL_EVENT_ID KFD_EVENT_ID_NONSIGNAL_MASK
+#define KFD_LAST_NONSIGNAL_EVENT_ID UINT_MAX
 
-	uint32_t data:28;
-	uint32_t reserved3:4;
+typedef uint64_t kfd_signal_slot_t;
 
-	/* pipeid, meid and unused3 are officially called RINGID,
-	 * but for our purposes, they always decode into pipe and ME. */
-	uint32_t pipeid:2;
-	uint32_t meid:2;
-	uint32_t reserved4:4;
-	uint32_t vmid:8;
-	uint32_t pasid:16;
+struct kfd_event_waiter;
+struct signal_page;
 
-	uint32_t reserved5;
+struct kfd_event {
+	/* All events in process, rooted at kfd_process.events. */
+	struct hlist_node events;
+
+	kfd_event_id event_id;
+
+	bool signaled;
+	bool auto_reset;
+
+	int type;
+
+	struct list_head waiters; /* List of kfd_event_waiter by waiters. */
+
+	/* Only for signal events. */
+	struct signal_page *signal_page;
+	unsigned int signal_slot_index;
+	kfd_signal_slot_t __user *user_signal_address;
 };
 
-#define CIK_INTSRC_DEQUEUE_COMPLETE	0xC6
-#define CIK_INTSRC_CP_END_OF_PIPE	0xB5
-#define CIK_INTSRC_SQ_INTERRUPT_MSG	0xEF
+#define KFD_EVENT_TIMEOUT_IMMEDIATE 0
+#define KFD_EVENT_TIMEOUT_INFINITE 0xFFFFFFFFu
+
+/* Matching HSA_EVENTTYPE */
+#define KFD_EVENT_TYPE_SIGNAL 0
+
+extern void kfd_signal_event_interrupt(pasid_t pasid, uint32_t partial_id, uint32_t valid_id_bits);
 
 #endif
-

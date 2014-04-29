@@ -27,9 +27,12 @@
 #include "kfd_priv.h"
 #include "kfd_device_queue_manager.h"
 
+extern const struct kfd_event_interrupt_class event_interrupt_class_cik;
+
 static const struct kfd_device_info kaveri_device_info = {
 	.max_pasid_bits = 16,
-	.ih_ring_entry_size = 4 * sizeof(uint32_t)
+	.ih_ring_entry_size = 4 * sizeof(uint32_t),
+	.event_interrupt_class = &event_interrupt_class_cik
 };
 
 struct kfd_deviceid {
