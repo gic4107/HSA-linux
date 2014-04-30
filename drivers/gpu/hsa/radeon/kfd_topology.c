@@ -443,7 +443,7 @@ static struct kfd_topology_device *kfd_create_topology_device(void)
 	sys_props.num_devices++;
 
 	return dev;
-	}
+}
 
 static int kfd_parse_crat_table(void *crat_image)
 {
@@ -461,10 +461,10 @@ static int kfd_parse_crat_table(void *crat_image)
 	num_nodes = crat_table->num_domains;
 	image_len = crat_table->length;
 
-	pr_info("Parsing CRAT table with %d nodes\n", num_nodes);
+	pr_info("Parsing CRAT table with %d nodes\n", num_nodes);	// 1
 
 	for (node_id = 0; node_id < num_nodes; node_id++) {
-		top_dev = kfd_create_topology_device();
+		top_dev = kfd_create_topology_device();			// here
 		if (!top_dev) {
 			kfd_release_live_view();
 			return -ENOMEM;
@@ -1127,11 +1127,11 @@ int kfd_topology_add_device(struct kfd_dev *gpu)
 	 * Try to assign the GPU to existing topology device (generated from
 	 * CRAT table
 	 */
-	dev = kfd_assign_gpu(gpu);
+	dev = kfd_assign_gpu(gpu);	// get from topologe_device_list
 	if (!dev) {
-		pr_info("GPU was not found in the current topology. Extending.\n");
+		pr_info("GPU was not found in the current topology. Extending.\n");	// no
 		kfd_debug_print_topology();
-		dev = kfd_create_topology_device();
+		dev = kfd_create_topology_device();					// not here
 		if (!dev) {
 			res = -ENOMEM;
 			goto err;

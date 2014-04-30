@@ -126,7 +126,7 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
-printk("args.gpu_id%d\n", args.gpu_id);
+printk("args.gpu_id = %d\n", args.gpu_id);
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
 		return -EINVAL;
@@ -145,7 +145,6 @@ printk("args.gpu_id%d\n", args.gpu_id);
 		goto err_bind_process;
 	}
 
-	printk("kfd: creating queue for PASID %d on GPU 0x%x\n", p->pasid, dev->id);
 	pr_debug("kfd: creating queue for PASID %d on GPU 0x%x\n",
 			p->pasid,
 			dev->id);
@@ -175,17 +174,6 @@ printk("args.gpu_id%d\n", args.gpu_id);
 
 	mutex_unlock(&p->mutex);
 
-
-        printk("kfd: queue id %d was created successfully.\n"                                       
-                 "     ring buffer address == 0x%016llX\n"                                            
-                 "     read ptr address    == 0x%016llX\n"                                            
-                 "     write ptr address   == 0x%016llX\n"                                            
-                 "     doorbell address    == 0x%016llX\n",                                           
-                        args.queue_id,                                                                
-                        args.ring_base_address,                                                       
-                        args.read_pointer_address,                                                    
-                        args.write_pointer_address,                                                   
-                        args.doorbell_address);
 	pr_debug("kfd: queue id %d was created successfully.\n"
 		 "     ring buffer address == 0x%016llX\n"
 		 "     read ptr address    == 0x%016llX\n"
@@ -384,6 +372,7 @@ kfd_mmap(struct file *filp, struct vm_area_struct *vma)
 	unsigned long pgoff = vma->vm_pgoff;
 	struct kfd_process *process;
 
+printk(" ===== kfd_mmap =====\n");
 	process = radeon_kfd_get_process(current);
 	if (IS_ERR(process))
 		return PTR_ERR(process);
