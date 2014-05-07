@@ -25,7 +25,6 @@
 #include <linux/list.h>
 #include "kfd_device_queue_manager.h"
 #include "kfd_priv.h"
-#include "kfd_hw_pointer_store.h"
 #include "kfd_kernel_queue.h"
 
 static inline struct process_queue_node *get_queue_by_qid(struct process_queue_manager *pqm, unsigned int qid)
@@ -41,43 +40,6 @@ static inline struct process_queue_node *get_queue_by_qid(struct process_queue_m
 	}
 
 	return NULL;
-}
-
-static int allocate_hw_pointers(struct process_queue_manager *pqm, struct queue_properties *q_properties, struct file *f,
-		struct kfd_dev *dev, unsigned int qid)
-{
-	int retval;
-	BUG_ON(!pqm || !q_properties);
-
-	retval = 0;
-
-	pr_debug("kfd: In func %s\n", __func__);
-
-	/* allocates r/w pointers in lazy mode */
-	if (pqm->process->read_ptr.page_mapping == NULL)
-		if (hw_pointer_store_init(&pqm->process->read_ptr, KFD_HW_POINTER_STORE_TYPE_RPTR) != 0)
-			return -EBUSY;
-	if (pqm->process->write_ptr.page_mapping == NULL)
-		if (hw_pointer_store_init(&pqm->process->write_ptr, KFD_HW_POINTER_STORE_TYPE_WPTR) != 0) {
-			hw_pointer_store_destroy(&pqm->process->read_ptr);
-			return -EBUSY;
-		}
-
-	q_properties->read_ptr = hw_pointer_store_create_queue(&pqm->process->read_ptr, qid, f);
-	if (!q_properties->read_ptr)
-		return -ENOMEM;
-
-	q_properties->write_ptr = hw_pointer_store_create_queue(&pqm->process->write_ptr, qid, f);
-	if (!q_properties->write_ptr)
-		return -ENOMEM;
-
-	q_properties->doorbell_ptr = radeon_kfd_get_doorbell(f, pqm->process, dev, qid);
-	if (!q_properties->doorbell_ptr)
-		return -ENOMEM;
-
-	q_properties->doorbell_off = radeon_kfd_queue_id_to_doorbell(dev, pqm->process, qid);
-
-	return retval;
 }
 
 static int find_available_queue_slot(struct process_queue_manager *pqm, unsigned int *qid)
@@ -125,15 +87,12 @@ void pqm_uninit(struct process_queue_manager *pqm)
 	list_for_each_entry_safe(pqn, next, &pqm->queues, process_queue_list) {
 		retval = pqm_destroy_queue(pqm,
 					   (pqn->q != NULL) ? pqn->q->properties.queue_id : pqn->kq->queue->properties.queue_id);
-		if (retval != 0)
+		if (retval != 0) {
+			pr_err("kfd: failed to destroy queue\n");
 			return;
+		}
 	}
 	kfree(pqm->queue_slot_bitmap);
-
-	if (pqm->process->read_ptr.page_mapping)
-		hw_pointer_store_destroy(&pqm->process->read_ptr);
-	if (pqm->process->write_ptr.page_mapping)
-		hw_pointer_store_destroy(&pqm->process->write_ptr);
 }
 
 static int create_cp_queue(struct process_queue_manager *pqm, struct kfd_dev *dev, struct queue **q,
@@ -143,11 +102,11 @@ static int create_cp_queue(struct process_queue_manager *pqm, struct kfd_dev *de
 
 	retval = 0;
 
-	/* allocate hw pointers */
-	if (allocate_hw_pointers(pqm, q_properties, f, dev, qid) != 0) {
-		retval = -ENOMEM;
-		goto err_allocate_hw_pointers;
-	}
+	q_properties->doorbell_ptr = radeon_kfd_get_doorbell(f, pqm->process, dev, qid);
+		if (!q_properties->doorbell_ptr)
+			return -ENOMEM;
+
+	q_properties->doorbell_off = radeon_kfd_queue_id_to_doorbell(dev, pqm->process, qid);
 
 	/* let DQM handle it*/
 	q_properties->vmid = 0;
@@ -166,7 +125,6 @@ static int create_cp_queue(struct process_queue_manager *pqm, struct kfd_dev *de
 	return retval;
 
 err_init_queue:
-err_allocate_hw_pointers:
 	return retval;
 }
 

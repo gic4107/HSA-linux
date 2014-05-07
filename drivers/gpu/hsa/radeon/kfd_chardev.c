@@ -32,9 +32,9 @@
 #include <linux/time.h>
 #include "kfd_priv.h"
 #include <linux/mm.h>
+#include <linux/uaccess.h>
 #include <uapi/asm-generic/mman-common.h>
 #include <asm/processor.h>
-#include "kfd_hw_pointer_store.h"
 #include "kfd_device_queue_manager.h"
 #include "kfd_dbgmgr.h"
 
@@ -138,24 +138,33 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
 
-	/* need to validate parameters */
+	if (!access_ok(VERIFY_WRITE, args.read_pointer_address, sizeof(qptr_t)))
+		return -EFAULT;
+
+	if (!access_ok(VERIFY_WRITE, args.write_pointer_address, sizeof(qptr_t)))
+		return -EFAULT;
+
 
 	q_properties.is_interop = false;
 	q_properties.queue_percent = args.queue_percentage;
 	q_properties.priority = args.queue_priority;
 	q_properties.queue_address = args.ring_base_address;
 	q_properties.queue_size = args.ring_size;
+	q_properties.read_ptr = args.read_pointer_address;
+	q_properties.write_ptr = args.write_pointer_address;
 
 
 	pr_debug("%s Arguments: Queue Percentage (%d, %d)\n"
 			"Queue Priority (%d, %d)\n"
 			"Queue Address (0x%llX, 0x%llX)\n"
 			"Queue Size (%llX, %u)\n",
+			"Queue r/w Pointers (%llX, %llX)\n",
 			__func__,
 			q_properties.queue_percent, args.queue_percentage,
 			q_properties.priority, args.queue_priority,
 			q_properties.queue_address, args.ring_base_address,
-			q_properties.queue_size, args.ring_size);
+			q_properties.queue_size, args.ring_size,
+			q_properties.read_ptr, q_properties.write_ptr);
 
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
@@ -178,8 +187,6 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 		goto err_create_queue;
 
 	args.queue_id = queue_id;
-	args.read_pointer_address = (uint64_t)q_properties.read_ptr;
-	args.write_pointer_address = (uint64_t)q_properties.write_ptr;
 	args.doorbell_address = (uint64_t)q_properties.doorbell_ptr;
 
 	if (copy_to_user(arg, &args, sizeof(args))) {
@@ -820,10 +827,6 @@ kfd_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	if (pgoff >= KFD_MMAP_DOORBELL_START && pgoff < KFD_MMAP_DOORBELL_END)
 		return radeon_kfd_doorbell_mmap(process, vma);
-	else if (pgoff >= KFD_MMAP_RPTR_START && pgoff < KFD_MMAP_RPTR_END)
-		return radeon_kfd_hw_pointer_store_mmap(&process->read_ptr, vma);
-	else if (pgoff >= KFD_MMAP_WPTR_START && pgoff < KFD_MMAP_WPTR_END)
-		return radeon_kfd_hw_pointer_store_mmap(&process->write_ptr, vma);
 
 	return -EINVAL;
 }

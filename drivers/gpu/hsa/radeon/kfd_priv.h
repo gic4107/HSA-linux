@@ -31,7 +31,6 @@
 #include <linux/atomic.h>
 #include <linux/workqueue.h>
 #include <linux/spinlock.h>
-#include "kfd_hw_pointer_store.h"
 
 struct kfd_scheduler_class;
 
@@ -44,10 +43,6 @@ struct kfd_scheduler_class;
 ** We figure out what type of memory the caller wanted by comparing the mmap page offset to known ranges. */
 #define KFD_MMAP_DOORBELL_START	(((1ULL << 32)*1) >> PAGE_SHIFT)
 #define KFD_MMAP_DOORBELL_END	(((1ULL << 32)*2) >> PAGE_SHIFT)
-#define KFD_MMAP_RPTR_START	KFD_MMAP_DOORBELL_END
-#define KFD_MMAP_RPTR_END	(((1ULL << 32)*3) >> PAGE_SHIFT)
-#define KFD_MMAP_WPTR_START	KFD_MMAP_RPTR_END
-#define KFD_MMAP_WPTR_END	(((1ULL << 32)*4) >> PAGE_SHIFT)
 
 /*
  * When working with cp scheduler we should assign the HIQ manually or via the radeon driver
@@ -79,6 +74,8 @@ typedef unsigned int pasid_t;
 
 /* Type that represents a HW doorbell slot. */
 typedef u32 doorbell_t;
+/* Type that represents queue pointer */
+typedef u32 qptr_t;
 
 enum cache_policy {
 	cache_policy_coherent,
@@ -341,9 +338,6 @@ struct kfd_process {
 
 	/* List of kfd_process_device structures, one for each device the process is using. */
 	struct list_head per_device_data;
-
-	struct hw_pointer_store_properties write_ptr;
-	struct hw_pointer_store_properties read_ptr;
 
 	struct process_queue_manager pqm;
 
