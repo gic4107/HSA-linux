@@ -168,7 +168,6 @@ static struct kfd_process *create_process(const struct task_struct *thread)
 
 	INIT_LIST_HEAD(&process->per_device_data);
 
-	process->read_ptr.page_mapping = process->write_ptr.page_mapping = NULL;
 	err = pqm_init(&process->pqm, process);
 	if (err != 0)
 		goto err_process_pqm_init;
