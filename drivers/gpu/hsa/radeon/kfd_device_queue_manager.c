@@ -87,20 +87,24 @@ static void init_process_memory(struct device_queue_manager *dqm, struct qcm_pro
 	unsigned int temp;
 	BUG_ON(!dqm || !qpd);
 
+	/* check if sh_mem_config register already configured */
+	if (qpd->sh_mem_config == 0) {
+		qpd->sh_mem_config =
+			ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED) |
+			DEFAULT_MTYPE(MTYPE_NONCACHED) |
+			APE1_MTYPE(MTYPE_NONCACHED);
+		qpd->sh_mem_ape1_limit = 0;
+		qpd->sh_mem_ape1_base = 0;
+	}
+
 	if (qpd->pqm->process->is_32bit_user_mode) {
 		temp = get_sh_mem_bases_32(qpd->pqm->process, dqm->dev);
 		qpd->sh_mem_bases = SHARED_BASE(temp);
-		qpd->sh_mem_config = PTR32;
+		qpd->sh_mem_config |= PTR32;
 	} else {
 		temp = get_sh_mem_bases_nybble_64(qpd->pqm->process, dqm->dev);
 		qpd->sh_mem_bases = compute_sh_mem_bases_64bit(temp);
-		qpd->sh_mem_config = 0;
 	}
-
-	qpd->sh_mem_config |= ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED);
-	qpd->sh_mem_config |= DEFAULT_MTYPE(MTYPE_NONCACHED);
-	qpd->sh_mem_ape1_limit = 0;
-	qpd->sh_mem_ape1_base = 0;
 
 	pr_debug("kfd: is32bit process: %d sh_mem_bases nybble: 0x%X and register 0x%X\n", qpd->pqm->process->is_32bit_user_mode,
 		  temp, qpd->sh_mem_bases);
@@ -109,6 +113,8 @@ static void init_process_memory(struct device_queue_manager *dqm, struct qcm_pro
 static void program_sh_mem_settings(struct device_queue_manager *dqm, struct qcm_process_device *qpd)
 {
 	struct mqd_manager *mqd;
+
+	BUG_ON(qpd->vmid < KFD_VMID_START_OFFSET);
 
 	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_COMPUTE);
 	if (mqd == NULL)
@@ -138,12 +144,6 @@ static int create_queue_nocpsch(struct device_queue_manager *dqm, struct queue *
 	print_queue(q);
 
 	mutex_lock(&dqm->lock);
-	/* later memory apertures should be initialized in lazy mode */
-	if (!is_mem_initialized)
-		if (init_memory(dqm) != 0) {
-			retval = -ENODATA;
-			goto init_memory_failed;
-		}
 
 	if (dqm->vmid_bitmap == 0 && qpd->vmid == 0) {
 		retval = -ENOMEM;
@@ -216,7 +216,6 @@ no_hqd:
 		*allocate_vmid = qpd->vmid = q->properties.vmid = 0;
 	}
 no_vmid:
-init_memory_failed:
 	mutex_unlock(&dqm->lock);
 	return retval;
 }
@@ -930,20 +929,25 @@ static bool set_cache_memory_policy(struct device_queue_manager *dqm,
 		qpd->sh_mem_ape1_limit = limit >> 16;
 	}
 
-	default_mtype = (default_policy == cache_policy_coherent) ? MTYPE_NONCACHED : MTYPE_CACHED;
-	ape1_mtype = (alternate_policy == cache_policy_coherent) ? MTYPE_NONCACHED : MTYPE_CACHED;
+	default_mtype = (default_policy == cache_policy_coherent) ?
+			MTYPE_NONCACHED :
+			MTYPE_CACHED;
 
-	qpd->sh_mem_config = ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED)
+	ape1_mtype = (alternate_policy == cache_policy_coherent) ?
+			MTYPE_NONCACHED :
+			MTYPE_CACHED;
+
+	qpd->sh_mem_config = (qpd->sh_mem_config & PTR32)
+			| ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED)
 			| DEFAULT_MTYPE(default_mtype)
 			| APE1_MTYPE(ape1_mtype);
 
-
-	if (sched_policy == KFD_SCHED_POLICY_NO_HWS)
+	if ((sched_policy == KFD_SCHED_POLICY_NO_HWS) && (qpd->vmid != 0))
 		program_sh_mem_settings(dqm, qpd);
 
-
-	pr_debug("kfd: sh_mem_config: 0x%x, ape1_base: 0x%x, ape1_limit: 0x%x\n", qpd->sh_mem_config,
-		 qpd->sh_mem_ape1_base, qpd->sh_mem_ape1_limit);
+	pr_debug("kfd: sh_mem_config: 0x%x, ape1_base: 0x%x, ape1_limit: 0x%x\n",
+		qpd->sh_mem_config, qpd->sh_mem_ape1_base,
+		qpd->sh_mem_ape1_limit);
 
 	mutex_unlock(&dqm->lock);
 	return true;
