@@ -126,7 +126,7 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
-printk("args.gpu_id = %d\n", args.gpu_id);
+printk("args.gpu_id = %d\n", args.gpu_id);	// always 40810 even though two application run simultaneously
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
 		return -EINVAL;
@@ -167,7 +167,7 @@ printk("args.gpu_id = %d\n", args.gpu_id);
 	args.queue_id = queue_id;
 	args.doorbell_address = (uint64_t)(uintptr_t)radeon_kfd_get_doorbell(filep, p, dev, queue_id);
 
-	if (copy_to_user(arg, &args, sizeof(args))) {
+	if (copy_to_user(arg, &args, sizeof(args))) {		// copy queue id, doorbell address to user
 		err = -EFAULT;
 		goto err_copy_args_out;
 	}

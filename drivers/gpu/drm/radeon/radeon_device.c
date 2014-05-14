@@ -1312,6 +1312,8 @@ int radeon_device_init(struct radeon_device *rdev,
 	if (rdev->rmmio == NULL) {
 		return -ENOMEM;
 	}
+	printk("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);
+	printk("register mmio size: %u\n", (unsigned)rdev->rmmio_size);
 	DRM_INFO("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);
 	DRM_INFO("register mmio size: %u\n", (unsigned)rdev->rmmio_size);
 

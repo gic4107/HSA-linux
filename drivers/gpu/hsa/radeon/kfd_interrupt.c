@@ -172,7 +172,7 @@ void kgd2kfd_interrupt(struct kfd_dev *kfd, const void *ih_ring_entry)
 	spin_lock(&kfd->interrupt_lock);
 
 	if (kfd->interrupts_active
-	    && kfd->device_info->scheduler_class->interrupt_isr(kfd->scheduler, ih_ring_entry)
+	    && kfd->device_info->scheduler_class->interrupt_isr(kfd->scheduler, ih_ring_entry)	// cik_static_interrupt_isr always return false for now
 	    && enqueue_ih_ring_entry(kfd, ih_ring_entry))
 		schedule_work(&kfd->interrupt_work);
 

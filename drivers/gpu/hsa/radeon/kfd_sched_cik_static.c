@@ -404,6 +404,7 @@ static int cik_static_create(struct kfd_dev *dev, struct kfd_scheduler **schedul
 	int err;
 	void *hpdptr;
 
+printk("cik_static_create\n");
 	priv = kmalloc(sizeof(*priv), GFP_KERNEL);
 	if (priv == NULL)
 		return -ENOMEM;
@@ -479,6 +480,7 @@ static void cik_static_destroy(struct kfd_scheduler *scheduler)
 {
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
 
+printk("cik_static_destroy\n");
 	radeon_kfd_vidmem_unkmap(priv->dev, priv->mqd_mem);
 	radeon_kfd_vidmem_free(priv->dev, priv->mqd_mem);
 	radeon_kfd_vidmem_free(priv->dev, priv->hpd_mem);
@@ -518,6 +520,7 @@ static void cik_static_start(struct kfd_scheduler *scheduler)
 {
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
 
+printk("cik_static_start\n");
 	radeon_kfd_vidmem_gpumap(priv->dev, priv->hpd_mem, &priv->hpd_addr);
 	radeon_kfd_vidmem_gpumap(priv->dev, priv->mqd_mem, &priv->mqd_addr);
 
@@ -530,6 +533,7 @@ static void cik_static_stop(struct kfd_scheduler *scheduler)
 {
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
 
+printk("cik_static_stop\n");
 	exit_ats(priv);
 	disable_interrupts(priv);
 
@@ -593,6 +597,7 @@ cik_static_register_process(struct kfd_scheduler *scheduler, struct kfd_process 
 
 	struct cik_static_process *hwp;
 
+printk("cik_static_register_process\n");
 	hwp = kmalloc(sizeof(*hwp), GFP_KERNEL);
 	if (hwp == NULL)
 		return -ENOMEM;
@@ -622,6 +627,7 @@ static void cik_static_deregister_process(struct kfd_scheduler *scheduler, struc
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
 	struct cik_static_process *pp = kfd_process_to_private(scheduler_process);
 
+printk("cik_static_deregister_process\n");
 	release_vmid(priv, pp->vmid);
 	kfree(pp);
 }
@@ -658,6 +664,7 @@ static void init_mqd(const struct cik_static_queue *queue, const struct cik_stat
 {
 	struct cik_mqd *mqd = queue->mqd;
 
+printk("init_mqd\n");
 	memset(mqd, 0, sizeof(*mqd));
 
 	mqd->header = 0xC0310800;
@@ -698,7 +705,9 @@ static void load_hqd(struct cik_static_private *priv, struct cik_static_queue *q
 {
 	struct kfd_dev *dev = priv->dev;
 	const struct cik_hqd_registers *qs = &queue->mqd->queue_state;
-
+	
+	/* kfd_dev only on in system */
+	// device, device's register, write value
 	WRITE_REG(dev, CP_MQD_BASE_ADDR, qs->cp_mqd_base_addr);
 	WRITE_REG(dev, CP_MQD_BASE_ADDR_HI, qs->cp_mqd_base_addr_hi);
 	WRITE_REG(dev, CP_MQD_CONTROL, qs->cp_mqd_control);
@@ -818,6 +827,7 @@ cik_static_create_queue(struct kfd_scheduler *scheduler,
 	struct cik_static_process *hwp = kfd_process_to_private(process);
 	struct cik_static_queue *hwq = kfd_queue_to_private(queue);
 
+printk("cik_static_create_queue\n");
 	if ((uint64_t)ring_address & RING_ADDRESS_BAD_BIT_MASK
 	    || (uint64_t)rptr_address & RWPTR_ADDRESS_BAD_BIT_MASK
 	    || (uint64_t)wptr_address & RWPTR_ADDRESS_BAD_BIT_MASK)
@@ -849,6 +859,7 @@ cik_static_destroy_queue(struct kfd_scheduler *scheduler, struct kfd_scheduler_q
 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
 	struct cik_static_queue *hwq = kfd_queue_to_private(queue);
 
+printk("cik_static_destroy_queue\n");
 	deactivate_queue(priv, hwq);
 
 	release_hqd(priv, hwq->queue);
@@ -892,6 +903,7 @@ cik_static_interrupt_isr(struct kfd_scheduler *scheduler, const void *ih_ring_en
 	uint32_t source_id = ihre->source_id;
 	uint32_t pipe_id;
 
+printk("cik_static_interrupt_isr\n");
 	/* We only care about CP interrupts here, they all come with a pipe. */
 	if (!int_compute_pipe(priv, ihre, &pipe_id))
 		return false;
@@ -931,6 +943,7 @@ static bool cik_static_set_cache_policy(struct kfd_scheduler *scheduler,
 	uint32_t default_mtype;
 	uint32_t ape1_mtype;
 
+printk("cik_static_set_cache_policy\n");
 	if (alternate_aperture_size == 0) {
 		/* base > limit disables APE1 */
 		proc->ape1_base = 1;

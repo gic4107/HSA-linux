@@ -159,7 +159,7 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 
 	amd_iommu_set_invalidate_ctx_cb(kfd->pdev, iommu_pasid_shutdown_callback);
 
-	if (kfd->device_info->scheduler_class->create(kfd, &kfd->scheduler)) {
+	if (kfd->device_info->scheduler_class->create(kfd, &kfd->scheduler)) {		// assign kfd->scheduler
 		amd_iommu_free_device(kfd->pdev);
 		return false;
 	}

@@ -103,7 +103,7 @@ void radeon_kfd_device_probe(struct radeon_device *rdev)
 void radeon_kfd_device_init(struct radeon_device *rdev)
 {
 	if (rdev->kfd) {
-		struct kgd2kfd_shared_resources gpu_resources = {
+		struct kgd2kfd_shared_resources gpu_resources = {	// radeon PCI resource
 			.mmio_registers = rdev->rmmio,
 
 			.compute_vmid_bitmap = 0xFF00,
