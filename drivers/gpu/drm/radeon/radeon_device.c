@@ -268,6 +268,8 @@ static int radeon_doorbell_init(struct radeon_device *rdev)
 	if (rdev->doorbell.ptr == NULL) {
 		return -ENOMEM;
 	}
+	printk("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);
+	printk("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);
 	DRM_INFO("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);
 	DRM_INFO("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);
 

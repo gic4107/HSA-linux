@@ -404,7 +404,7 @@ static int cik_static_create(struct kfd_dev *dev, struct kfd_scheduler **schedul
 	int err;
 	void *hpdptr;
 
-printk("cik_static_create\n");
+printk("cik_static_create ... ");
 	priv = kmalloc(sizeof(*priv), GFP_KERNEL);
 	if (priv == NULL)
 		return -ENOMEM;
@@ -415,6 +415,7 @@ printk("cik_static_create\n");
 
 	priv->first_pipe = dev->shared_resources.first_compute_pipe;
 	priv->num_pipes = dev->shared_resources.compute_pipe_count;
+	printk("priv->first_pipe=%d, priv->num_pipes=%d\n", priv->first_pipe, priv->num_pipes);
 
 	for (i = 0; i < priv->num_pipes * CIK_QUEUES_PER_PIPE; i++)
 		__set_bit(i, priv->free_queues);
@@ -706,6 +707,7 @@ static void load_hqd(struct cik_static_private *priv, struct cik_static_queue *q
 	struct kfd_dev *dev = priv->dev;
 	const struct cik_hqd_registers *qs = &queue->mqd->queue_state;
 	
+printk("load_hqd\n");
 	/* kfd_dev only on in system */
 	// device, device's register, write value
 	WRITE_REG(dev, CP_MQD_BASE_ADDR, qs->cp_mqd_base_addr);
@@ -751,6 +753,7 @@ static void activate_queue(struct cik_static_private *priv, struct cik_static_qu
 
 	/* Avoid sleeping while holding the SRBM lock. */
 	wptr_shadow_valid = !get_user(wptr_shadow, queue->wptr_address);
+printk("activate_queue shadow_valid=%d\n", wptr_shadow_valid);
 
 	lock_srbm_index(priv);
 	queue_select(priv, queue->queue);
@@ -836,7 +839,7 @@ printk("cik_static_create_queue\n");
 	if (ring_size > MAX_QUEUE_SIZE || ring_size < MIN_QUEUE_SIZE || !is_power_of_2(ring_size))
 		return -EINVAL;
 
-	if (!allocate_hqd(priv, &hwq->queue))
+	if (!allocate_hqd(priv, &hwq->queue))		// get hwq->queue
 		return -ENOMEM;
 
 	hwq->mqd_addr = priv->mqd_addr + sizeof(struct cik_mqd_padded) * hwq->queue;
@@ -847,8 +850,8 @@ printk("cik_static_create_queue\n");
 	hwq->doorbell_index = doorbell;
 	hwq->queue_size_encoded = ilog2(ring_size) - 3;
 
-	init_mqd(hwq, hwp);
-	activate_queue(priv, hwq);
+	init_mqd(hwq, hwp);				// set mqd's hqd with info from kfd_process and kfd_queue
+	activate_queue(priv, hwq);			// set mqd's hqd to priv (set to hardware IO address)  
 
 	return 0;
 }
@@ -903,7 +906,7 @@ cik_static_interrupt_isr(struct kfd_scheduler *scheduler, const void *ih_ring_en
 	uint32_t source_id = ihre->source_id;
 	uint32_t pipe_id;
 
-printk("cik_static_interrupt_isr\n");
+printk("cik_static_interrupt_isr, source_id=%d\n", source_id);
 	/* We only care about CP interrupts here, they all come with a pipe. */
 	if (!int_compute_pipe(priv, ihre, &pipe_id))
 		return false;
