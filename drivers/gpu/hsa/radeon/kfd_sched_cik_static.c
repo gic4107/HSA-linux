@@ -744,6 +744,7 @@ printk("load_hqd\n");
 	WRITE_REG(dev, CP_HQD_HQ_SCHEDULER1, qs->cp_hqd_hq_scheduler1);
 
 	WRITE_REG(dev, CP_HQD_ACTIVE, 1);
+	printk("write CP_HQD_ACTIVE\n");
 }
 
 static void activate_queue(struct cik_static_private *priv, struct cik_static_queue *queue)
@@ -915,7 +916,7 @@ printk("cik_static_interrupt_isr, source_id=%d\n", source_id);
 		 ihre->source_id, ihre->data, pipe_id, ihre->vmid, ihre->pasid);
 
 	switch (source_id) {
-	case CIK_INTSRC_DEQUEUE_COMPLETE:
+	case CIK_INTSRC_DEQUEUE_COMPLETE:		// 198 when HSAIL runs, one HSAIL program one interrupt_isr
 		dequeue_int_received(priv, pipe_id);
 		return false; /* Already handled. */
 

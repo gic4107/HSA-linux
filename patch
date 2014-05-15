@@ -1,145 +1,210 @@
-diff --git a/drivers/gpu/hsa/radeon/kfd_chardev.c b/drivers/gpu/hsa/radeon/kfd_chardev.c
-index 53d6651..d4a1f44 100644
---- a/drivers/gpu/hsa/radeon/kfd_chardev.c
-+++ b/drivers/gpu/hsa/radeon/kfd_chardev.c
-@@ -167,7 +167,7 @@ printk("args.gpu_id = %d\n", args.gpu_id);
- 	args.queue_id = queue_id;
- 	args.doorbell_address = (uint64_t)(uintptr_t)radeon_kfd_get_doorbell(filep, p, dev, queue_id);
+diff --git a/drivers/gpu/drm/radeon/radeon_device.c b/drivers/gpu/drm/radeon/radeon_device.c
+index 9189dc2..beac891 100644
+--- a/drivers/gpu/drm/radeon/radeon_device.c
++++ b/drivers/gpu/drm/radeon/radeon_device.c
+@@ -260,7 +260,7 @@ static int radeon_doorbell_init(struct radeon_device *rdev)
+ 	rdev->doorbell.base = pci_resource_start(rdev->pdev, 2);
+ 	rdev->doorbell.size = pci_resource_len(rdev->pdev, 2);
  
--	if (copy_to_user(arg, &args, sizeof(args))) {
-+	if (copy_to_user(arg, &args, sizeof(args))) {		// copy queue id, doorbell address to user
- 		err = -EFAULT;
- 		goto err_copy_args_out;
+-	rdev->doorbell.num_doorbells = min_t(u32, rdev->doorbell.size / sizeof(u32), RADEON_MAX_DOORBELLS);
++	rdev->doorbell.num_doorbells = min_t(u32, rdev->doorbell.size / sizeof(u32), RADEON_MAX_DOORBELLS);	// RADEON_MAX_DOORBELLS=1024
+ 	if (rdev->doorbell.num_doorbells == 0)
+ 		return -EINVAL;
+ 
+@@ -268,10 +268,8 @@ static int radeon_doorbell_init(struct radeon_device *rdev)
+ 	if (rdev->doorbell.ptr == NULL) {
+ 		return -ENOMEM;
  	}
-diff --git a/drivers/gpu/hsa/radeon/kfd_doorbell.c b/drivers/gpu/hsa/radeon/kfd_doorbell.c
-index 7e87038..faa9ff4 100644
---- a/drivers/gpu/hsa/radeon/kfd_doorbell.c
-+++ b/drivers/gpu/hsa/radeon/kfd_doorbell.c
-@@ -69,6 +69,7 @@ void radeon_kfd_doorbell_init(struct kfd_dev *kfd)
- ** not through user-mode mmap of /dev/kfd. */
- int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct *vma)
- {
-+printk("radeon_kfd_doorbell_mmap\n");
- 	unsigned int device_index;
- 	struct kfd_dev *dev;
- 	phys_addr_t start;
-@@ -107,6 +108,7 @@ int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct
- static int
- map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev)
- {
-+printk("map_doorbells");
- 	struct kfd_process_device *pdd = radeon_kfd_get_process_device_data(dev, process);
+-	printk("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);
+-	printk("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);
+-	DRM_INFO("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);
+-	DRM_INFO("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);
++	DRM_INFO("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);		// 0xD0000000	
++	DRM_INFO("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);			// 8388608
  
- 	if (pdd == NULL)
-@@ -115,7 +117,7 @@ map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *
- 	if (pdd->doorbell_mapping == NULL) {
- 		unsigned long offset = (KFD_MMAP_DOORBELL_START + dev->id) << PAGE_SHIFT;
- 		doorbell_t __user *doorbell_mapping;
--
-+printk("call vm_mmap\n");
- 		doorbell_mapping = (doorbell_t __user *)vm_mmap(devkfd, 0, doorbell_process_allocation(), PROT_WRITE,
- 								MAP_SHARED, offset);
- 		if (IS_ERR(doorbell_mapping))
-@@ -129,8 +131,9 @@ map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *
+ 	memset(&rdev->doorbell.used, 0, sizeof(rdev->doorbell.used));
  
- /* Get the user-mode address of a doorbell. Assumes that the process mutex is being held. */
- doorbell_t __user *radeon_kfd_get_doorbell(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev,
--					   unsigned int doorbell_index)
-+					   unsigned int doorbell_index)		// queue id 
- {
-+printk("radeon_kfd_get_doorbell\n");
- 	struct kfd_process_device *pdd;
- 	int err;
+@@ -1314,10 +1312,8 @@ int radeon_device_init(struct radeon_device *rdev,
+ 	if (rdev->rmmio == NULL) {
+ 		return -ENOMEM;
+ 	}
+-	printk("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);
+-	printk("register mmio size: %u\n", (unsigned)rdev->rmmio_size);
+-	DRM_INFO("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);
+-	DRM_INFO("register mmio size: %u\n", (unsigned)rdev->rmmio_size);
++	DRM_INFO("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);		// 0xFEB00000
++	DRM_INFO("register mmio size: %u\n", (unsigned)rdev->rmmio_size);		// 262144
  
+ 	/* doorbell bar mapping */
+ 	if (rdev->family >= CHIP_BONAIRE)
 diff --git a/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c b/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c
-index 9ce9d80..a9ebcc0 100644
+index 6fdf9f8..e796a5f 100644
 --- a/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c
 +++ b/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c
-@@ -404,6 +404,7 @@ static int cik_static_create(struct kfd_dev *dev, struct kfd_scheduler **schedul
- 	int err;
- 	void *hpdptr;
+@@ -744,6 +744,7 @@ printk("load_hqd\n");
+ 	WRITE_REG(dev, CP_HQD_HQ_SCHEDULER1, qs->cp_hqd_hq_scheduler1);
  
-+printk("cik_static_create\n");
- 	priv = kmalloc(sizeof(*priv), GFP_KERNEL);
- 	if (priv == NULL)
- 		return -ENOMEM;
-@@ -479,6 +480,7 @@ static void cik_static_destroy(struct kfd_scheduler *scheduler)
- {
- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
- 
-+printk("cik_static_destroy\n");
- 	radeon_kfd_vidmem_unkmap(priv->dev, priv->mqd_mem);
- 	radeon_kfd_vidmem_free(priv->dev, priv->mqd_mem);
- 	radeon_kfd_vidmem_free(priv->dev, priv->hpd_mem);
-@@ -518,6 +520,7 @@ static void cik_static_start(struct kfd_scheduler *scheduler)
- {
- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
- 
-+printk("cik_static_start\n");
- 	radeon_kfd_vidmem_gpumap(priv->dev, priv->hpd_mem, &priv->hpd_addr);
- 	radeon_kfd_vidmem_gpumap(priv->dev, priv->mqd_mem, &priv->mqd_addr);
- 
-@@ -530,6 +533,7 @@ static void cik_static_stop(struct kfd_scheduler *scheduler)
- {
- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
- 
-+printk("cik_static_stop\n");
- 	exit_ats(priv);
- 	disable_interrupts(priv);
- 
-@@ -593,6 +597,7 @@ cik_static_register_process(struct kfd_scheduler *scheduler, struct kfd_process
- 
- 	struct cik_static_process *hwp;
- 
-+printk("cik_static_register_process\n");
- 	hwp = kmalloc(sizeof(*hwp), GFP_KERNEL);
- 	if (hwp == NULL)
- 		return -ENOMEM;
-@@ -622,6 +627,7 @@ static void cik_static_deregister_process(struct kfd_scheduler *scheduler, struc
- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
- 	struct cik_static_process *pp = kfd_process_to_private(scheduler_process);
- 
-+printk("cik_static_deregister_process\n");
- 	release_vmid(priv, pp->vmid);
- 	kfree(pp);
+ 	WRITE_REG(dev, CP_HQD_ACTIVE, 1);
++	printk("write CP_HQD_ACTIVE\n");
  }
-@@ -658,6 +664,7 @@ static void init_mqd(const struct cik_static_queue *queue, const struct cik_stat
- {
- 	struct cik_mqd *mqd = queue->mqd;
  
-+printk("init_mqd\n");
- 	memset(mqd, 0, sizeof(*mqd));
+ static void activate_queue(struct cik_static_private *priv, struct cik_static_queue *queue)
+@@ -915,7 +916,7 @@ printk("cik_static_interrupt_isr, source_id=%d\n", source_id);
+ 		 ihre->source_id, ihre->data, pipe_id, ihre->vmid, ihre->pasid);
  
- 	mqd->header = 0xC0310800;
-@@ -818,6 +825,7 @@ cik_static_create_queue(struct kfd_scheduler *scheduler,
- 	struct cik_static_process *hwp = kfd_process_to_private(process);
- 	struct cik_static_queue *hwq = kfd_queue_to_private(queue);
+ 	switch (source_id) {
+-	case CIK_INTSRC_DEQUEUE_COMPLETE:
++	case CIK_INTSRC_DEQUEUE_COMPLETE:		// 198 when HSAIL runs, one HSAIL program one interrupt_isr
+ 		dequeue_int_received(priv, pipe_id);
+ 		return false; /* Already handled. */
  
-+printk("cik_static_create_queue\n");
- 	if ((uint64_t)ring_address & RING_ADDRESS_BAD_BIT_MASK
- 	    || (uint64_t)rptr_address & RWPTR_ADDRESS_BAD_BIT_MASK
- 	    || (uint64_t)wptr_address & RWPTR_ADDRESS_BAD_BIT_MASK)
-@@ -849,6 +857,7 @@ cik_static_destroy_queue(struct kfd_scheduler *scheduler, struct kfd_scheduler_q
- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
- 	struct cik_static_queue *hwq = kfd_queue_to_private(queue);
- 
-+printk("cik_static_destroy_queue\n");
- 	deactivate_queue(priv, hwq);
- 
- 	release_hqd(priv, hwq->queue);
-@@ -892,6 +901,7 @@ cik_static_interrupt_isr(struct kfd_scheduler *scheduler, const void *ih_ring_en
- 	uint32_t source_id = ihre->source_id;
- 	uint32_t pipe_id;
- 
-+printk("cik_static_interrupt_isr\n");
- 	/* We only care about CP interrupts here, they all come with a pipe. */
- 	if (!int_compute_pipe(priv, ihre, &pipe_id))
- 		return false;
-@@ -931,6 +941,7 @@ static bool cik_static_set_cache_policy(struct kfd_scheduler *scheduler,
- 	uint32_t default_mtype;
- 	uint32_t ape1_mtype;
- 
-+printk("cik_static_set_cache_policy\n");
- 	if (alternate_aperture_size == 0) {
- 		/* base > limit disables APE1 */
- 		proc->ape1_base = 1;
+diff --git a/patch b/patch
+index b568bf8..e69de29 100644
+--- a/patch
++++ b/patch
+@@ -1,145 +0,0 @@
+-diff --git a/drivers/gpu/hsa/radeon/kfd_chardev.c b/drivers/gpu/hsa/radeon/kfd_chardev.c
+-index 53d6651..d4a1f44 100644
+---- a/drivers/gpu/hsa/radeon/kfd_chardev.c
+-+++ b/drivers/gpu/hsa/radeon/kfd_chardev.c
+-@@ -167,7 +167,7 @@ printk("args.gpu_id = %d\n", args.gpu_id);
+- 	args.queue_id = queue_id;
+- 	args.doorbell_address = (uint64_t)(uintptr_t)radeon_kfd_get_doorbell(filep, p, dev, queue_id);
+- 
+--	if (copy_to_user(arg, &args, sizeof(args))) {
+-+	if (copy_to_user(arg, &args, sizeof(args))) {		// copy queue id, doorbell address to user
+- 		err = -EFAULT;
+- 		goto err_copy_args_out;
+- 	}
+-diff --git a/drivers/gpu/hsa/radeon/kfd_doorbell.c b/drivers/gpu/hsa/radeon/kfd_doorbell.c
+-index 7e87038..faa9ff4 100644
+---- a/drivers/gpu/hsa/radeon/kfd_doorbell.c
+-+++ b/drivers/gpu/hsa/radeon/kfd_doorbell.c
+-@@ -69,6 +69,7 @@ void radeon_kfd_doorbell_init(struct kfd_dev *kfd)
+- ** not through user-mode mmap of /dev/kfd. */
+- int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct *vma)
+- {
+-+printk("radeon_kfd_doorbell_mmap\n");
+- 	unsigned int device_index;
+- 	struct kfd_dev *dev;
+- 	phys_addr_t start;
+-@@ -107,6 +108,7 @@ int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct
+- static int
+- map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev)
+- {
+-+printk("map_doorbells");
+- 	struct kfd_process_device *pdd = radeon_kfd_get_process_device_data(dev, process);
+- 
+- 	if (pdd == NULL)
+-@@ -115,7 +117,7 @@ map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *
+- 	if (pdd->doorbell_mapping == NULL) {
+- 		unsigned long offset = (KFD_MMAP_DOORBELL_START + dev->id) << PAGE_SHIFT;
+- 		doorbell_t __user *doorbell_mapping;
+--
+-+printk("call vm_mmap\n");
+- 		doorbell_mapping = (doorbell_t __user *)vm_mmap(devkfd, 0, doorbell_process_allocation(), PROT_WRITE,
+- 								MAP_SHARED, offset);
+- 		if (IS_ERR(doorbell_mapping))
+-@@ -129,8 +131,9 @@ map_doorbells(struct file *devkfd, struct kfd_process *process, struct kfd_dev *
+- 
+- /* Get the user-mode address of a doorbell. Assumes that the process mutex is being held. */
+- doorbell_t __user *radeon_kfd_get_doorbell(struct file *devkfd, struct kfd_process *process, struct kfd_dev *dev,
+--					   unsigned int doorbell_index)
+-+					   unsigned int doorbell_index)		// queue id 
+- {
+-+printk("radeon_kfd_get_doorbell\n");
+- 	struct kfd_process_device *pdd;
+- 	int err;
+- 
+-diff --git a/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c b/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c
+-index 9ce9d80..a9ebcc0 100644
+---- a/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c
+-+++ b/drivers/gpu/hsa/radeon/kfd_sched_cik_static.c
+-@@ -404,6 +404,7 @@ static int cik_static_create(struct kfd_dev *dev, struct kfd_scheduler **schedul
+- 	int err;
+- 	void *hpdptr;
+- 
+-+printk("cik_static_create\n");
+- 	priv = kmalloc(sizeof(*priv), GFP_KERNEL);
+- 	if (priv == NULL)
+- 		return -ENOMEM;
+-@@ -479,6 +480,7 @@ static void cik_static_destroy(struct kfd_scheduler *scheduler)
+- {
+- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
+- 
+-+printk("cik_static_destroy\n");
+- 	radeon_kfd_vidmem_unkmap(priv->dev, priv->mqd_mem);
+- 	radeon_kfd_vidmem_free(priv->dev, priv->mqd_mem);
+- 	radeon_kfd_vidmem_free(priv->dev, priv->hpd_mem);
+-@@ -518,6 +520,7 @@ static void cik_static_start(struct kfd_scheduler *scheduler)
+- {
+- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
+- 
+-+printk("cik_static_start\n");
+- 	radeon_kfd_vidmem_gpumap(priv->dev, priv->hpd_mem, &priv->hpd_addr);
+- 	radeon_kfd_vidmem_gpumap(priv->dev, priv->mqd_mem, &priv->mqd_addr);
+- 
+-@@ -530,6 +533,7 @@ static void cik_static_stop(struct kfd_scheduler *scheduler)
+- {
+- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
+- 
+-+printk("cik_static_stop\n");
+- 	exit_ats(priv);
+- 	disable_interrupts(priv);
+- 
+-@@ -593,6 +597,7 @@ cik_static_register_process(struct kfd_scheduler *scheduler, struct kfd_process
+- 
+- 	struct cik_static_process *hwp;
+- 
+-+printk("cik_static_register_process\n");
+- 	hwp = kmalloc(sizeof(*hwp), GFP_KERNEL);
+- 	if (hwp == NULL)
+- 		return -ENOMEM;
+-@@ -622,6 +627,7 @@ static void cik_static_deregister_process(struct kfd_scheduler *scheduler, struc
+- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
+- 	struct cik_static_process *pp = kfd_process_to_private(scheduler_process);
+- 
+-+printk("cik_static_deregister_process\n");
+- 	release_vmid(priv, pp->vmid);
+- 	kfree(pp);
+- }
+-@@ -658,6 +664,7 @@ static void init_mqd(const struct cik_static_queue *queue, const struct cik_stat
+- {
+- 	struct cik_mqd *mqd = queue->mqd;
+- 
+-+printk("init_mqd\n");
+- 	memset(mqd, 0, sizeof(*mqd));
+- 
+- 	mqd->header = 0xC0310800;
+-@@ -818,6 +825,7 @@ cik_static_create_queue(struct kfd_scheduler *scheduler,
+- 	struct cik_static_process *hwp = kfd_process_to_private(process);
+- 	struct cik_static_queue *hwq = kfd_queue_to_private(queue);
+- 
+-+printk("cik_static_create_queue\n");
+- 	if ((uint64_t)ring_address & RING_ADDRESS_BAD_BIT_MASK
+- 	    || (uint64_t)rptr_address & RWPTR_ADDRESS_BAD_BIT_MASK
+- 	    || (uint64_t)wptr_address & RWPTR_ADDRESS_BAD_BIT_MASK)
+-@@ -849,6 +857,7 @@ cik_static_destroy_queue(struct kfd_scheduler *scheduler, struct kfd_scheduler_q
+- 	struct cik_static_private *priv = kfd_scheduler_to_private(scheduler);
+- 	struct cik_static_queue *hwq = kfd_queue_to_private(queue);
+- 
+-+printk("cik_static_destroy_queue\n");
+- 	deactivate_queue(priv, hwq);
+- 
+- 	release_hqd(priv, hwq->queue);
+-@@ -892,6 +901,7 @@ cik_static_interrupt_isr(struct kfd_scheduler *scheduler, const void *ih_ring_en
+- 	uint32_t source_id = ihre->source_id;
+- 	uint32_t pipe_id;
+- 
+-+printk("cik_static_interrupt_isr\n");
+- 	/* We only care about CP interrupts here, they all come with a pipe. */
+- 	if (!int_compute_pipe(priv, ihre, &pipe_id))
+- 		return false;
+-@@ -931,6 +941,7 @@ static bool cik_static_set_cache_policy(struct kfd_scheduler *scheduler,
+- 	uint32_t default_mtype;
+- 	uint32_t ape1_mtype;
+- 
+-+printk("cik_static_set_cache_policy\n");
+- 	if (alternate_aperture_size == 0) {
+- 		/* base > limit disables APE1 */
+- 		proc->ape1_base = 1;

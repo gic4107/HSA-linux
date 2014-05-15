@@ -260,7 +260,7 @@ static int radeon_doorbell_init(struct radeon_device *rdev)
 	rdev->doorbell.base = pci_resource_start(rdev->pdev, 2);
 	rdev->doorbell.size = pci_resource_len(rdev->pdev, 2);
 
-	rdev->doorbell.num_doorbells = min_t(u32, rdev->doorbell.size / sizeof(u32), RADEON_MAX_DOORBELLS);
+	rdev->doorbell.num_doorbells = min_t(u32, rdev->doorbell.size / sizeof(u32), RADEON_MAX_DOORBELLS);	// RADEON_MAX_DOORBELLS=1024
 	if (rdev->doorbell.num_doorbells == 0)
 		return -EINVAL;
 
@@ -268,10 +268,8 @@ static int radeon_doorbell_init(struct radeon_device *rdev)
 	if (rdev->doorbell.ptr == NULL) {
 		return -ENOMEM;
 	}
-	printk("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);
-	printk("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);
-	DRM_INFO("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);
-	DRM_INFO("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);
+	DRM_INFO("doorbell mmio base: 0x%08X\n", (uint32_t)rdev->doorbell.base);		// 0xD0000000	
+	DRM_INFO("doorbell mmio size: %u\n", (unsigned)rdev->doorbell.size);			// 8388608
 
 	memset(&rdev->doorbell.used, 0, sizeof(rdev->doorbell.used));
 
@@ -1314,10 +1312,8 @@ int radeon_device_init(struct radeon_device *rdev,
 	if (rdev->rmmio == NULL) {
 		return -ENOMEM;
 	}
-	printk("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);
-	printk("register mmio size: %u\n", (unsigned)rdev->rmmio_size);
-	DRM_INFO("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);
-	DRM_INFO("register mmio size: %u\n", (unsigned)rdev->rmmio_size);
+	DRM_INFO("register mmio base: 0x%08X\n", (uint32_t)rdev->rmmio_base);		// 0xFEB00000
+	DRM_INFO("register mmio size: %u\n", (unsigned)rdev->rmmio_size);		// 262144
 
 	/* doorbell bar mapping */
 	if (rdev->family >= CHIP_BONAIRE)
