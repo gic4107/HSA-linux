@@ -225,6 +225,7 @@ static void queue_select(struct cik_static_private *priv, unsigned int queue)
 		make_srbm_gfx_cntl_mpqv(mec+1, pipe_in_mec, queue_in_pipe, 0));
 #endif
 
+        printk("write SRBM_GFX_CNTL=%u\n", make_srbm_gfx_cntl_mpqv(mec+1, pipe_in_mec, queue_in_pipe, 0));
 	WRITE_REG(priv->dev, SRBM_GFX_CNTL, make_srbm_gfx_cntl_mpqv(mec+1, pipe_in_mec, queue_in_pipe, 0));
 }
 
@@ -708,6 +709,42 @@ static void load_hqd(struct cik_static_private *priv, struct cik_static_queue *q
 	const struct cik_hqd_registers *qs = &queue->mqd->queue_state;
 	
 printk("load_hqd\n");
+        printk("CP_MQD_BASE_ADDR=%u\n", qs->cp_mqd_base_addr);
+        printk("CP_MQD_BASE_ADDR_HI=%u\n", qs->cp_mqd_base_addr_hi);
+        printk("CP_MQD_CONTROL=%u\n", qs->cp_mqd_control);
+
+        printk("CP_HQD_PQ_BASE=%u\n", qs->cp_hqd_pq_base);
+        printk("CP_HQD_PQ_BASE_HI=%u\n", qs->cp_hqd_pq_base_hi);
+        printk("CP_HQD_PQ_CONTROL=%u\n", qs->cp_hqd_pq_control);
+        /* DOORBELL_CONTROL before WPTR because WPTR writes are dropped if DOORBELL_HIT is set. */
+        printk("CP_HQD_PQ_DOORBELL_CONTROL=%u\n", qs->cp_hqd_pq_doorbell_control);
+        printk("CP_HQD_PQ_WPTR=%u\n", qs->cp_hqd_pq_wptr);
+        printk("CP_HQD_PQ_RPTR=%u\n", qs->cp_hqd_pq_rptr);
+        printk("CP_HQD_PQ_RPTR_REPORT_ADDR=%u\n", qs->cp_hqd_pq_rptr_report_addr);
+        printk("CP_HQD_PQ_RPTR_REPORT_ADDR_HI=%u\n", qs->cp_hqd_pq_rptr_report_addr_hi);
+
+        printk("CP_HQD_VMID=%u\n", qs->cp_hqd_vmid);
+        printk("CP_HQD_PERSISTENT_STATE=%u\n", qs->cp_hqd_persistent_state);
+        printk("CP_HQD_QUANTUM=%u\n", qs->cp_hqd_quantum);
+        printk("CP_HQD_PIPE_PRIORITY=%u\n", qs->cp_hqd_pipe_priority);
+        printk("CP_HQD_QUEUE_PRIORITY=%u\n", qs->cp_hqd_queue_priority);
+
+        printk("CP_HQD_IB_CONTROL=%u\n", qs->cp_hqd_ib_control);
+        printk("CP_HQD_IB_BASE_ADDR=%u\n", qs->cp_hqd_ib_base_addr);
+        printk("CP_HQD_IB_BASE_ADDR_HI=%u\n", qs->cp_hqd_ib_base_addr_hi);
+        printk("CP_HQD_IB_RPTR=%u\n", qs->cp_hqd_ib_rptr);
+        printk("CP_HQD_SEMA_CMD=%u\n", qs->cp_hqd_sema_cmd);
+        printk("CP_HQD_MSG_TYPE=%u\n", qs->cp_hqd_msg_type);
+        printk("CP_HQD_ATOMIC0_PREOP_LO=%u\n", qs->cp_hqd_atomic0_preop_lo);
+        printk("CP_HQD_ATOMIC0_PREOP_HI=%u\n", qs->cp_hqd_atomic0_preop_hi);
+        printk("CP_HQD_ATOMIC1_PREOP_LO=%u\n", qs->cp_hqd_atomic1_preop_lo);
+        printk("CP_HQD_ATOMIC1_PREOP_HI=%u\n", qs->cp_hqd_atomic1_preop_hi);
+        printk("CP_HQD_HQ_SCHEDULER0=%u\n", qs->cp_hqd_hq_scheduler0);
+        printk("CP_HQD_HQ_SCHEDULER1=%u\n", qs->cp_hqd_hq_scheduler1);
+
+        printk("CP_HQD_ACTIVE=%u\n", 1);
+
+
 	/* kfd_dev only on in system */
 	// device, device's register, write value
 	WRITE_REG(dev, CP_MQD_BASE_ADDR, qs->cp_mqd_base_addr);
