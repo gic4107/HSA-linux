@@ -150,21 +150,22 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	q_properties.priority = args.queue_priority;
 	q_properties.queue_address = args.ring_base_address;
 	q_properties.queue_size = args.ring_size;
-	q_properties.read_ptr = args.read_pointer_address;
-	q_properties.write_ptr = args.write_pointer_address;
+	q_properties.read_ptr = (qptr_t *) args.read_pointer_address;
+	q_properties.write_ptr = (qptr_t *) args.write_pointer_address;
 
 
 	pr_debug("%s Arguments: Queue Percentage (%d, %d)\n"
 			"Queue Priority (%d, %d)\n"
 			"Queue Address (0x%llX, 0x%llX)\n"
-			"Queue Size (%llX, %u)\n",
-			"Queue r/w Pointers (%llX, %llX)\n",
+			"Queue Size (0x%llX, %u)\n"
+			"Queue r/w Pointers (0x%llX, 0x%llX)\n",
 			__func__,
 			q_properties.queue_percent, args.queue_percentage,
 			q_properties.priority, args.queue_priority,
 			q_properties.queue_address, args.ring_base_address,
 			q_properties.queue_size, args.ring_size,
-			q_properties.read_ptr, q_properties.write_ptr);
+			(uint64_t) q_properties.read_ptr,
+			(uint64_t) q_properties.write_ptr);
 
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
