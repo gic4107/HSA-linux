@@ -317,7 +317,7 @@ static struct mqd_manager *get_mqd_manager_nocpsch(struct device_queue_manager *
 {
 	struct mqd_manager *mqd;
 
-	BUG_ON(!dqm || type > KFD_MQD_TYPE_MAX);
+	BUG_ON(!dqm || type >= KFD_MQD_TYPE_MAX);
 
 	pr_debug("kfd: In func %s mqd type %d\n", __func__, type);
 

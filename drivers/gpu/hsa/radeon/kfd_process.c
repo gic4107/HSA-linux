@@ -146,15 +146,15 @@ static struct kfd_process *create_process(const struct task_struct *thread)
 	process = kzalloc(sizeof(*process), GFP_KERNEL);
 
 	if (!process)
-		goto err_alloc;
+		goto err_alloc_process;
 
 	process->queues = kmalloc_array(INITIAL_QUEUE_ARRAY_SIZE, sizeof(process->queues[0]), GFP_KERNEL);
 	if (!process->queues)
-		goto err_alloc;
+		goto err_alloc_queues;
 
 	process->pasid = radeon_kfd_pasid_alloc();
 	if (process->pasid == 0)
-		goto err_alloc;
+		goto err_alloc_pasid;
 
 	mutex_init(&process->mutex);
 
@@ -178,9 +178,11 @@ err_process_pqm_init:
 	radeon_kfd_pasid_free(process->pasid);
 	list_del(&process->processes_list);
 	thread->mm->kfd_process = NULL;
-err_alloc:
+err_alloc_pasid:
 	kfree(process->queues);
+err_alloc_queues:
 	kfree(process);
+err_alloc_process:
 	return ERR_PTR(err);
 }
 
