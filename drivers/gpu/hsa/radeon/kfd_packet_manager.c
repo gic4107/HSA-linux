@@ -82,9 +82,10 @@ static int pm_allocate_runlist_ib(struct packet_manager *pm, unsigned int **rl_b
 	int retval;
 	BUG_ON(!pm);
 	BUG_ON(pm->allocated == true);
+	BUG_ON(is_over_subscription == NULL);
 
 	pm_calc_rlib_size(pm, rl_buffer_size, is_over_subscription);
-	if (is_over_subscription &&
+	if (*is_over_subscription &&
 			sched_policy == KFD_SCHED_POLICY_HWS_NO_OVERSUBSCRIPTION)
 		return -EFAULT;
 

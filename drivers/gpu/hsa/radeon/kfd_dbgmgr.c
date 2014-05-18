@@ -70,42 +70,36 @@ kfd_dbgmgr_destroy(struct kfd_dbgmgr *pmgr)
 bool
 kfd_dbgmgr_create(struct kfd_dbgmgr **ppmgr, struct kfd_dev *pdev)
 {
-
-	bool success = false;
 	DBGDEV_TYPE  type = DBGDEV_TYPE_DIQ;
 	struct kfd_dbgmgr *new_buff;
 
+	BUG_ON(pdev == NULL);
+	BUG_ON(!pdev->init_complete);
+
 	new_buff = kfd_alloc_struct(new_buff);
 	if (!new_buff)
-		dev_info(NULL, "Error! kfd: In func %s >> failed to allocate dbgmgr instance\n", __func__);
-
-	if (!pdev)
-		dev_info(NULL, "Error! kfd: In func %s >> NULL device received\n", __func__);
-
-	if (!pdev->init_complete)
-		dev_info(NULL, "Error! kfd: In func %s >> Call to create dbgmgr before dev. Init\n", __func__);
-
-
-	if ((new_buff) &&
-		(pdev) &&
-		(pdev->init_complete)) {
-
-		new_buff->pasid = 0;
-		new_buff->dev = pdev;
-		new_buff->dbgdev = kfd_alloc_struct(new_buff->dbgdev);
-		if (new_buff->dbgdev) {
-			success = true;
-			/* get actual type of DBGDevice cpsch or not */
-			if (sched_policy == KFD_SCHED_POLICY_NO_HWS)
-				type = DBGDEV_TYPE_NODIQ;
-
-			kfd_dbgdev_init(new_buff->dbgdev, pdev, type);
-			*ppmgr = new_buff;
-		} else {
-			dev_info(NULL, "Error! kfd: In func %s >> failed to allocate dbgdev\n", __func__);
-		}
+	{
+		dev_err(NULL, "Error! kfd: In func %s >> failed to allocate dbgmgr instance\n", __func__);
+		return false;
 	}
-	return success;
+
+	new_buff->pasid = 0;
+	new_buff->dev = pdev;
+	new_buff->dbgdev = kfd_alloc_struct(new_buff->dbgdev);
+	if (!new_buff->dbgdev) {
+		dev_err(NULL, "Error! kfd: In func %s >> failed to allocate dbgdev\n", __func__);
+		kfree(new_buff);
+		return false;
+	}
+
+	/* get actual type of DBGDevice cpsch or not */
+	if (sched_policy == KFD_SCHED_POLICY_NO_HWS)
+		type = DBGDEV_TYPE_NODIQ;
+
+	kfd_dbgdev_init(new_buff->dbgdev, pdev, type);
+	*ppmgr = new_buff;
+
+	return true;
 }
 
 /*===========================================================================*/

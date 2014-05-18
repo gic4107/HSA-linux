@@ -416,6 +416,7 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		mqd->uninitialize = uninitialize;
 		break;
 	default:
+		kfree(mqd);
 		return NULL;
 		break;
 	}

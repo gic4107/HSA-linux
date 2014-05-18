@@ -192,11 +192,11 @@ create_process(const struct task_struct *thread)
 
 	process->queues = kmalloc_array(INITIAL_QUEUE_ARRAY_SIZE, sizeof(process->queues[0]), GFP_KERNEL);
 	if (!process->queues)
-		goto err_alloc;
+		goto err_alloc_queues;
 
 	process->pasid = radeon_kfd_pasid_alloc();
 	if (process->pasid == 0)
-		goto err_alloc;
+		goto err_alloc_queues;
 
 	mutex_init(&process->mutex);
 
@@ -222,8 +222,9 @@ create_process(const struct task_struct *thread)
 err_process_pqm_init:
 err_mmu_notifier:
 	radeon_kfd_pasid_free(process->pasid);
-err_alloc:
+err_alloc_queues:
 	kfree(process->queues);
+err_alloc:
 	kfree(process);
 	return ERR_PTR(err);
 }
