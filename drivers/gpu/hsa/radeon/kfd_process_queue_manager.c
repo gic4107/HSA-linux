@@ -273,10 +273,10 @@ int pqm_destroy_queue(struct process_queue_manager *pqm, unsigned int qid)
 		if (retval != 0)
 			return retval;
 
-		list_del(&pqn->process_queue_list);
 		uninit_queue(pqn->q);
 	}
 
+	list_del(&pqn->process_queue_list);
 	kfree(pqn);
 	clear_bit(qid, pqm->queue_slot_bitmap);
 

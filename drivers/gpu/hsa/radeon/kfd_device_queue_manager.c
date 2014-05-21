@@ -759,6 +759,10 @@ static void destroy_kernel_queue_cpsch(struct device_queue_manager *dqm,
 {
 	BUG_ON(!dqm || !kq);
 
+	pr_debug("kfd: In %s\n", __func__);
+
+	dqm->destroy_queues(dqm);
+
 	mutex_lock(&dqm->lock);
 	list_del(&kq->list);
 	dqm->queue_count--;
