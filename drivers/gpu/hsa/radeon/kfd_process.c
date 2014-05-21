@@ -28,6 +28,7 @@
 struct mm_struct;
 
 #include "kfd_priv.h"
+#include "kfd_dbgmgr.h"
 
 /* Initial size for the array of queues.
  * The allocated size is doubled each time it is exceeded up to MAX_PROCESS_QUEUES. */
@@ -328,6 +329,7 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 	void *mem;
 	int id;
 
+	pr_debug("\t unbinding process... pasid is %u\n", pasid);
 	p = find_process(current);
 	if (p == NULL)
 		return;
@@ -338,6 +340,9 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 	BUG_ON(pdd == NULL);
 
 	mutex_lock(&p->mutex);
+
+	pr_debug("\t kfd process pasid is %u\n", p->pasid);
+	pr_debug("\t dev pointer is %p\n", dev);
 
 	radeon_kfd_doorbell_unmap(pdd);
 
@@ -460,7 +465,6 @@ struct kfd_queue *radeon_kfd_get_queue(struct kfd_process *p, unsigned int queue
 	 * remove_queue would have to NULL removed queues. */
 	return (queue_id < p->queue_array_size && test_bit(queue_id, p->allocated_queue_bitmap)) ? p->queues[queue_id] : NULL;
 }
-
 
 struct kfd_process_device *kfd_get_first_process_device_data(struct kfd_process *p)
 {

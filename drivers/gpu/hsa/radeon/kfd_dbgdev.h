@@ -33,7 +33,7 @@ enum {
 };
 
 enum {
-	PRIV_QUEUE_SYNC_TIME_MS = 10
+	PRIV_QUEUE_SYNC_TIME_MS = 200
 };
 
 /* CONTEXT reg space definition */

@@ -32,6 +32,8 @@ static inline struct process_queue_node *get_queue_by_qid(struct process_queue_m
 	struct process_queue_node *pqn;
 	BUG_ON(!pqm);
 
+	pr_debug("kfd: In %s qid (%d)\n", __func__, qid);
+
 	list_for_each_entry(pqn, &pqm->queues, process_queue_list) {
 		if (pqn->q && pqn->q->properties.queue_id == qid)
 			return pqn;

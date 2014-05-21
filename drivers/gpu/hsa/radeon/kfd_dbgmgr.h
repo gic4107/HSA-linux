@@ -30,6 +30,10 @@
  * SQ_IND_CMD_CMD enum
  */
 
+
+/* must align with hsakmttypes definition. */
+#pragma pack(push, 4)
+
 typedef enum _HSA_DBG_WAVEOP {
 	HSA_DBG_WAVEOP_HALT = 1,	/* Halts a wavefront  */
 	HSA_DBG_WAVEOP_RESUME = 2,	/* Resumes a wavefront  */
@@ -207,6 +211,9 @@ typedef struct _HsaEvent {
 	HsaEventData EventData;
 } HsaEvent;
 
+
+#pragma pack(pop)
+
 typedef enum _DBGDEV_TYPE {
 	DBGDEV_TYPE_ILLEGAL = 0,
 	DBGDEV_TYPE_NODIQ = 1,
@@ -272,5 +279,4 @@ long kfd_dbgmgr_register(struct kfd_dbgmgr *pmgr, struct kfd_process *p);
 long kfd_dbgmgr_unregister(struct kfd_dbgmgr *pmgr, struct kfd_process *p);
 long kfd_dbgmgr_wave_control(struct kfd_dbgmgr *pmgr, struct dbg_wave_control_info *wac_info);
 long kfd_dbgmgr_address_watch(struct kfd_dbgmgr *pmgr, struct dbg_address_watch_info *adw_info);
-
 #endif				/* KFD_DBGMGR_H_ */

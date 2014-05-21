@@ -153,15 +153,15 @@ dbgdev_diq_submit_ib(struct kfd_dbgdev *dbgdev,
 			rm_packet->bitfields2.event_type = CACHE_FLUSH_AND_INV_TS_EVENT;
 			rm_packet->bitfields2.event_index = event_index___release_mem__end_of_pipe;
 			rm_packet->bitfields2.cache_policy = cache_policy___release_mem__lru;
-			rm_packet->bitfields2.atc = 1;
+			rm_packet->bitfields2.atc = 0;
 			rm_packet->bitfields2.tc_wb_action_ena = 1;
 
-			addr.quad_part = vmid0_address_rm;	/* gpu mapping */
+			addr.quad_part = vmid0_address_rm;
 
 			rm_packet->bitfields4.address_lo_32b = addr.u.low_part >> 2;
 			rm_packet->address_hi = addr.u.high_part;
 
-			rm_packet->bitfields3.data_sel = data_sel___release_mem__send_32_bit_low;
+			rm_packet->bitfields3.data_sel = data_sel___release_mem__send_64_bit_data;
 			rm_packet->bitfields3.int_sel = int_sel___release_mem__send_data_after_write_confirm;
 			rm_packet->bitfields3.dst_sel = dst_sel___release_mem__memory_controller;
 
@@ -173,7 +173,7 @@ dbgdev_diq_submit_ib(struct kfd_dbgdev *dbgdev,
 
 			/* Wait till CP writes sync code: */
 
-			fence_wait_timeout((unsigned int *) rm_state, QUEUESTATE__ACTIVE, 500);
+			status = fence_wait_timeout((unsigned int *) rm_state, QUEUESTATE__ACTIVE, 1500);
 
 		} else {
 			pr_debug("Error! kfd: In func %s >> failed to allocate GART memory\n", __func__);
@@ -437,6 +437,8 @@ dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev, struct dbg_address_watch_inf
 
 		memset(packet_buff_uint, 0, ib_size);
 
+		packets_vec = (struct pm4__set_config_reg *) (packet_buff_uint);
+
 		packets_vec[0].header.count = 1;
 		packets_vec[0].header.opcode = IT_SET_CONFIG_REG;
 		packets_vec[0].header.type = PM4_TYPE_3;
@@ -466,7 +468,7 @@ dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev, struct dbg_address_watch_inf
 			pr_debug("\t\t\%20s %08x\n", "Control atc  is :", cntl.bitfields.atc);
 			pr_debug("\t\t\%30s\n", "* * * * * * * * * * * * * * * * * *");
 
-			packets_vec = (struct pm4__set_config_reg *) (packet_buff_uint);
+
 
 			aw_reg_add_dword = watchRegs[i * ADDRESS_WATCH_REG_MAX + ADDRESS_WATCH_REG_CNTL] / sizeof(uint32_t);
 
@@ -676,6 +678,7 @@ dbgdev_wave_control_diq(struct kfd_dbgdev *dbgdev, struct dbg_wave_control_info 
 
 		memset(packet_buff_uint, 0, ib_size);
 
+		packets_vec =  (struct pm4__set_config_reg *) packet_buff_uint;
 		packets_vec[0].header.count = 1;
 		packets_vec[0].header.opcode = IT_SET_UCONFIG_REG;
 		packets_vec[0].header.type = PM4_TYPE_3;
@@ -706,7 +709,7 @@ dbgdev_wave_control_diq(struct kfd_dbgdev *dbgdev, struct dbg_wave_control_info 
 		status = dbgdev_diq_submit_ib(dbgdev, wac_info->process->pasid, vmid0_address, packet_buff_uint, ib_size);
 
 		if (status != 0)
-			pr_debug("%s\n", " Critical Error ! no PDD");
+			pr_debug("%s\n", " Critical Error ! Submit diq packet failed ");
 
 	} while (false);
 

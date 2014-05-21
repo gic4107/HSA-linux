@@ -330,8 +330,9 @@ kfd_ioctl_dbg_register(struct file *filep, struct kfd_process *p, void __user *a
 	struct kfd_ioctl_dbg_register_args args;
 	struct kfd_dev *dev;
 	struct kfd_dbgmgr *dbgmgr_ptr;
+	struct kfd_process_device *pdd;
 	bool create_ok = false;
-
+	pr_debug("kfd:dbg: %s\n", __func__);
 	if (copy_from_user(&args, arg, sizeof(args))) {
 		dev_info(NULL, "Error! kfd: In func %s >> copy_from_user failed\n", __func__);
 		return status;
@@ -343,6 +344,15 @@ kfd_ioctl_dbg_register(struct file *filep, struct kfd_process *p, void __user *a
 		return status;
 	}
 	mutex_lock(get_dbgmgr_mutex());
+	mutex_lock(&p->mutex);
+
+	/* make sure that we have pdd, if this the first queue created for this process */
+	pdd = radeon_kfd_bind_process_to_device(dev, p);
+	if (IS_ERR(pdd) < 0) {
+		mutex_unlock(&p->mutex);
+		mutex_unlock(get_dbgmgr_mutex());
+		return PTR_ERR(pdd);
+	}
 
 	if (dev->dbgmgr == NULL) {
 		/* In case of a legal call, we have no dbgmgr yet */
@@ -356,6 +366,7 @@ kfd_ioctl_dbg_register(struct file *filep, struct kfd_process *p, void __user *a
 				dev->dbgmgr = dbgmgr_ptr;
 		}
 	}
+	mutex_unlock(&p->mutex);
 	mutex_unlock(get_dbgmgr_mutex());
 
 	return status;
@@ -535,7 +546,7 @@ kfd_ioctl_dbg_wave_control(struct file *filep, struct kfd_process *p, void __use
 	/* we use compact form, independent of the packing attribute value */
 
 	uint32_t computed_buff_size = sizeof(args) + sizeof(wac_info.mode) + sizeof(wac_info.operand) +
-	    +sizeof(wac_info.dbgWave_msg) + sizeof(wac_info.trapId);
+	    +sizeof(wac_info.dbgWave_msg.DbgWaveMsg) + sizeof(wac_info.dbgWave_msg.MemoryVA) + sizeof(wac_info.trapId);
 
 
 	dev_info(NULL, "kfd: In func %s - start\n", __func__);
@@ -556,6 +567,8 @@ kfd_ioctl_dbg_wave_control(struct file *filep, struct kfd_process *p, void __use
 		/* input size must match the computed "compact" size */
 
 		if (args.buf_size_in_bytes != computed_buff_size) {
+			dev_info(NULL, "Error! kfd: In func %s >> size mismatch, computed : actual %u : %u\n",
+					__func__, args.buf_size_in_bytes, computed_buff_size);
 			status = -EINVAL;
 			break;
 		}
@@ -590,10 +603,8 @@ kfd_ioctl_dbg_wave_control(struct file *filep, struct kfd_process *p, void __use
 		wac_info.trapId = (uint32_t) *((uint32_t *)(&args_buff[args_idx]));
 		args_idx += sizeof(wac_info.trapId);
 
-		args_idx += sizeof(void *);	/* ignore VAMemory pointer,since it is not supported, so skip it). */
-
-		wac_info.dbgWave_msg.MemoryVA = NULL;
 		wac_info.dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.Value = *((uint32_t *)(&args_buff[args_idx]));
+		wac_info.dbgWave_msg.MemoryVA = NULL;
 
 
 		status = 0;
@@ -602,7 +613,14 @@ kfd_ioctl_dbg_wave_control(struct file *filep, struct kfd_process *p, void __use
 	if (status == 0) {
 		mutex_lock(get_dbgmgr_mutex());
 
+		dev_info(NULL,
+				"kfd: In func %s >> calling dbg manager process %p, operand %u, mode %u, trapId %u, message %u\n",
+				__func__, wac_info.process, wac_info.operand, wac_info.mode, wac_info.trapId,
+				wac_info.dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.Value);
+
 		status = kfd_dbgmgr_wave_control(dev->dbgmgr, &wac_info);
+
+		dev_info(NULL, "kfd: In func %s >> returned status of dbg manager is %ld\n", __func__, status);
 
 		mutex_unlock(get_dbgmgr_mutex());
 
