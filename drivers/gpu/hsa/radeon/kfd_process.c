@@ -326,6 +326,7 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 {
 	struct kfd_process *p;
 	struct kfd_process_device *pdd;
+	long   status;
 	void *mem;
 	int id;
 
@@ -344,6 +345,20 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 	pr_debug("\t kfd process pasid is %u\n", p->pasid);
 	pr_debug("\t dev pointer is %p\n", dev);
 
+	if (dev) {
+		if ((dev->dbgmgr) && (dev->dbgmgr->pasid == p->pasid)) {
+
+			pr_debug("\t dbg mgr pasid is %u\n", dev->dbgmgr->pasid);
+			status = kfd_dbgmgr_abnormal_termination(dev->dbgmgr, p);
+			if (status == 0) {
+					kfd_dbgmgr_destroy(dev->dbgmgr);
+					dev->dbgmgr = NULL;
+			} else {
+				BUG();
+			}
+
+		}
+	}
 	radeon_kfd_doorbell_unmap(pdd);
 
 	pqm_uninit(&p->pqm);
