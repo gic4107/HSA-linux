@@ -198,6 +198,14 @@ struct kfd_ioctl_wait_events_args {
 	uint32_t wait_result;		/* from KFD */
 };
 
+struct kfd_ioctl_open_graphic_handle_args {
+	uint64_t va_addr;		/* to KFD */
+	uint64_t handle;		/* from KFD */
+	uint32_t gpu_id;		/* to KFD */
+	int graphic_device_fd;		/* to KFD */
+	uint32_t graphic_handle;	/* to KFD */
+};
+
 #define KFD_IOC_MAGIC 'K'
 
 #define KFD_IOC_GET_VERSION		_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
@@ -220,6 +228,7 @@ struct kfd_ioctl_wait_events_args {
 #define KFD_IOC_SET_EVENT		_IOW(KFD_IOC_MAGIC, 18, struct kfd_ioctl_set_event_args)
 #define KFD_IOC_RESET_EVENT		_IOW(KFD_IOC_MAGIC, 19, struct kfd_ioctl_reset_event_args)
 #define KFD_IOC_WAIT_EVENTS		_IOWR(KFD_IOC_MAGIC, 20, struct kfd_ioctl_wait_events_args)
+#define KFD_IOC_OPEN_GRAPHIC_HANDLE	_IOWR(KFD_IOC_MAGIC, 21, struct kfd_ioctl_open_graphic_handle_args)
 
 #pragma pack(pop)
 

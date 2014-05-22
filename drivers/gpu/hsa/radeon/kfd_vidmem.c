@@ -88,6 +88,22 @@ int radeon_kfd_process_gpuvm_alloc(struct kfd_dev *kfd, uint64_t va, size_t size
 
 }
 
+int radeon_kfd_process_open_graphic_handle(struct kfd_dev *kfd, uint64_t va,  void *vm, int32_t fd, uint32_t handle, void **mem_obj)
+{
+
+	BUG_ON(kfd == NULL);
+	BUG_ON(vm == NULL);
+	BUG_ON(mem_obj == NULL);
+
+	return kfd2kgd->open_graphic_handle(kfd->kgd,
+		va,
+		(struct kgd_vm *) vm,
+		fd,
+		handle,
+		(struct kgd_mem **) mem_obj);
+
+}
+
 void radeon_kfd_process_gpuvm_free(struct kfd_dev *kfd, void *mem_obj)
 {
 	BUG_ON(kfd == NULL);
