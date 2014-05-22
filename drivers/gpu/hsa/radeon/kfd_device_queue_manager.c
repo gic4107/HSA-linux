@@ -800,7 +800,7 @@ out:
 	return retval;
 }
 
-static void fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsigned long timeout)
+int fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsigned long timeout)
 {
 	BUG_ON(!fence_addr);
 	timeout += jiffies;
@@ -808,10 +808,12 @@ static void fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_valu
 	while (*fence_addr != fence_value) {
 		if (time_after(jiffies, timeout)) {
 			pr_err("kfd: qcm fence wait loop timeout expired\n");
-			break;
+			return -ETIME;
 		}
 		cpu_relax();
 	}
+
+	return 0;
 }
 
 static int destroy_queues_cpsch(struct device_queue_manager *dqm)

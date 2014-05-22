@@ -463,6 +463,8 @@ int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid, struct
 struct kernel_queue *pqm_get_kernel_queue(struct process_queue_manager *pqm, unsigned int qid);
 void test_diq(struct kfd_dev *dev, struct process_queue_manager *pqm);
 
+int fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsigned long timeout);
+
 /* Packet Manager */
 
 #define KFD_HIQ_TIMEOUT (500)
