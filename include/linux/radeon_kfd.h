@@ -98,6 +98,8 @@ struct kfd2kgd_calls {
 	void (*unlock_grbm_gfx_idx)(struct kgd_dev *kgd);
 
 	uint32_t (*get_max_engine_clock_in_mhz)(struct kgd_dev *kgd);
+
+	int (*open_graphic_handle)(struct kgd_dev *kgd, uint64_t va, void *vm, int fd, uint32_t handle, struct kgd_mem **mem);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
