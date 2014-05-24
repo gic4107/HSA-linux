@@ -91,15 +91,12 @@ radeon_kfd_get_process(const struct task_struct *thread)
 	return process;
 }
 
-/* Requires that kfd_processes_mutex is held. */
 static struct kfd_process*
 find_process_by_mm(const struct mm_struct *mm)
 {
 	struct kfd_process *process;
 
-	BUG_ON(!mutex_is_locked(&kfd_processes_mutex));
-
-	hash_for_each_possible(kfd_processes, process, kfd_processes, (uintptr_t)mm)
+	hash_for_each_possible_rcu(kfd_processes, process, kfd_processes, (uintptr_t)mm)
 		if (process->mm == mm)
 			return process;
 
@@ -111,9 +108,9 @@ find_process(const struct task_struct *thread)
 {
 	struct kfd_process *p;
 
-	mutex_lock(&kfd_processes_mutex);
+	rcu_read_lock();
 	p = find_process_by_mm(thread->mm);
-	mutex_unlock(&kfd_processes_mutex);
+	rcu_read_unlock();
 
 	return p;
 }
@@ -153,8 +150,9 @@ static void shutdown_process(struct kfd_process *p)
 	/* doorbell mappings: automatic */
 
 	mutex_lock(&kfd_processes_mutex);
-	hash_del(&p->kfd_processes);
+	hash_del_rcu(&p->kfd_processes);
 	mutex_unlock(&kfd_processes_mutex);
+	synchronize_rcu();
 }
 
 static void
@@ -257,7 +255,7 @@ insert_process(struct kfd_process *p)
 		p = other_p;
 	} else {
 		/* We are the winner, insert it. */
-		hash_add(kfd_processes, &p->kfd_processes, (uintptr_t)p->mm);
+		hash_add_rcu(kfd_processes, &p->kfd_processes, (uintptr_t)p->mm);
 		mutex_unlock(&kfd_processes_mutex);
 	}
 
@@ -519,4 +517,3 @@ void radeon_kfd_process_device_remove_obj_handle(struct kfd_process_device *pdd,
 
 	idr_remove(&pdd->alloc_idr, handle);
 }
-
