@@ -984,7 +984,8 @@ static bool cik_static_set_cache_policy(struct kfd_scheduler *scheduler,
 	uint32_t default_mtype;
 	uint32_t ape1_mtype;
 
-printk("cik_static_set_cache_policy\n");
+printk("cik_static_set_cache_policy: ... \ndefault_policy=%d, alternate_policy=%d\n", default_policy, alternate_policy);	// 0,1
+printk("alternate_aperture_size=%llu, alternate_aperture_base=0x%x\n", alternate_aperture_size, alternate_aperture_base);	// 2147483648, 0xda820000
 	if (alternate_aperture_size == 0) {
 		/* base > limit disables APE1 */
 		proc->ape1_base = 1;

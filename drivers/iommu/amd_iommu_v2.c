@@ -490,9 +490,9 @@ static void do_fault(struct work_struct *work)
 				fault->address, 1, write, 0, &page, NULL);
 	up_read(&fault->state->mm->mmap_sem);
 
-	if (npages == 1) {
+	if (npages == 1) {		// only here for now
 		put_page(page);
-	} else if (fault->dev_state->inv_ppr_cb) {
+	} else if (fault->dev_state->inv_ppr_cb) {	
 		int status;
 
 		status = fault->dev_state->inv_ppr_cb(fault->dev_state->pdev,
@@ -675,9 +675,9 @@ int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
 	if (pasid_state->mm == NULL)
 		goto out_free;
 
-	mmu_notifier_register(&pasid_state->mn, pasid_state->mm);
+	mmu_notifier_register(&pasid_state->mn, pasid_state->mm);	// all notifier callback do flush page or tlb
 
-	ret = set_pasid_state(dev_state, pasid_state, pasid);
+	ret = set_pasid_state(dev_state, pasid_state, pasid);	// set pasid_state to dev_state's structure
 	if (ret)
 		goto out_unregister;
 
@@ -686,7 +686,7 @@ int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
 	if (ret)
 		goto out_clear_state;
 
-	link_pasid_state(pasid_state);
+	link_pasid_state(pasid_state);				// add pasid_state to pasid_state_list, used when task_exit 
 
 	return 0;
 

@@ -774,7 +774,7 @@ static void iommu_poll_ppr_log(struct amd_iommu *iommu)
 		/* Avoid memcpy function-call overhead */
 		entry[0] = raw[0];
 		entry[1] = raw[1];
-
+		
 		/*
 		 * To detect the hardware bug we need to clear the entry
 		 * back to zero.
@@ -786,7 +786,7 @@ static void iommu_poll_ppr_log(struct amd_iommu *iommu)
 		writel(head, iommu->mmio_base + MMIO_PPR_HEAD_OFFSET);
 
 		/* Handle PPR entry */
-		iommu_handle_ppr_entry(iommu, entry);
+		iommu_handle_ppr_entry(iommu, entry);		// entry contains 4-word data (128 bytes)
 
 		/* Refresh ring-buffer information */
 		head = readl(iommu->mmio_base + MMIO_PPR_HEAD_OFFSET);
@@ -810,7 +810,7 @@ irqreturn_t amd_iommu_int_thread(int irq, void *data)
 		}
 
 		if (status & MMIO_STATUS_PPR_INT_MASK) {
-			pr_devel("AMD-Vi: Processing IOMMU PPR Log\n");
+			pr_devel("AMD-Vi: Processing IOMMU PPR Log\n");			// always here for Okra
 			iommu_poll_ppr_log(iommu);
 		}
 
