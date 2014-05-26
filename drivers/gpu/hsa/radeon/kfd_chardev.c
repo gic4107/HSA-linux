@@ -137,11 +137,15 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
 
-	if (!access_ok(VERIFY_WRITE, args.read_pointer_address, sizeof(qptr_t)))
+	if (!access_ok(VERIFY_WRITE, args.read_pointer_address, sizeof(qptr_t))) {
+		pr_err("kfd: can't access read pointer");
 		return -EFAULT;
+	}
 
-	if (!access_ok(VERIFY_WRITE, args.write_pointer_address, sizeof(qptr_t)))
+	if (!access_ok(VERIFY_WRITE, args.write_pointer_address, sizeof(qptr_t))) {
+		pr_err("kfd: can't access write pointer");
 		return -EFAULT;
+	}
 
 	q_properties.is_interop = false;
 	q_properties.queue_percent = args.queue_percentage;
