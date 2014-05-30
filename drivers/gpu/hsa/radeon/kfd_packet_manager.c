@@ -88,9 +88,6 @@ static int pm_allocate_runlist_ib(struct packet_manager *pm, unsigned int **rl_b
 	BUG_ON(is_over_subscription == NULL);
 
 	pm_calc_rlib_size(pm, rl_buffer_size, is_over_subscription);
-	if (*is_over_subscription &&
-			sched_policy == KFD_SCHED_POLICY_HWS_NO_OVERSUBSCRIPTION)
-		return -EFAULT;
 
 	retval = radeon_kfd_vidmem_alloc_map(pm->dqm->dev, &pm->ib_buffer_obj, (void **)rl_buffer,
 					     rl_gpu_buffer, ALIGN(*rl_buffer_size, PAGE_SIZE));
