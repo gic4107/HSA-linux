@@ -662,6 +662,13 @@ int kfd_wait_on_events(struct kfd_process *p,
 			break;
 		}
 
+		if (signal_pending(current)) {
+			ret = -EAGAIN;
+			mutex_lock(&p->event_mutex);
+			set_current_state(TASK_INTERRUPTIBLE);
+			goto fail;
+		}
+
 		if (test_event_condition(all, num_events, event_waiters)) {
 			*wait_result = KFD_WAIT_COMPLETE;
 			break;

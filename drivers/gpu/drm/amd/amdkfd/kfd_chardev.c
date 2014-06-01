@@ -658,7 +658,7 @@ static long kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-	if (err < 0)
+	if ((err < 0) && (err != -EAGAIN))
 		dev_err(kfd_device,
 			"ioctl error %ld for ioctl cmd 0x%x (#%d)\n",
 			err, cmd, _IOC_NR(cmd));
