@@ -413,8 +413,15 @@ int kfd_event_destroy(struct kfd_process *p, uint32_t event_id)
 	mutex_lock(&p->event_mutex);
 
 	ev = lookup_event_by_id(p, event_id);
+
 	if (ev)
-		destroy_event(ev);
+		if (!list_empty(&ev->waiters)) {
+			pr_err("kfd: can't destroy event with waiters\n");
+			ret = -EBUSY;
+		}
+		else {
+			destroy_event(ev);
+		}
 	else
 		ret = -EINVAL;
 
