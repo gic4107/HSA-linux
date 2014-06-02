@@ -715,6 +715,8 @@ static ssize_t node_show(struct kobject *kobj, struct attribute *attr,
 		sysfs_show_32bit_prop(buffer, "max_engine_clk_fcompute",
 				kfd2kgd->get_max_engine_clock_in_mhz(
 					dev->gpu->kgd));
+		sysfs_show_64bit_prop(buffer, "local_mem_size",
+				kfd2kgd->get_vmem_size(dev->gpu->kgd));
 		ret = sysfs_show_32bit_prop(buffer, "max_engine_clk_ccompute",
 				cpufreq_quick_get_max(0)/1000);
 	}
