@@ -38,21 +38,6 @@ static struct kfd_system_properties sys_props;
 
 static DECLARE_RWSEM(topology_lock);
 
-
-static uint8_t checksum_image(const void *buf, size_t len)
-{
-	uint8_t *p = (uint8_t *)buf;
-	uint8_t sum = 0;
-
-	if (!buf)
-		return 0;
-
-	while (len-- > 0)
-		sum += *p++;
-
-	return sum;
-		}
-
 struct kfd_dev *radeon_kfd_device_by_id(uint32_t gpu_id)
 {
 	struct kfd_topology_device *top_dev;
@@ -97,9 +82,9 @@ static int kfd_topology_get_crat_acpi(void *crat_image, size_t *size)
 	if (!size)
 		return -EINVAL;
 
-/*
+	/*
 	 * Fetch the CRAT table from ACPI
- */
+	 */
 	status = acpi_get_table(CRAT_SIGNATURE, 0, &crat_table);
 	if (status == AE_NOT_FOUND) {
 		pr_warn("CRAT table not found\n");
@@ -110,16 +95,6 @@ static int kfd_topology_get_crat_acpi(void *crat_image, size_t *size)
 		pr_err("CRAT table error: %s\n", err);
 		return -EINVAL;
 	}
-
-	/*
-	 * The checksum of the table should be verified
-	 */
-	if (checksum_image(crat_table, crat_table->length) ==
-		crat_table->checksum) {
-		pr_err("Bad checksum for the CRAT table\n");
-		return -EINVAL;
-}
-
 
 	if (*size >= crat_table->length && crat_image != 0)
 		memcpy(crat_image, crat_table, crat_table->length);
