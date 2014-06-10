@@ -470,7 +470,7 @@ static int init_memory(struct device_queue_manager *dqm)
 	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_COMPUTE);
 	if (mqd == NULL)
 		return -ENOMEM;
-	for (i = 0; i < 16; i++) {
+	for (i = KFD_VMID_START_OFFSET ; i < KFD_VMID_START_OFFSET + CIK_VMID_NUM; i++) {
 		uint32_t sh_mem_config;
 
 		mqd->acquire_hqd(mqd, 0, 0, i);
