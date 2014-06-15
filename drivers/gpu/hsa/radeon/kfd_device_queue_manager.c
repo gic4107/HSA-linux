@@ -866,10 +866,12 @@ static int execute_queues_cpsch(struct device_queue_manager *dqm)
 		return retval;
 	}
 
-	if (dqm->queue_count <= 0 || dqm->processes_count <= 0)
-		return 0;
-
 	mutex_lock(&dqm->lock);
+	if (dqm->queue_count <= 0 || dqm->processes_count <= 0) {
+		retval = 0;
+		goto out;
+	}
+
 	if (dqm->active_runlist) {
 		retval = 0;
 		goto out;
