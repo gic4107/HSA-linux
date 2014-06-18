@@ -896,20 +896,22 @@ static int destroy_queue_cpsch(struct device_queue_manager *dqm, struct qcm_proc
 
 	retval = 0;
 
-	/* preempt queues before delete mqd */
-	dqm->destroy_queues(dqm);
-
+	/* remove queue from list to prevent rescheduling after preemption */
 	mutex_lock(&dqm->lock);
+
 	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_CP);
 	if (!mqd) {
 		retval = -ENOMEM;
 		goto failed_get_mqd_manager;
 	}
-	list_del(&q->list);
 
-	mqd->uninit_mqd(mqd, q->mqd, q->mqd_mem_obj);
+	list_del(&q->list);
 	dqm->queue_count--;
 	mutex_unlock(&dqm->lock);
+
+	/* preempt queues before delete mqd */
+	dqm->destroy_queues(dqm);
+	mqd->uninit_mqd(mqd, q->mqd, q->mqd_mem_obj);
 
 	return 0;
 failed_get_mqd_manager:
