@@ -32,8 +32,9 @@
 #include "cik_regs.h"
 #include "kfd_kernel_queue.h"
 
-#define CIK_HPD_SIZE_LOG2 11
-#define CIK_HPD_SIZE (1U << CIK_HPD_SIZE_LOG2)
+/* Size of the per-pipe EOP queue */
+#define CIK_HPD_EOP_BYTES_LOG2 11
+#define CIK_HPD_EOP_BYTES (1U << CIK_HPD_EOP_BYTES_LOG2)
 
 static bool is_mem_initialized;
 
@@ -519,7 +520,7 @@ static int init_pipelines(struct device_queue_manager *dqm, unsigned int pipes_n
 	 * are no active queues.
 	 */
 	err = radeon_kfd_vidmem_alloc(dqm->dev,
-				      CIK_HPD_SIZE * pipes_num,
+				      CIK_HPD_EOP_BYTES * pipes_num,
 				      PAGE_SIZE,
 				      KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
 				      &dqm->pipeline_mem);
@@ -535,7 +536,7 @@ static int init_pipelines(struct device_queue_manager *dqm, unsigned int pipes_n
 		return -ENOMEM;
 	}
 
-	memset(hpdptr, 0, CIK_HPD_SIZE * pipes_num);
+	memset(hpdptr, 0, CIK_HPD_EOP_BYTES * pipes_num);
 	radeon_kfd_vidmem_unkmap(dqm->dev, dqm->pipeline_mem);
 
 	radeon_kfd_vidmem_gpumap(dqm->dev, dqm->pipeline_mem, &dqm->pipelines_addr);
@@ -548,14 +549,14 @@ static int init_pipelines(struct device_queue_manager *dqm, unsigned int pipes_n
 
 	for (i = 0; i < pipes_num; i++) {
 		inx = i + first_pipe;
-		pipe_hpd_addr = dqm->pipelines_addr + i * CIK_HPD_SIZE;
+		pipe_hpd_addr = dqm->pipelines_addr + i * CIK_HPD_EOP_BYTES;
 		pr_debug("kfd: pipeline address %llX\n", pipe_hpd_addr);
 
 		mqd->acquire_hqd(mqd, inx, 0, 0);
 		WRITE_REG(dqm->dev, CP_HPD_EOP_BASE_ADDR, lower_32(pipe_hpd_addr >> 8));
 		WRITE_REG(dqm->dev, CP_HPD_EOP_BASE_ADDR_HI, upper_32(pipe_hpd_addr >> 8));
 		WRITE_REG(dqm->dev, CP_HPD_EOP_VMID, 0);
-		WRITE_REG(dqm->dev, CP_HPD_EOP_CONTROL, CIK_HPD_SIZE_LOG2 - 1);
+		WRITE_REG(dqm->dev, CP_HPD_EOP_CONTROL, CIK_HPD_EOP_BYTES_LOG2 - 3); /* = log2(bytes/4)-1 */
 		mqd->release_hqd(mqd);
 	}
 
