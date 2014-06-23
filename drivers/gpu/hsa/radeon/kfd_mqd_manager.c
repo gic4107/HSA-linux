@@ -83,8 +83,6 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 	/* Although WinKFD writes this, I suspect it should not be necessary. */
 	m->queue_state.cp_hqd_ib_control = IB_ATC_EN | DEFAULT_MIN_IB_AVAIL_SIZE;
 
-	m->queue_state.cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS | QUANTUM_DURATION(10);
-
 	m->queue_state.cp_hqd_pipe_priority = 1;
 	m->queue_state.cp_hqd_queue_priority = 15;
 
@@ -330,8 +328,6 @@ static int init_mqd_hiq(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem
 	m->queue_state.cp_mqd_base_addr_hi        = upper_32(addr);
 
 	m->queue_state.cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE;
-
-	m->queue_state.cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS | QUANTUM_DURATION(10);
 
 	m->queue_state.cp_hqd_pipe_priority = 1;
 	m->queue_state.cp_hqd_queue_priority = 15;
