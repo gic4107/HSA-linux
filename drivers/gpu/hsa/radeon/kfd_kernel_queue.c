@@ -176,7 +176,7 @@ static int acquire_packet_buffer(struct kernel_queue *kq,
 			packet_size_in_dwords >= available_size)
 		return -ENOMEM;
 
-	if (wptr + packet_size_in_dwords > queue_size_dwords) {
+	if (wptr + packet_size_in_dwords >= queue_size_dwords) {
 		while (wptr > 0) {
 			queue_address[wptr] = kq->nop_packet;
 			wptr = (wptr + 1) % queue_size_dwords;
