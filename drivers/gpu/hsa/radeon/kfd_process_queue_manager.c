@@ -149,6 +149,8 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 
 	memset(&q_properties, 0, sizeof(struct queue_properties));
 	memcpy(&q_properties, properties, sizeof(struct queue_properties));
+	q = NULL;
+	kq = NULL;
 
 	pdd = radeon_kfd_get_process_device_data(dev, pqm->process);
 	BUG_ON(!pdd);
@@ -222,9 +224,11 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 		goto err_execute_runlist;
 	}
 
-	*properties = q->properties;
-	pr_debug("kfd: PQM done creating queue\n");
-	print_queue_properties(properties);
+	if (q) {
+		*properties = q->properties;
+		pr_debug("kfd: PQM done creating queue\n");
+		print_queue_properties(properties);
+	}
 
 	return retval;
 
