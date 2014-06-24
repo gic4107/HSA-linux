@@ -432,10 +432,11 @@ int kfd_event_destroy(struct kfd_process *p, uint32_t event_id)
 static void set_event(struct kfd_event *ev)
 {
 	struct kfd_event_waiter *waiter;
+	struct kfd_event_waiter *next;
 
 	ev->signaled = true;
 
-	list_for_each_entry(waiter, &ev->waiters, waiters) {
+	list_for_each_entry_safe(waiter, next, &ev->waiters, waiters) {
 		waiter->activated = true;
 
 		/* _init because free_waiters will call list_del */
