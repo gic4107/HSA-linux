@@ -652,18 +652,20 @@ int kfd_wait_on_events(struct kfd_process *p,
 	mutex_unlock(&p->event_mutex);
 
 	while (true) {
-		set_current_state(TASK_KILLABLE);
-
 		if (fatal_signal_pending(current)) {
-			*wait_result = KFD_WAIT_ERROR;
+			ret = -EINTR;
 			break;
 		}
 
 		if (signal_pending(current)) {
-			ret = -EAGAIN;
-			mutex_lock(&p->event_mutex);
-			set_current_state(TASK_INTERRUPTIBLE);
-			goto fail;
+			/*
+			 * This is wrong when a nonzero, non-infinite timeout is specified.
+			 * We need to use ERESTARTSYS_RESTARTBLOCK, but struct restart_block
+			 * contains a union with data for each user and it's in generic
+			 * kernel code that I don't want to touch yet.
+			 */
+			ret = -ERESTARTSYS;
+			break;
 		}
 
 		if (test_event_condition(all, num_events, event_waiters)) {
