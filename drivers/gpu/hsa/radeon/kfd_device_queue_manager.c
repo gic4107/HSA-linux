@@ -573,7 +573,7 @@ static void init_interrupts(struct device_queue_manager *dqm)
 	BUG_ON(mqd == NULL);
 
 	for (i = 0 ; i < get_pipes_num(dqm) ; i++) {
-		mqd->acquire_hqd(mqd, i + get_first_pipe(dqm), 0, 0);
+		mqd->acquire_hqd(mqd, i, 0, 0);
 
 		WRITE_REG(dqm->dev, CPC_INT_CNTL, TIME_STAMP_INT_ENABLE);
 
