@@ -40,6 +40,7 @@
 #include <linux/ramfs.h>
 #include <linux/percpu-refcount.h>
 #include <linux/mount.h>
+#include <linux/notifier.h>
 
 #include <asm/kmap_types.h>
 #include <asm/uaccess.h>
@@ -776,20 +777,22 @@ ssize_t wait_on_sync_kiocb(struct kiocb *req)
 EXPORT_SYMBOL(wait_on_sync_kiocb);
 
 /*
- * exit_aio: called when the last user of mm goes away.  At this point, there is
+ * aio_exit: called when the last user of mm goes away.  At this point, there is
  * no way for any new requests to be submited or any of the io_* syscalls to be
  * called on the context.
  *
  * There may be outstanding kiocbs, but free_ioctx() will explicitly wait on
  * them.
  */
-void exit_aio(struct mm_struct *mm)
+static int aio_exit(struct notifier_block *nb,
+		    unsigned long action, void *data)
 {
+	struct mm_struct *mm = data;
 	struct kioctx_table *table = rcu_dereference_raw(mm->ioctx_table);
 	int i;
 
 	if (!table)
-		return;
+		return 0;
 
 	for (i = 0; i < table->nr; ++i) {
 		struct kioctx *ctx = table->table[i];
@@ -798,10 +801,10 @@ void exit_aio(struct mm_struct *mm)
 			continue;
 		/*
 		 * We don't need to bother with munmap() here - exit_mmap(mm)
-		 * is coming and it'll unmap everything. And we simply can't,
-		 * this is not necessarily our ->mm.
-		 * Since kill_ioctx() uses non-zero ->mmap_size as indicator
-		 * that it needs to unmap the area, just set it to 0.
+		 * have already been call and everything is unmap by now. But
+		 * to be safe set ->mmap_size to 0 since aio_free_ring() uses
+		 * non-zero ->mmap_size as indicator that it needs to unmap the
+		 * area.
 		 */
 		ctx->mmap_size = 0;
 		kill_ioctx(mm, ctx, NULL);
@@ -809,6 +812,7 @@ void exit_aio(struct mm_struct *mm)
 
 	RCU_INIT_POINTER(mm->ioctx_table, NULL);
 	kfree(table);
+	return 0;
 }
 
 static void put_reqs_available(struct kioctx *ctx, unsigned nr)
@@ -1631,3 +1635,14 @@ SYSCALL_DEFINE5(io_getevents, aio_context_t, ctx_id,
 	}
 	return ret;
 }
+
+static struct notifier_block aio_mmput_nb = {
+	.notifier_call		= aio_exit,
+	.priority		= 1,
+};
+
+static int __init aio_init(void)
+{
+	return mmput_register_notifier(&aio_mmput_nb);
+}
+subsys_initcall(aio_init);

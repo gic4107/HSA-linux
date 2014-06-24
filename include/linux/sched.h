@@ -2384,6 +2384,11 @@ static inline void mmdrop(struct mm_struct * mm)
 		__mmdrop(mm);
 }
 
+/* mmput call list of notifier and subsystem/module can register
+ * new one through this call.
+ */
+extern int mmput_register_notifier(struct notifier_block *nb);
+extern int mmput_unregister_notifier(struct notifier_block *nb);
 /* mmput gets rid of the mappings and all user-space */
 extern void mmput(struct mm_struct *);
 /* Grab a reference to a task's mm, if it is not already going away */

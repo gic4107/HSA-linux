@@ -87,6 +87,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/task.h>
 
+static BLOCKING_NOTIFIER_HEAD(mmput_notifier);
+
 /*
  * Protected counters by write_lock_irq(&tasklist_lock)
  */
@@ -623,6 +625,21 @@ void __mmdrop(struct mm_struct *mm)
 EXPORT_SYMBOL_GPL(__mmdrop);
 
 /*
+ * Register a notifier that will be call by mmput
+ */
+int mmput_register_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&mmput_notifier, nb);
+}
+EXPORT_SYMBOL_GPL(mmput_register_notifier);
+
+int mmput_unregister_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&mmput_notifier, nb);
+}
+EXPORT_SYMBOL_GPL(mmput_unregister_notifier);
+
+/*
  * Decrement the use count and release all resources for an mm.
  */
 void mmput(struct mm_struct *mm)
@@ -630,11 +647,8 @@ void mmput(struct mm_struct *mm)
 	might_sleep();
 
 	if (atomic_dec_and_test(&mm->mm_users)) {
-		uprobe_clear_state(mm);
-		exit_aio(mm);
-		ksm_exit(mm);
-		khugepaged_exit(mm); /* must run before exit_mmap */
 		exit_mmap(mm);
+		blocking_notifier_call_chain(&mmput_notifier, 0, mm);
 		set_mm_exe_file(mm, NULL);
 		if (!list_empty(&mm->mmlist)) {
 			spin_lock(&mmlist_lock);

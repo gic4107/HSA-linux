@@ -2774,6 +2774,9 @@ void exit_mmap(struct mm_struct *mm)
 	struct vm_area_struct *vma;
 	unsigned long nr_accounted = 0;
 
+	/* Important to call this first. */
+	khugepaged_exit(mm);
+
 	/* mm's last user has gone, and its about to be pulled down */
 	mmu_notifier_release(mm);
 

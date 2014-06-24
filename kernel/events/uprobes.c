@@ -37,6 +37,7 @@
 #include <linux/percpu-rwsem.h>
 #include <linux/task_work.h>
 #include <linux/shmem_fs.h>
+#include <linux/notifier.h>
 
 #include <linux/uprobes.h>
 
@@ -1220,16 +1221,19 @@ static struct xol_area *get_xol_area(void)
 /*
  * uprobe_clear_state - Free the area allocated for slots.
  */
-void uprobe_clear_state(struct mm_struct *mm)
+static int uprobe_clear_state(struct notifier_block *nb,
+			      unsigned long action, void *data)
 {
+	struct mm_struct *mm = data;
 	struct xol_area *area = mm->uprobes_state.xol_area;
 
 	if (!area)
-		return;
+		return 0;
 
 	put_page(area->page);
 	kfree(area->bitmap);
 	kfree(area);
+	return 0;
 }
 
 void uprobe_start_dup_mmap(void)
@@ -1979,15 +1983,24 @@ static struct notifier_block uprobe_exception_nb = {
 	.priority		= INT_MAX-1,	/* notified after kprobes, kgdb */
 };
 
+static struct notifier_block uprobe_mmput_nb = {
+	.notifier_call		= uprobe_clear_state,
+	.priority		= 0,
+};
+
 static int __init init_uprobes(void)
 {
-	int i;
+	int i, err;
 
 	for (i = 0; i < UPROBES_HASH_SZ; i++)
 		mutex_init(&uprobes_mmap_mutex[i]);
 
 	if (percpu_init_rwsem(&dup_mmap_sem))
 		return -ENOMEM;
+
+	err = mmput_register_notifier(&uprobe_mmput_nb);
+	if (err)
+		return err;
 
 	return register_die_notifier(&uprobe_exception_nb);
 }
