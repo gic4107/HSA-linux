@@ -30,6 +30,8 @@
 #include "kfd_priv.h"
 #include "kfd_events.h"
 
+#define SIGNAL_EVENT_LIMIT 256
+
 /* A task can only be on a single wait_queue at a time, but we need to support
  * waiting on multiple events (any/all).
  * Instead of each event simply having a wait_queue with sleeping tasks, it has a
@@ -68,21 +70,13 @@ struct signal_page {
 #define BITS_PER_PAGE (ilog2(SLOTS_PER_PAGE)+1)
 #define SIGNAL_PAGE_SIZE (sizeof(struct signal_page) + SLOT_BITMAP_SIZE * sizeof(long))
 
-/* For signal events, the event ID is broken down as follows:
- * bit 31: 1 (0 would indicate a non-signal event)
- * bit 28-30: unused, 0
- * bit 27 - (27 - BITS_PER_PAGE + 1): slot index in page
- * bits 0 - (27 - BITS_PER_PAGE): page index
- *
- * This breakdown is chosen because, for the foreseeable future, HW supports
- * (up to) 28 bits of sender-defined data in the interrupt.
- * (And not all blocks actually allow arbitrary setting of all 28 bits.)
- *
- * For x86-64 with 4K pages, we have BITS_PER_PAGE = 9 so page index is bits 0-18,
- * slot index is 19-27.
+/* For signal events, the event ID is used as the interrupt user data.
+ * For SQ s_sendmsg interrupts, this is limited to 8 bits. We will
+ * limit to 256 signal events and simply use all the available bits.
  */
-#define INTERRUPT_DATA_BITS 28
-#define SIGNAL_EVENT_ID_SLOT_SHIFT (INTERRUPT_DATA_BITS - BITS_PER_PAGE)
+
+#define INTERRUPT_DATA_BITS 8
+#define SIGNAL_EVENT_ID_SLOT_SHIFT 0
 
 static kfd_signal_slot_t *page_slots(struct signal_page *page)
 {
@@ -150,10 +144,7 @@ bool allocate_signal_page(struct file *devkfd, struct kfd_process *p)
 	page->kernel_address = backing_store;
 
 	if (list_empty(&p->signal_event_pages))
-		/* This is a hack to ensure the signal / event ID is never 0. It's needed
-		 * because the event signaller writes the event ID into the event slot
-		 * and we can't distinguish 0 from unsignalled. */
-		page->page_index = 1;
+		page->page_index = 0;
 	else
 		page->page_index = list_tail_entry(&p->signal_event_pages,
 						   struct signal_page,
@@ -297,8 +288,13 @@ lookup_event_by_page_slot(struct kfd_process *p,
 static int
 create_signal_event(struct file *devkfd, struct kfd_process *p, struct kfd_event *ev)
 {
+	if (p->signal_event_count == SIGNAL_EVENT_LIMIT)
+		return -ENOMEM;
+
 	if (!allocate_event_notification_slot(devkfd, p, &ev->signal_page, &ev->signal_slot_index))
 		return -ENOMEM;
+
+	p->signal_event_count++;
 
 	ev->user_signal_address = &ev->signal_page->user_address[ev->signal_slot_index];
 
@@ -325,12 +321,16 @@ void kfd_event_init_process(struct kfd_process *p)
 	hash_init(p->events);
 	INIT_LIST_HEAD(&p->signal_event_pages);
 	p->next_nonsignal_event_id = KFD_FIRST_NONSIGNAL_EVENT_ID;
+	p->signal_event_count = 0;
 }
 
-static void destroy_event(struct kfd_event *ev)
+static void destroy_event(struct kfd_process *p, struct kfd_event *ev)
 {
-	if (ev->signal_page != NULL)
+	if (ev->signal_page != NULL) {
 		release_event_notification_slot(ev->signal_page, ev->signal_slot_index);
+		p->signal_event_count--;
+	}
+
 	hash_del(&ev->events);
 	kfree(ev);
 }
@@ -342,7 +342,7 @@ static void destroy_events(struct kfd_process *p)
 	unsigned int hash_bkt;
 
 	hash_for_each_safe(p->events, hash_bkt, tmp, ev, events)
-		destroy_event(ev);
+		destroy_event(p, ev);
 }
 
 /* We assume that the process is being destroyed and there is no need to unmap the pages
@@ -421,7 +421,7 @@ int kfd_event_destroy(struct kfd_process *p, uint32_t event_id)
 			ret = -EBUSY;
 		}
 		else {
-			destroy_event(ev);
+			destroy_event(p, ev);
 		}
 	else
 		ret = -EINVAL;

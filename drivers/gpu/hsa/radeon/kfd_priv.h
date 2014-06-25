@@ -389,6 +389,7 @@ struct kfd_process {
 	DECLARE_HASHTABLE(events, 4);
 	struct list_head signal_event_pages;	/* struct slot_page_header.event_pages */
 	kfd_event_id next_nonsignal_event_id;
+	size_t signal_event_count;
 };
 
 struct kfd_process *radeon_kfd_create_process(const struct task_struct *);
