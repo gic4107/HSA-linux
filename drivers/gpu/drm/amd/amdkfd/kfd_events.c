@@ -66,6 +66,7 @@ struct signal_page {
 #define SLOTS_PER_PAGE (PAGE_SIZE / sizeof(kfd_signal_slot_t))
 #define SLOT_BITMAP_SIZE BITS_TO_LONGS(SLOTS_PER_PAGE)
 #define BITS_PER_PAGE (ilog2(SLOTS_PER_PAGE)+1)
+#define SIGNAL_PAGE_SIZE (sizeof(struct signal_page) + SLOT_BITMAP_SIZE * sizeof(long))
 
 /* For signal events, the event ID is broken down as follows:
  * bit 31: 1 (0 would indicate a non-signal event)
@@ -135,7 +136,7 @@ bool allocate_signal_page(struct file *devkfd, struct kfd_process *p)
 	void *backing_store;
 	struct signal_page *page;
 
-	page = kzalloc(sizeof(struct signal_page), GFP_KERNEL);
+	page = kzalloc(SIGNAL_PAGE_SIZE, GFP_KERNEL);
 	if (!page)
 		goto fail_alloc_signal_page;
 
