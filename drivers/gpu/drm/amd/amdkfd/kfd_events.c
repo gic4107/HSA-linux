@@ -102,6 +102,8 @@ allocate_free_slot(struct kfd_process *process,
 			__set_bit(slot, page->used_slot_bitmap);
 			page->free_slots--;
 
+			page_slots(page)[slot] = UNSIGNALED_EVENT_SLOT;
+
 			*out_page = page;
 			*out_slot_index = slot;
 			return true;
@@ -496,12 +498,12 @@ int kfd_reset_event(struct kfd_process *p, uint32_t event_id)
 
 static void acknowledge_signal(struct kfd_process *p, struct kfd_event *ev)
 {
-	page_slots(ev->signal_page)[ev->signal_slot_index] = 0;
+	page_slots(ev->signal_page)[ev->signal_slot_index] = UNSIGNALED_EVENT_SLOT;
 }
 
 static bool is_slot_signaled(struct signal_page *page, unsigned int index)
 {
-	return page_slots(page)[index] != 0;
+	return page_slots(page)[index] != UNSIGNALED_EVENT_SLOT;
 }
 
 static void set_event_from_interrupt(struct kfd_process *p, struct kfd_event *ev)
