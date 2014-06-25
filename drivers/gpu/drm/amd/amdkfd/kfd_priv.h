@@ -478,6 +478,7 @@ struct kfd_process {
 	DECLARE_HASHTABLE(events, 4);
 	struct list_head signal_event_pages;	/* struct slot_page_header.event_pages */
 	u32 next_nonsignal_event_id;
+	size_t signal_event_count;
 };
 
 void kfd_process_create_wq(void);
