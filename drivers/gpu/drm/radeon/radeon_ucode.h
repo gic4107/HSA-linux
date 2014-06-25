@@ -153,4 +153,132 @@
 #define HAWAII_SMC_UCODE_START       0x20000
 #define HAWAII_SMC_UCODE_SIZE        0x1FDEC
 
+struct common_firmware_header {
+	uint32_t size_bytes; /* size of the entire header+image(s) in bytes */
+	uint32_t header_size_bytes; /* size of just the header in bytes */
+	uint16_t header_version_major; /* header version */
+	uint16_t header_version_minor; /* header version */
+	uint16_t ip_version_major; /* IP version */
+	uint16_t ip_version_minor; /* IP version */
+	uint32_t crc32;  /* crc32 checksum of the payload */
+};
+
+/* version_major=1, version_minor=0 */
+struct mc_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t io_debug_size_bytes; /* size of debug array in dwords */
+	uint32_t io_debug_array_offset_bytes; /* payload offset from the start of the header */
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct smc_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_start_addr;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct me_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t jt_offset; /* jt location */
+	uint32_t jt_size;  /* size of jt */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct pfp_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t jt_offset; /* jt location */
+	uint32_t jt_size; /* size of jt */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct ce_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t jt_offset; /* jt location */
+	uint32_t jt_size;  /* size of jt */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct mec_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t jt_offset; /* jt location */
+	uint32_t jt_size; /* size of jt */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct rlc_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t save_and_restore_offset;
+	uint32_t clear_state_descriptor_offset;
+	uint32_t avail_scratch_ram_locations;
+	uint32_t master_pkt_description_offset;
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct sdma_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_change_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t jt_offset; /* jt location */
+	uint32_t jt_size; /* size of jt */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct uvd_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+/* version_major=1, version_minor=0 */
+struct vce_firmware_header_v1_0 {
+	struct common_firmware_header header;
+	uint32_t ucode_version;
+	uint32_t ucode_feature_version;
+	uint32_t ucode_size_bytes; /* size of ucode in bytes */
+	uint32_t ucode_array_offset_bytes; /* payload offset from the start of the header */
+};
+
+void radeon_ucode_print_mc_hdr(const struct mc_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_smc_hdr(const struct smc_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_me_hdr(const struct me_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_pfp_hdr(const struct pfp_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_ce_hdr(const struct ce_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_mec_hdr(const struct mec_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_rlc_hdr(const struct rlc_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_sdma_hdr(const struct sdma_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_uvd_hdr(const struct uvd_firmware_header_v1_0 *hdr);
+void radeon_ucode_print_vce_hdr(const struct uvd_firmware_header_v1_0 *hdr);
+int radeon_ucode_validate(const struct firmware *fw);
+
 #endif
