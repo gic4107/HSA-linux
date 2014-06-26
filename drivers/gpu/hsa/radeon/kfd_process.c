@@ -39,6 +39,8 @@ struct mm_struct;
 static DEFINE_HASHTABLE(kfd_processes, KFD_PROCESS_TABLE_SIZE);
 static DEFINE_MUTEX(kfd_processes_mutex);
 
+DEFINE_STATIC_SRCU(kfd_processes_srcu);
+
 static struct kfd_process *find_process(const struct task_struct *thread);
 static struct kfd_process *create_process(const struct task_struct *thread);
 static struct kfd_process *insert_process(struct kfd_process *process);
@@ -109,9 +111,9 @@ find_process(const struct task_struct *thread)
 {
 	struct kfd_process *p;
 
-	rcu_read_lock();
+	int idx = srcu_read_lock(&kfd_processes_srcu);
 	p = find_process_by_mm(thread->mm);
-	rcu_read_unlock();
+	srcu_read_unlock(&kfd_processes_srcu, idx);
 
 	return p;
 }
@@ -155,7 +157,7 @@ static void shutdown_process(struct kfd_process *p)
 	mutex_lock(&kfd_processes_mutex);
 	hash_del_rcu(&p->kfd_processes);
 	mutex_unlock(&kfd_processes_mutex);
-	synchronize_rcu();
+	synchronize_srcu(&kfd_processes_srcu);
 }
 
 static void
@@ -547,7 +549,7 @@ struct kfd_process *kfd_lookup_process_by_pasid(pasid_t pasid)
 	struct kfd_process *p;
 	unsigned int temp;
 
-	rcu_read_lock();
+	int idx = srcu_read_lock(&kfd_processes_srcu);
 
 	hash_for_each_rcu(kfd_processes, temp, p, kfd_processes) {
 		if (p->pasid == pasid) {
@@ -556,7 +558,7 @@ struct kfd_process *kfd_lookup_process_by_pasid(pasid_t pasid)
 		}
 	}
 
-	rcu_read_unlock();
+	srcu_read_unlock(&kfd_processes_srcu, idx);
 
 	return p;
 }
