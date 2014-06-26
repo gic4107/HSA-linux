@@ -385,6 +385,7 @@ int kfd_event_create(struct file *devkfd, struct kfd_process *p,
 
 	switch (event_type) {
 	case KFD_EVENT_TYPE_SIGNAL:
+	case KFD_EVENT_TYPE_DEBUG:
 		ret = create_signal_event(devkfd, p, ev);
 		break;
 	default:
@@ -508,7 +509,7 @@ static bool is_slot_signaled(struct signal_page *page, unsigned int index)
 
 static void set_event_from_interrupt(struct kfd_process *p, struct kfd_event *ev)
 {
-	if (ev && ev->type == KFD_EVENT_TYPE_SIGNAL) {
+	if (ev && (ev->type == KFD_EVENT_TYPE_SIGNAL || ev->type == KFD_EVENT_TYPE_DEBUG)) {
 		acknowledge_signal(p, ev);
 		set_event(ev);
 	}
