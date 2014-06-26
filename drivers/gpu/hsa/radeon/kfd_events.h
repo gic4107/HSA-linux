@@ -68,6 +68,7 @@ struct kfd_event {
 
 /* Matching HSA_EVENTTYPE */
 #define KFD_EVENT_TYPE_SIGNAL 0
+#define KFD_EVENT_TYPE_DEBUG 5
 
 extern void kfd_signal_event_interrupt(pasid_t pasid, uint32_t partial_id, uint32_t valid_id_bits);
 
