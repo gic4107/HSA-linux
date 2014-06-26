@@ -363,6 +363,16 @@ void kfd_event_free_process(struct kfd_process *p)
 	shutdown_signal_pages(p);
 }
 
+static bool event_can_be_gpu_signaled(const struct kfd_event *ev)
+{
+	return ev->type == KFD_EVENT_TYPE_SIGNAL || ev->type == KFD_EVENT_TYPE_DEBUG;
+}
+
+static bool event_can_be_cpu_signaled(const struct kfd_event *ev)
+{
+	return ev->type == KFD_EVENT_TYPE_SIGNAL;
+}
+
 int kfd_event_create(struct file *devkfd, struct kfd_process *p,
 		     uint32_t event_type, bool auto_reset, uint32_t node_id,
 		     uint32_t *event_id, void __user **event_trigger_address, uint32_t *event_trigger_data)
@@ -461,7 +471,7 @@ int kfd_set_event(struct kfd_process *p, uint32_t event_id)
 
 	ev = lookup_event_by_id(p, event_id);
 
-	if (ev || ev->type == KFD_EVENT_TYPE_SIGNAL)
+	if (ev && event_can_be_cpu_signaled(ev))
 		set_event(ev);
 	else
 		ret = -EINVAL;
@@ -485,7 +495,7 @@ int kfd_reset_event(struct kfd_process *p, uint32_t event_id)
 
 	ev = lookup_event_by_id(p, event_id);
 
-	if (ev || ev->type == KFD_EVENT_TYPE_SIGNAL)
+	if (ev && event_can_be_cpu_signaled(ev))
 		reset_event(ev);
 	else
 		ret = -EINVAL;
@@ -507,7 +517,7 @@ static bool is_slot_signaled(struct signal_page *page, unsigned int index)
 
 static void set_event_from_interrupt(struct kfd_process *p, struct kfd_event *ev)
 {
-	if (ev && (ev->type == KFD_EVENT_TYPE_SIGNAL || ev->type == KFD_EVENT_TYPE_DEBUG)) {
+	if (ev && event_can_be_gpu_signaled(ev)) {
 		acknowledge_signal(p, ev);
 		set_event(ev);
 	}
