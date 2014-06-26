@@ -2435,7 +2435,7 @@ int radeon_asic_init(struct radeon_device *rdev)
 			rdev->cg_flags =
 				RADEON_CG_SUPPORT_GFX_MGCG |
 				RADEON_CG_SUPPORT_GFX_MGLS |
-				RADEON_CG_SUPPORT_GFX_CGCG |
+				/*RADEON_CG_SUPPORT_GFX_CGCG |*/
 				RADEON_CG_SUPPORT_GFX_CGLS |
 				RADEON_CG_SUPPORT_GFX_CGTS |
 				RADEON_CG_SUPPORT_GFX_CGTS_LS |
@@ -2454,7 +2454,7 @@ int radeon_asic_init(struct radeon_device *rdev)
 			rdev->cg_flags =
 				RADEON_CG_SUPPORT_GFX_MGCG |
 				RADEON_CG_SUPPORT_GFX_MGLS |
-				RADEON_CG_SUPPORT_GFX_CGCG |
+				/*RADEON_CG_SUPPORT_GFX_CGCG |*/
 				RADEON_CG_SUPPORT_GFX_CGLS |
 				RADEON_CG_SUPPORT_GFX_CGTS |
 				RADEON_CG_SUPPORT_GFX_CP_LS |
@@ -2480,7 +2480,7 @@ int radeon_asic_init(struct radeon_device *rdev)
 			rdev->cg_flags =
 				RADEON_CG_SUPPORT_GFX_MGCG |
 				RADEON_CG_SUPPORT_GFX_MGLS |
-				RADEON_CG_SUPPORT_GFX_CGCG |
+				/*RADEON_CG_SUPPORT_GFX_CGCG |*/
 				RADEON_CG_SUPPORT_GFX_CGLS |
 				RADEON_CG_SUPPORT_GFX_CGTS |
 				RADEON_CG_SUPPORT_GFX_CGTS_LS |
@@ -2508,7 +2508,7 @@ int radeon_asic_init(struct radeon_device *rdev)
 			rdev->cg_flags =
 				RADEON_CG_SUPPORT_GFX_MGCG |
 				RADEON_CG_SUPPORT_GFX_MGLS |
-				RADEON_CG_SUPPORT_GFX_CGCG |
+				/*RADEON_CG_SUPPORT_GFX_CGCG |*/
 				RADEON_CG_SUPPORT_GFX_CGLS |
 				RADEON_CG_SUPPORT_GFX_CGTS |
 				RADEON_CG_SUPPORT_GFX_CGTS_LS |
