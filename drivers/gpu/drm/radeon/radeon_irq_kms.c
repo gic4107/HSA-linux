@@ -127,7 +127,6 @@ void radeon_driver_irq_preinstall_kms(struct drm_device *dev)
 		rdev->irq.hpd[i] = false;
 	for (i = 0; i < RADEON_MAX_CRTCS; i++) {
 		rdev->irq.crtc_vblank_int[i] = false;
-		atomic_set(&rdev->irq.pflip[i], 0);
 		rdev->irq.afmt[i] = false;
 	}
 	radeon_irq_set(rdev);
@@ -175,7 +174,6 @@ void radeon_driver_irq_uninstall_kms(struct drm_device *dev)
 		rdev->irq.hpd[i] = false;
 	for (i = 0; i < RADEON_MAX_CRTCS; i++) {
 		rdev->irq.crtc_vblank_int[i] = false;
-		atomic_set(&rdev->irq.pflip[i], 0);
 		rdev->irq.afmt[i] = false;
 	}
 	radeon_irq_set(rdev);
@@ -359,58 +357,6 @@ void radeon_irq_kms_sw_irq_put(struct radeon_device *rdev, int ring)
 		return;
 
 	if (atomic_dec_and_test(&rdev->irq.ring_int[ring])) {
-		spin_lock_irqsave(&rdev->irq.lock, irqflags);
-		radeon_irq_set(rdev);
-		spin_unlock_irqrestore(&rdev->irq.lock, irqflags);
-	}
-}
-
-/**
- * radeon_irq_kms_pflip_irq_get - enable pageflip interrupt
- *
- * @rdev: radeon device pointer
- * @crtc: crtc whose interrupt you want to enable
- *
- * Enables the pageflip interrupt for a specific crtc (all asics).
- * For pageflips we use the vblank interrupt source.
- */
-void radeon_irq_kms_pflip_irq_get(struct radeon_device *rdev, int crtc)
-{
-	unsigned long irqflags;
-
-	if (crtc < 0 || crtc >= rdev->num_crtc)
-		return;
-
-	if (!rdev->ddev->irq_enabled)
-		return;
-
-	if (atomic_inc_return(&rdev->irq.pflip[crtc]) == 1) {
-		spin_lock_irqsave(&rdev->irq.lock, irqflags);
-		radeon_irq_set(rdev);
-		spin_unlock_irqrestore(&rdev->irq.lock, irqflags);
-	}
-}
-
-/**
- * radeon_irq_kms_pflip_irq_put - disable pageflip interrupt
- *
- * @rdev: radeon device pointer
- * @crtc: crtc whose interrupt you want to disable
- *
- * Disables the pageflip interrupt for a specific crtc (all asics).
- * For pageflips we use the vblank interrupt source.
- */
-void radeon_irq_kms_pflip_irq_put(struct radeon_device *rdev, int crtc)
-{
-	unsigned long irqflags;
-
-	if (crtc < 0 || crtc >= rdev->num_crtc)
-		return;
-
-	if (!rdev->ddev->irq_enabled)
-		return;
-
-	if (atomic_dec_and_test(&rdev->irq.pflip[crtc])) {
 		spin_lock_irqsave(&rdev->irq.lock, irqflags);
 		radeon_irq_set(rdev);
 		spin_unlock_irqrestore(&rdev->irq.lock, irqflags);

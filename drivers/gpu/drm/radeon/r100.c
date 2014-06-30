@@ -676,12 +676,10 @@ int r100_irq_set(struct radeon_device *rdev)
 	if (atomic_read(&rdev->irq.ring_int[RADEON_RING_TYPE_GFX_INDEX])) {
 		tmp |= RADEON_SW_INT_ENABLE;
 	}
-	if (rdev->irq.crtc_vblank_int[0] ||
-	    atomic_read(&rdev->irq.pflip[0])) {
+	if (rdev->irq.crtc_vblank_int[0]) {
 		tmp |= RADEON_CRTC_VBLANK_MASK;
 	}
-	if (rdev->irq.crtc_vblank_int[1] ||
-	    atomic_read(&rdev->irq.pflip[1])) {
+	if (rdev->irq.crtc_vblank_int[1]) {
 		tmp |= RADEON_CRTC2_VBLANK_MASK;
 	}
 	if (rdev->irq.hpd[0]) {
@@ -742,8 +740,7 @@ int r100_irq_process(struct radeon_device *rdev)
 				rdev->pm.vblank_sync = true;
 				wake_up(&rdev->irq.vblank_queue);
 			}
-			if (atomic_read(&rdev->irq.pflip[0]))
-				radeon_crtc_handle_flip(rdev, 0);
+			radeon_crtc_handle_flip(rdev, 0);
 		}
 		if (status & RADEON_CRTC2_VBLANK_STAT) {
 			if (rdev->irq.crtc_vblank_int[1]) {
@@ -751,8 +748,7 @@ int r100_irq_process(struct radeon_device *rdev)
 				rdev->pm.vblank_sync = true;
 				wake_up(&rdev->irq.vblank_queue);
 			}
-			if (atomic_read(&rdev->irq.pflip[1]))
-				radeon_crtc_handle_flip(rdev, 1);
+			radeon_crtc_handle_flip(rdev, 1);
 		}
 		if (status & RADEON_FP_DETECT_STAT) {
 			queue_hotplug = true;

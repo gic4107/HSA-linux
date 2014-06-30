@@ -326,7 +326,6 @@ void radeon_crtc_handle_flip(struct radeon_device *rdev, int crtc_id)
 
 	drm_vblank_put(rdev->ddev, radeon_crtc->crtc_id);
 	radeon_fence_unref(&work->fence);
-	radeon_irq_kms_pflip_irq_put(rdev, work->crtc_id);
 	queue_work(radeon_crtc->flip_queue, &work->unpin_work);
 }
 
@@ -369,10 +368,6 @@ static void radeon_flip_work_func(struct work_struct *__work)
 
 	/* We borrow the event spin lock for protecting flip_status */
 	spin_lock_irqsave(&crtc->dev->event_lock, flags);
-
-	/* set the proper interrupt */
-	radeon_irq_kms_pflip_irq_get(rdev, radeon_crtc->crtc_id);
-
 	radeon_crtc->flip_status = RADEON_FLIP_READY;
 	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
 	up_read(&rdev->exclusive_lock);

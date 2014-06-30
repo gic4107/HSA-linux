@@ -757,7 +757,6 @@ struct radeon_irq {
 	spinlock_t			lock;
 	atomic_t			ring_int[RADEON_NUM_RINGS];
 	bool				crtc_vblank_int[RADEON_MAX_CRTCS];
-	atomic_t			pflip[RADEON_MAX_CRTCS];
 	wait_queue_head_t		vblank_queue;
 	bool				hpd[RADEON_MAX_HPD_PINS];
 	bool				afmt[RADEON_MAX_AFMT_BLOCKS];
@@ -769,8 +768,6 @@ int radeon_irq_kms_init(struct radeon_device *rdev);
 void radeon_irq_kms_fini(struct radeon_device *rdev);
 void radeon_irq_kms_sw_irq_get(struct radeon_device *rdev, int ring);
 void radeon_irq_kms_sw_irq_put(struct radeon_device *rdev, int ring);
-void radeon_irq_kms_pflip_irq_get(struct radeon_device *rdev, int crtc);
-void radeon_irq_kms_pflip_irq_put(struct radeon_device *rdev, int crtc);
 void radeon_irq_kms_enable_afmt(struct radeon_device *rdev, int block);
 void radeon_irq_kms_disable_afmt(struct radeon_device *rdev, int block);
 void radeon_irq_kms_enable_hpd(struct radeon_device *rdev, unsigned hpd_mask);

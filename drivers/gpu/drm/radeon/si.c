@@ -6062,33 +6062,27 @@ int si_irq_set(struct radeon_device *rdev)
 		DRM_DEBUG("si_irq_set: sw int dma1\n");
 		dma_cntl1 |= TRAP_ENABLE;
 	}
-	if (rdev->irq.crtc_vblank_int[0] ||
-	    atomic_read(&rdev->irq.pflip[0])) {
+	if (rdev->irq.crtc_vblank_int[0]) {
 		DRM_DEBUG("si_irq_set: vblank 0\n");
 		crtc1 |= VBLANK_INT_MASK;
 	}
-	if (rdev->irq.crtc_vblank_int[1] ||
-	    atomic_read(&rdev->irq.pflip[1])) {
+	if (rdev->irq.crtc_vblank_int[1]) {
 		DRM_DEBUG("si_irq_set: vblank 1\n");
 		crtc2 |= VBLANK_INT_MASK;
 	}
-	if (rdev->irq.crtc_vblank_int[2] ||
-	    atomic_read(&rdev->irq.pflip[2])) {
+	if (rdev->irq.crtc_vblank_int[2]) {
 		DRM_DEBUG("si_irq_set: vblank 2\n");
 		crtc3 |= VBLANK_INT_MASK;
 	}
-	if (rdev->irq.crtc_vblank_int[3] ||
-	    atomic_read(&rdev->irq.pflip[3])) {
+	if (rdev->irq.crtc_vblank_int[3]) {
 		DRM_DEBUG("si_irq_set: vblank 3\n");
 		crtc4 |= VBLANK_INT_MASK;
 	}
-	if (rdev->irq.crtc_vblank_int[4] ||
-	    atomic_read(&rdev->irq.pflip[4])) {
+	if (rdev->irq.crtc_vblank_int[4]) {
 		DRM_DEBUG("si_irq_set: vblank 4\n");
 		crtc5 |= VBLANK_INT_MASK;
 	}
-	if (rdev->irq.crtc_vblank_int[5] ||
-	    atomic_read(&rdev->irq.pflip[5])) {
+	if (rdev->irq.crtc_vblank_int[5]) {
 		DRM_DEBUG("si_irq_set: vblank 5\n");
 		crtc6 |= VBLANK_INT_MASK;
 	}
@@ -6346,8 +6340,7 @@ restart_ih:
 						rdev->pm.vblank_sync = true;
 						wake_up(&rdev->irq.vblank_queue);
 					}
-					if (atomic_read(&rdev->irq.pflip[0]))
-						radeon_crtc_handle_flip(rdev, 0);
+					radeon_crtc_handle_flip(rdev, 0);
 					rdev->irq.stat_regs.evergreen.disp_int &= ~LB_D1_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D1 vblank\n");
 				}
@@ -6372,8 +6365,7 @@ restart_ih:
 						rdev->pm.vblank_sync = true;
 						wake_up(&rdev->irq.vblank_queue);
 					}
-					if (atomic_read(&rdev->irq.pflip[1]))
-						radeon_crtc_handle_flip(rdev, 1);
+					radeon_crtc_handle_flip(rdev, 1);
 					rdev->irq.stat_regs.evergreen.disp_int_cont &= ~LB_D2_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D2 vblank\n");
 				}
@@ -6398,8 +6390,7 @@ restart_ih:
 						rdev->pm.vblank_sync = true;
 						wake_up(&rdev->irq.vblank_queue);
 					}
-					if (atomic_read(&rdev->irq.pflip[2]))
-						radeon_crtc_handle_flip(rdev, 2);
+					radeon_crtc_handle_flip(rdev, 2);
 					rdev->irq.stat_regs.evergreen.disp_int_cont2 &= ~LB_D3_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D3 vblank\n");
 				}
@@ -6424,8 +6415,7 @@ restart_ih:
 						rdev->pm.vblank_sync = true;
 						wake_up(&rdev->irq.vblank_queue);
 					}
-					if (atomic_read(&rdev->irq.pflip[3]))
-						radeon_crtc_handle_flip(rdev, 3);
+					radeon_crtc_handle_flip(rdev, 3);
 					rdev->irq.stat_regs.evergreen.disp_int_cont3 &= ~LB_D4_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D4 vblank\n");
 				}
@@ -6450,8 +6440,7 @@ restart_ih:
 						rdev->pm.vblank_sync = true;
 						wake_up(&rdev->irq.vblank_queue);
 					}
-					if (atomic_read(&rdev->irq.pflip[4]))
-						radeon_crtc_handle_flip(rdev, 4);
+					radeon_crtc_handle_flip(rdev, 4);
 					rdev->irq.stat_regs.evergreen.disp_int_cont4 &= ~LB_D5_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D5 vblank\n");
 				}
@@ -6476,8 +6465,7 @@ restart_ih:
 						rdev->pm.vblank_sync = true;
 						wake_up(&rdev->irq.vblank_queue);
 					}
-					if (atomic_read(&rdev->irq.pflip[5]))
-						radeon_crtc_handle_flip(rdev, 5);
+					radeon_crtc_handle_flip(rdev, 5);
 					rdev->irq.stat_regs.evergreen.disp_int_cont5 &= ~LB_D6_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D6 vblank\n");
 				}
