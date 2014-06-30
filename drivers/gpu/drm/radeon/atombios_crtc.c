@@ -1359,6 +1359,10 @@ static int dce4_crtc_do_set_base(struct drm_crtc *crtc,
 		break;
 	}
 
+	/* Make sure updates happen at vertical blank */
+	WREG32(EVERGREEN_GRPH_FLIP_CONTROL + radeon_crtc->crtc_offset, 0);
+	WREG32(EVERGREEN_MASTER_UPDATE_MODE + radeon_crtc->crtc_offset, 0);
+
 	WREG32(EVERGREEN_GRPH_PRIMARY_SURFACE_ADDRESS_HIGH + radeon_crtc->crtc_offset,
 	       upper_32_bits(fb_location));
 	WREG32(EVERGREEN_GRPH_SECONDARY_SURFACE_ADDRESS_HIGH + radeon_crtc->crtc_offset,
@@ -1408,15 +1412,6 @@ static int dce4_crtc_do_set_base(struct drm_crtc *crtc,
 	WREG32(EVERGREEN_VIEWPORT_SIZE + radeon_crtc->crtc_offset,
 	       (viewport_w << 16) | viewport_h);
 
-	/* pageflip setup */
-	/* make sure flip is at vb rather than hb */
-	tmp = RREG32(EVERGREEN_GRPH_FLIP_CONTROL + radeon_crtc->crtc_offset);
-	tmp &= ~EVERGREEN_GRPH_SURFACE_UPDATE_H_RETRACE_EN;
-	WREG32(EVERGREEN_GRPH_FLIP_CONTROL + radeon_crtc->crtc_offset, tmp);
-
-	/* set pageflip to happen anywhere in vblank interval */
-	WREG32(EVERGREEN_MASTER_UPDATE_MODE + radeon_crtc->crtc_offset, 0);
-
 	if (!atomic && fb && fb != crtc->primary->fb) {
 		radeon_fb = to_radeon_framebuffer(fb);
 		rbo = gem_to_radeon_bo(radeon_fb->obj);
@@ -1447,7 +1442,7 @@ static int avivo_crtc_do_set_base(struct drm_crtc *crtc,
 	uint64_t fb_location;
 	uint32_t fb_format, fb_pitch_pixels, tiling_flags;
 	u32 fb_swap = R600_D1GRPH_SWAP_ENDIAN_NONE;
-	u32 tmp, viewport_w, viewport_h;
+	u32 viewport_w, viewport_h;
 	int r;
 	bool bypass_lut = false;
 
@@ -1562,6 +1557,10 @@ static int avivo_crtc_do_set_base(struct drm_crtc *crtc,
 	else
 		WREG32(AVIVO_D2VGA_CONTROL, 0);
 
+	/* Make sure updates happen at vertical blank */
+	WREG32(AVIVO_D1GRPH_FLIP_CONTROL + radeon_crtc->crtc_offset, 0);
+	WREG32(AVIVO_D1MODE_MASTER_UPDATE_MODE + radeon_crtc->crtc_offset, 0);
+
 	if (rdev->family >= CHIP_RV770) {
 		if (radeon_crtc->crtc_id) {
 			WREG32(R700_D2GRPH_PRIMARY_SURFACE_ADDRESS_HIGH, upper_32_bits(fb_location));
@@ -1607,15 +1606,6 @@ static int avivo_crtc_do_set_base(struct drm_crtc *crtc,
 	viewport_h = (crtc->mode.vdisplay + 1) & ~1;
 	WREG32(AVIVO_D1MODE_VIEWPORT_SIZE + radeon_crtc->crtc_offset,
 	       (viewport_w << 16) | viewport_h);
-
-	/* pageflip setup */
-	/* make sure flip is at vb rather than hb */
-	tmp = RREG32(AVIVO_D1GRPH_FLIP_CONTROL + radeon_crtc->crtc_offset);
-	tmp &= ~AVIVO_D1GRPH_SURFACE_UPDATE_H_RETRACE_EN;
-	WREG32(AVIVO_D1GRPH_FLIP_CONTROL + radeon_crtc->crtc_offset, tmp);
-
-	/* set pageflip to happen anywhere in vblank interval */
-	WREG32(AVIVO_D1MODE_MASTER_UPDATE_MODE + radeon_crtc->crtc_offset, 0);
 
 	if (!atomic && fb && fb != crtc->primary->fb) {
 		radeon_fb = to_radeon_framebuffer(fb);

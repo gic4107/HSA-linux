@@ -805,7 +805,10 @@ void rv770_page_flip(struct radeon_device *rdev, int crtc_id, u64 crtc_base)
 {
 	struct radeon_crtc *radeon_crtc = rdev->mode_info.crtcs[crtc_id];
 	u32 tmp = RREG32(AVIVO_D1GRPH_UPDATE + radeon_crtc->crtc_offset);
-	int i;
+
+	/* Take surface updates at horizontal blank */
+	WREG32(AVIVO_D1GRPH_FLIP_CONTROL + radeon_crtc->crtc_offset,
+	       AVIVO_D1GRPH_SURFACE_UPDATE_H_RETRACE_EN);
 
 	/* Lock the graphics update lock */
 	tmp |= AVIVO_D1GRPH_UPDATE_LOCK;
@@ -824,26 +827,9 @@ void rv770_page_flip(struct radeon_device *rdev, int crtc_id, u64 crtc_base)
 	WREG32(D1GRPH_PRIMARY_SURFACE_ADDRESS + radeon_crtc->crtc_offset,
 	       (u32)crtc_base);
 
-	/* Wait for update_pending to go high. */
-	for (i = 0; i < rdev->usec_timeout; i++) {
-		if (RREG32(AVIVO_D1GRPH_UPDATE + radeon_crtc->crtc_offset) & AVIVO_D1GRPH_SURFACE_UPDATE_PENDING)
-			break;
-		udelay(1);
-	}
-	DRM_DEBUG("Update pending now high. Unlocking vupdate_lock.\n");
-
-	/* Unlock the lock, so double-buffering can take place inside vblank */
+	/* Unlock the lock, so double-buffering can take place inside hblank */
 	tmp &= ~AVIVO_D1GRPH_UPDATE_LOCK;
 	WREG32(AVIVO_D1GRPH_UPDATE + radeon_crtc->crtc_offset, tmp);
-}
-
-bool rv770_page_flip_pending(struct radeon_device *rdev, int crtc_id)
-{
-	struct radeon_crtc *radeon_crtc = rdev->mode_info.crtcs[crtc_id];
-
-	/* Return current update_pending status: */
-	return !!(RREG32(AVIVO_D1GRPH_UPDATE + radeon_crtc->crtc_offset) &
-		AVIVO_D1GRPH_SURFACE_UPDATE_PENDING);
 }
 
 /* get temperature in millidegrees */

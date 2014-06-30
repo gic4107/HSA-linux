@@ -149,50 +149,18 @@ void r100_wait_for_vblank(struct radeon_device *rdev, int crtc)
  * @crtc_base: new address of the crtc (GPU MC address)
  *
  * Does the actual pageflip (r1xx-r4xx).
- * During vblank we take the crtc lock and wait for the update_pending
- * bit to go high, when it does, we release the lock, and allow the
- * double buffered update to take place.
  */
 void r100_page_flip(struct radeon_device *rdev, int crtc_id, u64 crtc_base)
 {
 	struct radeon_crtc *radeon_crtc = rdev->mode_info.crtcs[crtc_id];
-	u32 tmp = ((u32)crtc_base) | RADEON_CRTC_OFFSET__OFFSET_LOCK;
-	int i;
+	u32 crtc_offset_cntl = RREG32(RADEON_CRTC_OFFSET_CNTL);
 
-	/* Lock the graphics update lock */
-	/* update the scanout addresses */
-	WREG32(RADEON_CRTC_OFFSET + radeon_crtc->crtc_offset, tmp);
+	/* Take surface updates at horizontal blank */
+	WREG32(RADEON_CRTC_OFFSET_CNTL,
+	       crtc_offset_cntl | RADEON_CRTC_OFFSET_FLIP_CNTL);
 
-	/* Wait for update_pending to go high. */
-	for (i = 0; i < rdev->usec_timeout; i++) {
-		if (RREG32(RADEON_CRTC_OFFSET + radeon_crtc->crtc_offset) & RADEON_CRTC_OFFSET__GUI_TRIG_OFFSET)
-			break;
-		udelay(1);
-	}
-	DRM_DEBUG("Update pending now high. Unlocking vupdate_lock.\n");
-
-	/* Unlock the lock, so double-buffering can take place inside vblank */
-	tmp &= ~RADEON_CRTC_OFFSET__OFFSET_LOCK;
-	WREG32(RADEON_CRTC_OFFSET + radeon_crtc->crtc_offset, tmp);
-
-}
-
-/**
- * r100_page_flip_pending - check if page flip is still pending
- *
- * @rdev: radeon_device pointer
- * @crtc_id: crtc to check
- *
- * Check if the last pagefilp is still pending (r1xx-r4xx).
- * Returns the current update pending status.
- */
-bool r100_page_flip_pending(struct radeon_device *rdev, int crtc_id)
-{
-	struct radeon_crtc *radeon_crtc = rdev->mode_info.crtcs[crtc_id];
-
-	/* Return current update_pending status: */
-	return !!(RREG32(RADEON_CRTC_OFFSET + radeon_crtc->crtc_offset) &
-		RADEON_CRTC_OFFSET__GUI_TRIG_OFFSET);
+	/* Update the scanout address */
+	WREG32(RADEON_CRTC_OFFSET + radeon_crtc->crtc_offset, crtc_base);
 }
 
 /**
@@ -775,7 +743,7 @@ int r100_irq_process(struct radeon_device *rdev)
 				wake_up(&rdev->irq.vblank_queue);
 			}
 			if (atomic_read(&rdev->irq.pflip[0]))
-				radeon_crtc_handle_vblank(rdev, 0);
+				radeon_crtc_handle_flip(rdev, 0);
 		}
 		if (status & RADEON_CRTC2_VBLANK_STAT) {
 			if (rdev->irq.crtc_vblank_int[1]) {
@@ -784,7 +752,7 @@ int r100_irq_process(struct radeon_device *rdev)
 				wake_up(&rdev->irq.vblank_queue);
 			}
 			if (atomic_read(&rdev->irq.pflip[1]))
-				radeon_crtc_handle_vblank(rdev, 1);
+				radeon_crtc_handle_flip(rdev, 1);
 		}
 		if (status & RADEON_FP_DETECT_STAT) {
 			queue_hotplug = true;

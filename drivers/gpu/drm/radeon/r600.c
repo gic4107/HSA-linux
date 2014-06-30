@@ -3617,8 +3617,6 @@ int r600_irq_set(struct radeon_device *rdev)
 	WREG32(CP_INT_CNTL, cp_int_cntl);
 	WREG32(DMA_CNTL, dma_cntl);
 	WREG32(DxMODE_INT_MASK, mode_int);
-	WREG32(D1GRPH_INTERRUPT_CONTROL, DxGRPH_PFLIP_INT_MASK);
-	WREG32(D2GRPH_INTERRUPT_CONTROL, DxGRPH_PFLIP_INT_MASK);
 	WREG32(GRBM_INT_CNTL, grbm_int_cntl);
 	if (ASIC_IS_DCE3(rdev)) {
 		WREG32(DC_HPD1_INT_CONTROL, hpd1);
@@ -3675,10 +3673,6 @@ static void r600_irq_ack(struct radeon_device *rdev)
 	rdev->irq.stat_regs.r600.d1grph_int = RREG32(D1GRPH_INTERRUPT_STATUS);
 	rdev->irq.stat_regs.r600.d2grph_int = RREG32(D2GRPH_INTERRUPT_STATUS);
 
-	if (rdev->irq.stat_regs.r600.d1grph_int & DxGRPH_PFLIP_INT_OCCURRED)
-		WREG32(D1GRPH_INTERRUPT_STATUS, DxGRPH_PFLIP_INT_CLEAR);
-	if (rdev->irq.stat_regs.r600.d2grph_int & DxGRPH_PFLIP_INT_OCCURRED)
-		WREG32(D2GRPH_INTERRUPT_STATUS, DxGRPH_PFLIP_INT_CLEAR);
 	if (rdev->irq.stat_regs.r600.disp_int & LB_D1_VBLANK_INTERRUPT)
 		WREG32(D1MODE_VBLANK_STATUS, DxMODE_VBLANK_ACK);
 	if (rdev->irq.stat_regs.r600.disp_int & LB_D1_VLINE_INTERRUPT)
@@ -3879,7 +3873,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[0]))
-						radeon_crtc_handle_vblank(rdev, 0);
+						radeon_crtc_handle_flip(rdev, 0);
 					rdev->irq.stat_regs.r600.disp_int &= ~LB_D1_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D1 vblank\n");
 				}
@@ -3905,7 +3899,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[1]))
-						radeon_crtc_handle_vblank(rdev, 1);
+						radeon_crtc_handle_flip(rdev, 1);
 					rdev->irq.stat_regs.r600.disp_int &= ~LB_D2_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D2 vblank\n");
 				}
@@ -3920,14 +3914,6 @@ restart_ih:
 				DRM_DEBUG("Unhandled interrupt: %d %d\n", src_id, src_data);
 				break;
 			}
-			break;
-		case 9: /* D1 pflip */
-			DRM_DEBUG("IH: D1 flip\n");
-			radeon_crtc_handle_flip(rdev, 0);
-			break;
-		case 11: /* D2 pflip */
-			DRM_DEBUG("IH: D2 flip\n");
-			radeon_crtc_handle_flip(rdev, 1);
 			break;
 		case 19: /* HPD/DAC hotplug */
 			switch (src_data) {

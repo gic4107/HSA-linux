@@ -282,57 +282,13 @@ static void radeon_unpin_work_func(struct work_struct *__work)
 	kfree(work);
 }
 
-void radeon_crtc_handle_vblank(struct radeon_device *rdev, int crtc_id)
-{
-	struct radeon_crtc *radeon_crtc = rdev->mode_info.crtcs[crtc_id];
-	unsigned long flags;
-	u32 update_pending;
-	int vpos, hpos;
-
-	/* can happen during initialization */
-	if (radeon_crtc == NULL)
-		return;
-
-	spin_lock_irqsave(&rdev->ddev->event_lock, flags);
-	if (radeon_crtc->flip_status != RADEON_FLIP_SUBMITTED) {
-		DRM_DEBUG_DRIVER("radeon_crtc->flip_status = %d != "
-				 "RADEON_FLIP_SUBMITTED(%d)\n",
-				 radeon_crtc->flip_status,
-				 RADEON_FLIP_SUBMITTED);
-		spin_unlock_irqrestore(&rdev->ddev->event_lock, flags);
-		return;
-	}
-
-	update_pending = radeon_page_flip_pending(rdev, crtc_id);
-
-	/* Has the pageflip already completed in crtc, or is it certain
-	 * to complete in this vblank?
-	 */
-	if (update_pending &&
-	    (DRM_SCANOUTPOS_VALID & radeon_get_crtc_scanoutpos(rdev->ddev, crtc_id, 0,
-							       &vpos, &hpos, NULL, NULL)) &&
-	    ((vpos >= (99 * rdev->mode_info.crtcs[crtc_id]->base.hwmode.crtc_vdisplay)/100) ||
-	     (vpos < 0 && !ASIC_IS_AVIVO(rdev)))) {
-		/* crtc didn't flip in this target vblank interval,
-		 * but flip is pending in crtc. Based on the current
-		 * scanout position we know that the current frame is
-		 * (nearly) complete and the flip will (likely)
-		 * complete before the start of the next frame.
-		 */
-		update_pending = 0;
-	}
-	spin_unlock_irqrestore(&rdev->ddev->event_lock, flags);
-	if (!update_pending)
-		radeon_crtc_handle_flip(rdev, crtc_id);
-}
-
 /**
  * radeon_crtc_handle_flip - page flip completed
  *
  * @rdev: radeon device pointer
  * @crtc_id: crtc number this event is for
  *
- * Called when we are sure that a page flip for this crtc is completed.
+ * Called when we are sure that a page flip for this crtc can complete.
  */
 void radeon_crtc_handle_flip(struct radeon_device *rdev, int crtc_id)
 {
@@ -346,14 +302,17 @@ void radeon_crtc_handle_flip(struct radeon_device *rdev, int crtc_id)
 
 	spin_lock_irqsave(&rdev->ddev->event_lock, flags);
 	work = radeon_crtc->flip_work;
-	if (radeon_crtc->flip_status != RADEON_FLIP_SUBMITTED) {
+	if (radeon_crtc->flip_status != RADEON_FLIP_READY) {
 		DRM_DEBUG_DRIVER("radeon_crtc->flip_status = %d != "
-				 "RADEON_FLIP_SUBMITTED(%d)\n",
+				 "RADEON_FLIP_READY(%d)\n",
 				 radeon_crtc->flip_status,
-				 RADEON_FLIP_SUBMITTED);
+				 RADEON_FLIP_READY);
 		spin_unlock_irqrestore(&rdev->ddev->event_lock, flags);
 		return;
 	}
+
+	/* do the flip (mmio) */
+	radeon_page_flip(rdev, radeon_crtc->crtc_id, work->base);
 
 	/* Pageflip completed. Clean up. */
 	radeon_crtc->flip_status = RADEON_FLIP_NONE;
@@ -376,7 +335,7 @@ void radeon_crtc_handle_flip(struct radeon_device *rdev, int crtc_id)
  *
  * @work - kernel work item
  *
- * Wait for the buffer object to become idle and do the actual page flip
+ * Wait for the buffer object to become idle
  */
 static void radeon_flip_work_func(struct work_struct *__work)
 {
@@ -480,10 +439,8 @@ static void radeon_flip_work_func(struct work_struct *__work)
 	/* set the proper interrupt */
 	radeon_irq_kms_pflip_irq_get(rdev, radeon_crtc->crtc_id);
 
-	/* do the flip (mmio) */
-	radeon_page_flip(rdev, radeon_crtc->crtc_id, base);
-
-	radeon_crtc->flip_status = RADEON_FLIP_SUBMITTED;
+	work->base = base;
+	radeon_crtc->flip_status = RADEON_FLIP_READY;
 	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
 	up_read(&rdev->exclusive_lock);
 

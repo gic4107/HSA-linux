@@ -7147,25 +7147,6 @@ int cik_irq_set(struct radeon_device *rdev)
 		WREG32(LB_INTERRUPT_MASK + EVERGREEN_CRTC5_REGISTER_OFFSET, crtc6);
 	}
 
-	if (rdev->num_crtc >= 2) {
-		WREG32(GRPH_INT_CONTROL + EVERGREEN_CRTC0_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_MASK);
-		WREG32(GRPH_INT_CONTROL + EVERGREEN_CRTC1_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_MASK);
-	}
-	if (rdev->num_crtc >= 4) {
-		WREG32(GRPH_INT_CONTROL + EVERGREEN_CRTC2_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_MASK);
-		WREG32(GRPH_INT_CONTROL + EVERGREEN_CRTC3_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_MASK);
-	}
-	if (rdev->num_crtc >= 6) {
-		WREG32(GRPH_INT_CONTROL + EVERGREEN_CRTC4_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_MASK);
-		WREG32(GRPH_INT_CONTROL + EVERGREEN_CRTC5_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_MASK);
-	}
-
 	WREG32(DC_HPD1_INT_CONTROL, hpd1);
 	WREG32(DC_HPD2_INT_CONTROL, hpd2);
 	WREG32(DC_HPD3_INT_CONTROL, hpd3);
@@ -7219,12 +7200,6 @@ static inline void cik_irq_ack(struct radeon_device *rdev)
 			EVERGREEN_CRTC5_REGISTER_OFFSET);
 	}
 
-	if (rdev->irq.stat_regs.cik.d1grph_int & GRPH_PFLIP_INT_OCCURRED)
-		WREG32(GRPH_INT_STATUS + EVERGREEN_CRTC0_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_CLEAR);
-	if (rdev->irq.stat_regs.cik.d2grph_int & GRPH_PFLIP_INT_OCCURRED)
-		WREG32(GRPH_INT_STATUS + EVERGREEN_CRTC1_REGISTER_OFFSET,
-		       GRPH_PFLIP_INT_CLEAR);
 	if (rdev->irq.stat_regs.cik.disp_int & LB_D1_VBLANK_INTERRUPT)
 		WREG32(LB_VBLANK_STATUS + EVERGREEN_CRTC0_REGISTER_OFFSET, VBLANK_ACK);
 	if (rdev->irq.stat_regs.cik.disp_int & LB_D1_VLINE_INTERRUPT)
@@ -7235,12 +7210,6 @@ static inline void cik_irq_ack(struct radeon_device *rdev)
 		WREG32(LB_VLINE_STATUS + EVERGREEN_CRTC1_REGISTER_OFFSET, VLINE_ACK);
 
 	if (rdev->num_crtc >= 4) {
-		if (rdev->irq.stat_regs.cik.d3grph_int & GRPH_PFLIP_INT_OCCURRED)
-			WREG32(GRPH_INT_STATUS + EVERGREEN_CRTC2_REGISTER_OFFSET,
-			       GRPH_PFLIP_INT_CLEAR);
-		if (rdev->irq.stat_regs.cik.d4grph_int & GRPH_PFLIP_INT_OCCURRED)
-			WREG32(GRPH_INT_STATUS + EVERGREEN_CRTC3_REGISTER_OFFSET,
-			       GRPH_PFLIP_INT_CLEAR);
 		if (rdev->irq.stat_regs.cik.disp_int_cont2 & LB_D3_VBLANK_INTERRUPT)
 			WREG32(LB_VBLANK_STATUS + EVERGREEN_CRTC2_REGISTER_OFFSET, VBLANK_ACK);
 		if (rdev->irq.stat_regs.cik.disp_int_cont2 & LB_D3_VLINE_INTERRUPT)
@@ -7252,12 +7221,6 @@ static inline void cik_irq_ack(struct radeon_device *rdev)
 	}
 
 	if (rdev->num_crtc >= 6) {
-		if (rdev->irq.stat_regs.cik.d5grph_int & GRPH_PFLIP_INT_OCCURRED)
-			WREG32(GRPH_INT_STATUS + EVERGREEN_CRTC4_REGISTER_OFFSET,
-			       GRPH_PFLIP_INT_CLEAR);
-		if (rdev->irq.stat_regs.cik.d6grph_int & GRPH_PFLIP_INT_OCCURRED)
-			WREG32(GRPH_INT_STATUS + EVERGREEN_CRTC5_REGISTER_OFFSET,
-			       GRPH_PFLIP_INT_CLEAR);
 		if (rdev->irq.stat_regs.cik.disp_int_cont4 & LB_D5_VBLANK_INTERRUPT)
 			WREG32(LB_VBLANK_STATUS + EVERGREEN_CRTC4_REGISTER_OFFSET, VBLANK_ACK);
 		if (rdev->irq.stat_regs.cik.disp_int_cont4 & LB_D5_VLINE_INTERRUPT)
@@ -7463,7 +7426,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[0]))
-						radeon_crtc_handle_vblank(rdev, 0);
+						radeon_crtc_handle_flip(rdev, 0);
 					rdev->irq.stat_regs.cik.disp_int &= ~LB_D1_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D1 vblank\n");
 				}
@@ -7489,7 +7452,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[1]))
-						radeon_crtc_handle_vblank(rdev, 1);
+						radeon_crtc_handle_flip(rdev, 1);
 					rdev->irq.stat_regs.cik.disp_int_cont &= ~LB_D2_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D2 vblank\n");
 				}
@@ -7515,7 +7478,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[2]))
-						radeon_crtc_handle_vblank(rdev, 2);
+						radeon_crtc_handle_flip(rdev, 2);
 					rdev->irq.stat_regs.cik.disp_int_cont2 &= ~LB_D3_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D3 vblank\n");
 				}
@@ -7541,7 +7504,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[3]))
-						radeon_crtc_handle_vblank(rdev, 3);
+						radeon_crtc_handle_flip(rdev, 3);
 					rdev->irq.stat_regs.cik.disp_int_cont3 &= ~LB_D4_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D4 vblank\n");
 				}
@@ -7567,7 +7530,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[4]))
-						radeon_crtc_handle_vblank(rdev, 4);
+						radeon_crtc_handle_flip(rdev, 4);
 					rdev->irq.stat_regs.cik.disp_int_cont4 &= ~LB_D5_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D5 vblank\n");
 				}
@@ -7593,7 +7556,7 @@ restart_ih:
 						wake_up(&rdev->irq.vblank_queue);
 					}
 					if (atomic_read(&rdev->irq.pflip[5]))
-						radeon_crtc_handle_vblank(rdev, 5);
+						radeon_crtc_handle_flip(rdev, 5);
 					rdev->irq.stat_regs.cik.disp_int_cont5 &= ~LB_D6_VBLANK_INTERRUPT;
 					DRM_DEBUG("IH: D6 vblank\n");
 				}
@@ -7608,15 +7571,6 @@ restart_ih:
 				DRM_DEBUG("Unhandled interrupt: %d %d\n", src_id, src_data);
 				break;
 			}
-			break;
-		case 8: /* D1 page flip */
-		case 10: /* D2 page flip */
-		case 12: /* D3 page flip */
-		case 14: /* D4 page flip */
-		case 16: /* D5 page flip */
-		case 18: /* D6 page flip */
-			DRM_DEBUG("IH: D%d flip\n", ((src_id - 8) >> 1) + 1);
-			radeon_crtc_handle_flip(rdev, (src_id - 8) >> 1);
 			break;
 		case 42: /* HPD hotplug */
 			switch (src_data) {

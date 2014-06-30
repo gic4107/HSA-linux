@@ -309,7 +309,7 @@ struct radeon_atom_ss {
 enum radeon_flip_status {
 	RADEON_FLIP_NONE,
 	RADEON_FLIP_PENDING,
-	RADEON_FLIP_SUBMITTED
+	RADEON_FLIP_READY
 };
 
 struct radeon_crtc {
@@ -919,7 +919,6 @@ bool radeon_fbdev_robj_is_fb(struct radeon_device *rdev, struct radeon_bo *robj)
 
 void radeon_fb_output_poll_changed(struct radeon_device *rdev);
 
-void radeon_crtc_handle_vblank(struct radeon_device *rdev, int crtc_id);
 void radeon_crtc_handle_flip(struct radeon_device *rdev, int crtc_id);
 
 int radeon_align_pitch(struct radeon_device *rdev, int width, int bpp, bool tiled);
