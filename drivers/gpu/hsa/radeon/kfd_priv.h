@@ -527,7 +527,7 @@ int pm_send_set_resources(struct packet_manager *pm, struct scheduling_resources
 int pm_send_runlist(struct packet_manager *pm, struct list_head *dqm_queues);
 int pm_send_query_status(struct packet_manager *pm, uint64_t fence_address, uint32_t fence_value);
 int pm_send_unmap_queue(struct packet_manager *pm, enum kfd_queue_type type,
-			enum kfd_preempt_type_filter mode, uint32_t filter_param, bool reset);
+			enum kfd_preempt_type_filter mode, uint32_t filter_param, bool reset, unsigned int sdma_engine);
 void pm_release_ib(struct packet_manager *pm);
 
 /* Events */

@@ -67,24 +67,24 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 	memset(m, 0, sizeof(struct cik_mqd));
 
 	m->header = 0xC0310800;
-	m->pipeline_stat_enable = 1;
-	m->static_thread_mgmt01[0] = 0xFFFFFFFF;
-	m->static_thread_mgmt01[1] = 0xFFFFFFFF;
-	m->static_thread_mgmt23[0] = 0xFFFFFFFF;
-	m->static_thread_mgmt23[1] = 0xFFFFFFFF;
+	m->compute_pipelinestat_enable = 1;
+	m->compute_static_thread_mgmt_se0 = 0xFFFFFFFF;
+	m->compute_static_thread_mgmt_se1 = 0xFFFFFFFF;
+	m->compute_static_thread_mgmt_se2 = 0xFFFFFFFF;
+	m->compute_static_thread_mgmt_se3 = 0xFFFFFFFF;
 
-	m->queue_state.cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE;
+	m->cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE;
 
-	m->queue_state.cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
-	m->queue_state.cp_mqd_base_addr           = lower_32(addr);
-	m->queue_state.cp_mqd_base_addr_hi        = upper_32(addr);
+	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
+	m->cp_mqd_base_addr_lo        = lower_32(addr);
+	m->cp_mqd_base_addr_hi        = upper_32(addr);
 
-	m->queue_state.cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE | IB_ATC_EN;
+	m->cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE | IB_ATC_EN;
 	/* Although WinKFD writes this, I suspect it should not be necessary. */
-	m->queue_state.cp_hqd_ib_control = IB_ATC_EN | DEFAULT_MIN_IB_AVAIL_SIZE;
+	m->cp_hqd_ib_control = IB_ATC_EN | DEFAULT_MIN_IB_AVAIL_SIZE;
 
-	m->queue_state.cp_hqd_pipe_priority = 1;
-	m->queue_state.cp_hqd_queue_priority = 15;
+	m->cp_hqd_pipe_priority = 1;
+	m->cp_hqd_queue_priority = 15;
 
 	*mqd = m;
 	if (gart_addr != NULL)
@@ -107,49 +107,46 @@ static int load_mqd(struct mqd_manager *mm, void *mqd)
 
 	m = get_mqd(mqd);
 
-	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR, m->queue_state.cp_mqd_base_addr);
-	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR_HI, m->queue_state.cp_mqd_base_addr_hi);
-	WRITE_REG(mm->dev, CP_MQD_CONTROL, m->queue_state.cp_mqd_control);
+	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR, m->cp_mqd_base_addr_lo);
+	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR_HI, m->cp_mqd_base_addr_hi);
+	WRITE_REG(mm->dev, CP_MQD_CONTROL, m->cp_mqd_control);
 
-	WRITE_REG(mm->dev, CP_HQD_PQ_BASE, m->queue_state.cp_hqd_pq_base);
-	WRITE_REG(mm->dev, CP_HQD_PQ_BASE_HI, m->queue_state.cp_hqd_pq_base_hi);
-	WRITE_REG(mm->dev, CP_HQD_PQ_CONTROL, m->queue_state.cp_hqd_pq_control);
+	WRITE_REG(mm->dev, CP_HQD_PQ_BASE, m->cp_hqd_pq_base_lo);
+	WRITE_REG(mm->dev, CP_HQD_PQ_BASE_HI, m->cp_hqd_pq_base_hi);
+	WRITE_REG(mm->dev, CP_HQD_PQ_CONTROL, m->cp_hqd_pq_control);
 
-	WRITE_REG(mm->dev, CP_HQD_IB_CONTROL, m->queue_state.cp_hqd_ib_control);
-	WRITE_REG(mm->dev, CP_HQD_IB_BASE_ADDR, m->queue_state.cp_hqd_ib_base_addr);
-	WRITE_REG(mm->dev, CP_HQD_IB_BASE_ADDR_HI, m->queue_state.cp_hqd_ib_base_addr_hi);
+	WRITE_REG(mm->dev, CP_HQD_IB_CONTROL, m->cp_hqd_ib_control);
+	WRITE_REG(mm->dev, CP_HQD_IB_BASE_ADDR, m->cp_hqd_ib_base_addr_lo);
+	WRITE_REG(mm->dev, CP_HQD_IB_BASE_ADDR_HI, m->cp_hqd_ib_base_addr_hi);
 
-	WRITE_REG(mm->dev, CP_HQD_IB_RPTR, m->queue_state.cp_hqd_ib_rptr);
+	WRITE_REG(mm->dev, CP_HQD_IB_RPTR, m->cp_hqd_ib_rptr);
 
-	WRITE_REG(mm->dev, CP_HQD_PERSISTENT_STATE, m->queue_state.cp_hqd_persistent_state);
-	WRITE_REG(mm->dev, CP_HQD_SEMA_CMD, m->queue_state.cp_hqd_sema_cmd);
-	WRITE_REG(mm->dev, CP_HQD_MSG_TYPE, m->queue_state.cp_hqd_msg_type);
+	WRITE_REG(mm->dev, CP_HQD_PERSISTENT_STATE, m->cp_hqd_persistent_state);
+	WRITE_REG(mm->dev, CP_HQD_SEMA_CMD, m->cp_hqd_sema_cmd);
+	WRITE_REG(mm->dev, CP_HQD_MSG_TYPE, m->cp_hqd_msg_type);
 
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC0_PREOP_LO, m->queue_state.cp_hqd_atomic0_preop_lo);
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC0_PREOP_HI, m->queue_state.cp_hqd_atomic0_preop_hi);
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC1_PREOP_LO, m->queue_state.cp_hqd_atomic1_preop_lo);
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC1_PREOP_HI, m->queue_state.cp_hqd_atomic1_preop_hi);
+	WRITE_REG(mm->dev, CP_HQD_ATOMIC0_PREOP_LO, m->cp_hqd_atomic0_preop_lo);
+	WRITE_REG(mm->dev, CP_HQD_ATOMIC0_PREOP_HI, m->cp_hqd_atomic0_preop_hi);
+	WRITE_REG(mm->dev, CP_HQD_ATOMIC1_PREOP_LO, m->cp_hqd_atomic1_preop_lo);
+	WRITE_REG(mm->dev, CP_HQD_ATOMIC1_PREOP_HI, m->cp_hqd_atomic1_preop_hi);
 
-	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR_REPORT_ADDR, m->queue_state.cp_hqd_pq_rptr_report_addr);
-	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR_REPORT_ADDR_HI, m->queue_state.cp_hqd_pq_rptr_report_addr_hi);
-	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR, m->queue_state.cp_hqd_pq_rptr);
+	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR_REPORT_ADDR, m->cp_hqd_pq_rptr_report_addr_lo);
+	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR_REPORT_ADDR_HI, m->cp_hqd_pq_rptr_report_addr_hi);
+	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR, m->cp_hqd_pq_rptr);
 
-	WRITE_REG(mm->dev, CP_HQD_PQ_WPTR_POLL_ADDR, m->queue_state.cp_hqd_pq_wptr_poll_addr);
-	WRITE_REG(mm->dev, CP_HQD_PQ_WPTR_POLL_ADDR_HI, m->queue_state.cp_hqd_pq_wptr_poll_addr_hi);
+	WRITE_REG(mm->dev, CP_HQD_PQ_WPTR_POLL_ADDR, m->cp_hqd_pq_wptr_poll_addr_lo);
+	WRITE_REG(mm->dev, CP_HQD_PQ_WPTR_POLL_ADDR_HI, m->cp_hqd_pq_wptr_poll_addr_hi);
 
-	WRITE_REG(mm->dev, CP_HQD_PQ_DOORBELL_CONTROL, m->queue_state.cp_hqd_pq_doorbell_control);
+	WRITE_REG(mm->dev, CP_HQD_PQ_DOORBELL_CONTROL, m->cp_hqd_pq_doorbell_control);
 
-	WRITE_REG(mm->dev, CP_HQD_VMID, m->queue_state.cp_hqd_vmid);
+	WRITE_REG(mm->dev, CP_HQD_VMID, m->cp_hqd_vmid);
 
-	WRITE_REG(mm->dev, CP_HQD_QUANTUM, m->queue_state.cp_hqd_quantum);
+	WRITE_REG(mm->dev, CP_HQD_QUANTUM, m->cp_hqd_quantum);
 
-	WRITE_REG(mm->dev, CP_HQD_PIPE_PRIORITY, m->queue_state.cp_hqd_pipe_priority);
-	WRITE_REG(mm->dev, CP_HQD_QUEUE_PRIORITY, m->queue_state.cp_hqd_queue_priority);
+	WRITE_REG(mm->dev, CP_HQD_PIPE_PRIORITY, m->cp_hqd_pipe_priority);
+	WRITE_REG(mm->dev, CP_HQD_QUEUE_PRIORITY, m->cp_hqd_queue_priority);
 
-	WRITE_REG(mm->dev, CP_HQD_HQ_SCHEDULER0, m->queue_state.cp_hqd_hq_scheduler0);
-	WRITE_REG(mm->dev, CP_HQD_HQ_SCHEDULER1, m->queue_state.cp_hqd_hq_scheduler1);
-
-	WRITE_REG(mm->dev, CP_HQD_ACTIVE, m->queue_state.cp_hqd_active);
+	WRITE_REG(mm->dev, CP_HQD_ACTIVE, m->cp_hqd_active);
 
 	return 0;
 }
@@ -162,23 +159,23 @@ static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties
 	pr_debug("kfd: In func %s\n", __func__);
 
 	m = get_mqd(mqd);
-	m->queue_state.cp_hqd_pq_control = DEFAULT_RPTR_BLOCK_SIZE | DEFAULT_MIN_AVAIL_SIZE | PQ_ATC_EN;
+	m->cp_hqd_pq_control = DEFAULT_RPTR_BLOCK_SIZE | DEFAULT_MIN_AVAIL_SIZE | PQ_ATC_EN;
 	/* calculating queue size which is log base 2 of actual queue size -1 dwords and another -1 for ffs */
-	m->queue_state.cp_hqd_pq_control |= ffs(q->queue_size / sizeof(unsigned int)) - 1 - 1;
-	m->queue_state.cp_hqd_pq_base = lower_32((uint64_t)q->queue_address >> 8);
-	m->queue_state.cp_hqd_pq_base_hi = upper_32((uint64_t)q->queue_address >> 8);
-	m->queue_state.cp_hqd_pq_rptr_report_addr = lower_32((uint64_t)q->read_ptr);
-	m->queue_state.cp_hqd_pq_rptr_report_addr_hi = upper_32((uint64_t)q->read_ptr);
-	m->queue_state.cp_hqd_pq_doorbell_control = DOORBELL_EN | DOORBELL_OFFSET(q->doorbell_off);
+	m->cp_hqd_pq_control |= ffs(q->queue_size / sizeof(unsigned int)) - 1 - 1;
+	m->cp_hqd_pq_base_lo = lower_32((uint64_t)q->queue_address >> 8);
+	m->cp_hqd_pq_base_hi = upper_32((uint64_t)q->queue_address >> 8);
+	m->cp_hqd_pq_rptr_report_addr_lo = lower_32((uint64_t)q->read_ptr);
+	m->cp_hqd_pq_rptr_report_addr_hi = upper_32((uint64_t)q->read_ptr);
+	m->cp_hqd_pq_doorbell_control = DOORBELL_EN | DOORBELL_OFFSET(q->doorbell_off);
 
-	m->queue_state.cp_hqd_vmid = q->vmid;
+	m->cp_hqd_vmid = q->vmid;
 
-	m->queue_state.cp_hqd_active = 0;
+	m->cp_hqd_active = 0;
 	q->is_active = false;
 	if (q->queue_size > 0 &&
 			q->queue_address != 0 &&
 			q->queue_percent > 0) {
-		m->queue_state.cp_hqd_active = 1;
+		m->cp_hqd_active = 1;
 		q->is_active = true;
 	}
 
@@ -315,22 +312,22 @@ static int init_mqd_hiq(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem
 	memset(m, 0, sizeof(struct cik_mqd));
 
 	m->header = 0xC0310800;
-	m->pipeline_stat_enable = 1;
-	m->static_thread_mgmt01[0] = 0xFFFFFFFF;
-	m->static_thread_mgmt01[1] = 0xFFFFFFFF;
-	m->static_thread_mgmt23[0] = 0xFFFFFFFF;
-	m->static_thread_mgmt23[1] = 0xFFFFFFFF;
+	m->compute_pipelinestat_enable = 1;
+	m->compute_static_thread_mgmt_se0 = 0xFFFFFFFF;
+	m->compute_static_thread_mgmt_se1 = 0xFFFFFFFF;
+	m->compute_static_thread_mgmt_se2 = 0xFFFFFFFF;
+	m->compute_static_thread_mgmt_se3 = 0xFFFFFFFF;
 
-	m->queue_state.cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE;
+	m->cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE;
 
-	m->queue_state.cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
-	m->queue_state.cp_mqd_base_addr           = lower_32(addr);
-	m->queue_state.cp_mqd_base_addr_hi        = upper_32(addr);
+	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
+	m->cp_mqd_base_addr_lo        = lower_32(addr);
+	m->cp_mqd_base_addr_hi        = upper_32(addr);
 
-	m->queue_state.cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE;
+	m->cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE;
 
-	m->queue_state.cp_hqd_pipe_priority = 1;
-	m->queue_state.cp_hqd_queue_priority = 15;
+	m->cp_hqd_pipe_priority = 1;
+	m->cp_hqd_queue_priority = 15;
 
 	*mqd = m;
 	if (gart_addr)
@@ -348,23 +345,23 @@ static int update_mqd_hiq(struct mqd_manager *mm, void *mqd, struct queue_proper
 	pr_debug("kfd: In func %s\n", __func__);
 
 	m = get_mqd(mqd);
-	m->queue_state.cp_hqd_pq_control = DEFAULT_RPTR_BLOCK_SIZE | DEFAULT_MIN_AVAIL_SIZE | PRIV_STATE | KMD_QUEUE;
+	m->cp_hqd_pq_control = DEFAULT_RPTR_BLOCK_SIZE | DEFAULT_MIN_AVAIL_SIZE | PRIV_STATE | KMD_QUEUE;
 	/* calculating queue size which is log base 2 of actual queue size -1 dwords */
-	m->queue_state.cp_hqd_pq_control |= ffs(q->queue_size / sizeof(unsigned int)) - 1 - 1;
-	m->queue_state.cp_hqd_pq_base = lower_32((uint64_t)q->queue_address >> 8);
-	m->queue_state.cp_hqd_pq_base_hi = upper_32((uint64_t)q->queue_address >> 8);
-	m->queue_state.cp_hqd_pq_rptr_report_addr = lower_32((uint64_t)q->read_ptr);
-	m->queue_state.cp_hqd_pq_rptr_report_addr_hi = upper_32((uint64_t)q->read_ptr);
-	m->queue_state.cp_hqd_pq_doorbell_control = DOORBELL_EN | DOORBELL_OFFSET(q->doorbell_off);
+	m->cp_hqd_pq_control |= ffs(q->queue_size / sizeof(unsigned int)) - 1 - 1;
+	m->cp_hqd_pq_base_lo = lower_32((uint64_t)q->queue_address >> 8);
+	m->cp_hqd_pq_base_hi = upper_32((uint64_t)q->queue_address >> 8);
+	m->cp_hqd_pq_rptr_report_addr_lo = lower_32((uint64_t)q->read_ptr);
+	m->cp_hqd_pq_rptr_report_addr_hi = upper_32((uint64_t)q->read_ptr);
+	m->cp_hqd_pq_doorbell_control = DOORBELL_EN | DOORBELL_OFFSET(q->doorbell_off);
 
-	m->queue_state.cp_hqd_vmid = q->vmid;
+	m->cp_hqd_vmid = q->vmid;
 
-	m->queue_state.cp_hqd_active = 0;
+	m->cp_hqd_active = 0;
 	q->is_active = false;
 	if (q->queue_size > 0 &&
 			q->queue_address != 0 &&
 			q->queue_percent > 0) {
-		m->queue_state.cp_hqd_active = 1;
+		m->cp_hqd_active = 1;
 		q->is_active = true;
 	}
 

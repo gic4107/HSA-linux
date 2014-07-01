@@ -840,7 +840,7 @@ static int destroy_queues_cpsch(struct device_queue_manager *dqm)
 	if (dqm->active_runlist == false)
 		goto out;
 	retval = pm_send_unmap_queue(&dqm->packets, KFD_QUEUE_TYPE_COMPUTE,
-			KFD_PRERMPT_TYPE_FILTER_ALL_QUEUES, 0, false);
+			KFD_PRERMPT_TYPE_FILTER_ALL_QUEUES, 0, false, 0);
 	if (retval != 0)
 		goto out;
 

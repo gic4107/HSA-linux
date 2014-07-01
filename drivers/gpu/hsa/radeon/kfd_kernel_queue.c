@@ -38,7 +38,7 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 {
 	struct queue_properties prop;
 	int retval;
-	PM4_TYPE_3_HEADER nop;
+	PM4_MES_TYPE_3_HEADER nop;
 	BUG_ON(!kq || !dev);
 	BUG_ON(type != KFD_QUEUE_TYPE_DIQ && type != KFD_QUEUE_TYPE_HIQ);
 
