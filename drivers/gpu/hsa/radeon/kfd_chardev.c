@@ -123,6 +123,40 @@ kfd_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
+static int
+set_queue_properties_from_user(struct queue_properties *q_properties, struct kfd_ioctl_create_queue_args *args)
+{
+	q_properties->is_interop = false;
+	q_properties->queue_percent = args->queue_percentage;
+	q_properties->priority = args->queue_priority;
+	q_properties->queue_address = args->ring_base_address;
+	q_properties->queue_size = args->ring_size;
+	q_properties->read_ptr = (qptr_t *) args->read_pointer_address;
+	q_properties->write_ptr = (qptr_t *) args->write_pointer_address;
+	if (args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE)
+		q_properties->type = KFD_QUEUE_TYPE_COMPUTE;
+	else if (args->queue_type == KFD_IOC_QUEUE_TYPE_SDMA)
+		q_properties->type = KFD_QUEUE_TYPE_SDMA;
+	else
+		return -ENOTSUPP;
+
+
+	pr_debug("%s Arguments: Queue Percentage (%d, %d)\n"
+			"Queue Priority (%d, %d)\n"
+			"Queue Address (0x%llX, 0x%llX)\n"
+			"Queue Size (0x%llX, %u)\n"
+			"Queue r/w Pointers (0x%llX, 0x%llX)\n",
+			__func__,
+			q_properties->queue_percent, args->queue_percentage,
+			q_properties->priority, args->queue_priority,
+			q_properties->queue_address, args->ring_base_address,
+			q_properties->queue_size, args->ring_size,
+			(uint64_t) q_properties->read_ptr,
+			(uint64_t) q_properties->write_ptr);
+
+	return 0;
+}
+
 static long
 kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *arg)
 {
@@ -148,28 +182,9 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 		return -EFAULT;
 	}
 
-
-	q_properties.is_interop = false;
-	q_properties.queue_percent = args.queue_percentage;
-	q_properties.priority = args.queue_priority;
-	q_properties.queue_address = args.ring_base_address;
-	q_properties.queue_size = args.ring_size;
-	q_properties.read_ptr = (qptr_t *) args.read_pointer_address;
-	q_properties.write_ptr = (qptr_t *) args.write_pointer_address;
-
-
-	pr_debug("%s Arguments: Queue Percentage (%d, %d)\n"
-			"Queue Priority (%d, %d)\n"
-			"Queue Address (0x%llX, 0x%llX)\n"
-			"Queue Size (0x%llX, %u)\n"
-			"Queue r/w Pointers (0x%llX, 0x%llX)\n",
-			__func__,
-			q_properties.queue_percent, args.queue_percentage,
-			q_properties.priority, args.queue_priority,
-			q_properties.queue_address, args.ring_base_address,
-			q_properties.queue_size, args.ring_size,
-			(uint64_t) q_properties.read_ptr,
-			(uint64_t) q_properties.write_ptr);
+	err = set_queue_properties_from_user(&q_properties, &args);
+	if (err != 0)
+		return -EINVAL;
 
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
