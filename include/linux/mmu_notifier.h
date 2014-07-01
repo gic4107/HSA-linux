@@ -149,20 +149,29 @@ struct mmu_notifier_ops {
 	/*
 	 * invalidate_range_start() and invalidate_range_end() must be
 	 * paired and are called only when the mmap_sem and/or the
-	 * locks protecting the reverse maps are held. The subsystem
-	 * must guarantee that no additional references are taken to
-	 * the pages in the range established between the call to
-	 * invalidate_range_start() and the matching call to
-	 * invalidate_range_end().
+	 * locks protecting the reverse maps are held.
+	 * invalidate_range_free_pages() is called between the two
+	 * functions every time when the VM has unmapped pages that are
+	 * about to be freed.
+	 * The subsystem must guarantee that no additional references
+	 * are taken to the pages in the range established between the
+	 * call to invalidate_range_start() and the matching call to
+	 * invalidate_range_end(). If this guarantee can not be given
+	 * by the subsystem it has to make sure that additional
+	 * references are dropped again in the
+	 * invalidate_range_free_pages() notifier.
 	 *
-	 * Invalidation of multiple concurrent ranges may be
-	 * optionally permitted by the driver. Either way the
-	 * establishment of sptes is forbidden in the range passed to
-	 * invalidate_range_begin/end for the whole duration of the
-	 * invalidate_range_begin/end critical section.
+	 * Invalidation of multiple overlapping ranges may be optionally
+	 * permitted by the driver. Either way the establishment of sptes
+	 * should be avoided in the range passed to invalidate_range_start/
+	 * end for the whole duration of the invalidate_range_start/end
+	 * critical section.
 	 *
 	 * invalidate_range_start() is called when all pages in the
 	 * range are still mapped and have at least a refcount of one.
+	 *
+	 * invalidate_range_free_pages() is called when a bunch of pages
+	 * are unmapped but not yet freed by the VM.
 	 *
 	 * invalidate_range_end() is called when all pages in the
 	 * range have been unmapped and the pages have been freed by
@@ -194,6 +203,10 @@ struct mmu_notifier_ops {
 				       unsigned long start,
 				       unsigned long end,
 				       enum mmu_event event);
+	void (*invalidate_range_free_pages)(struct mmu_notifier *mn,
+					    struct vm_area_struct *vma,
+					    unsigned long start,
+					    unsigned long end);
 	void (*invalidate_range_end)(struct mmu_notifier *mn,
 				     struct vm_area_struct *vma,
 				     unsigned long start,
@@ -245,6 +258,9 @@ extern void __mmu_notifier_invalidate_range_start(struct vm_area_struct *vma,
 						  unsigned long start,
 						  unsigned long end,
 						  enum mmu_event event);
+extern void __mmu_notifier_invalidate_range_free_pages(struct vm_area_struct *vma,
+						       unsigned long start,
+						       unsigned long end);
 extern void __mmu_notifier_invalidate_range_end(struct vm_area_struct *vma,
 						unsigned long start,
 						unsigned long end,
@@ -297,6 +313,14 @@ static inline void mmu_notifier_invalidate_range_start(struct vm_area_struct *vm
 	if (mm_has_notifiers(vma->vm_mm))
 		__mmu_notifier_invalidate_range_start(vma, start,
 						      end, event);
+}
+
+static inline void mmu_notifier_invalidate_range_free_pages(struct vm_area_struct *vma,
+							    unsigned long start,
+							    unsigned long end)
+{
+	if (mm_has_notifiers(vma->vm_mm))
+		__mmu_notifier_invalidate_range_free_pages(vma, start, end);
 }
 
 static inline void mmu_notifier_invalidate_range_end(struct vm_area_struct *vma,
@@ -396,6 +420,12 @@ static inline void mmu_notifier_invalidate_range_start(struct vm_area_struct *vm
 						       unsigned long start,
 						       unsigned long end,
 						       enum mmu_event event)
+{
+}
+
+static inline void mmu_notifier_invalidate_range_free_pages(struct vm_area_struct *vma,
+							    unsigned long start,
+							    unsigned long end)
 {
 }
 
