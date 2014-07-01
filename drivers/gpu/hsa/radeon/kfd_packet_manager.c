@@ -31,9 +31,6 @@
 #include "cik_mqds.h"
 #include "cik_regs.h"
 
-#define DEBUG
-#define DDEBUG
-
 static inline void inc_wptr(unsigned int *wptr, unsigned int increment_bytes, unsigned int buffer_size_bytes)
 {
 	unsigned int temp = *wptr + increment_bytes / sizeof(uint32_t);

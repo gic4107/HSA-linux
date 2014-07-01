@@ -120,6 +120,8 @@
 
 #define CP_HQD_PERSISTENT_STATE				0xC924u
 #define	DEFAULT_CP_HQD_PERSISTENT_STATE			(0x33U << 8)
+#define PRELOAD_REQ								(1 << 0)
+
 
 #define CP_HQD_PIPE_PRIORITY				0xC928u
 #define CP_HQD_QUEUE_PRIORITY				0xC92Cu
@@ -234,5 +236,51 @@
 #define TCP_WATCH2_CNTL					(0x32A8*4)
 #define TCP_WATCH3_CNTL					(0x32AB*4)
 
+#define SDMA0_RLC0_RB_CNTL				0xD400u
+#define	RB_ENABLE					(1 << 0)
+#define	RB_SIZE(x)					(x << 1)
+#define	RB_SWAP_ENABLE					(1 << 9)
+#define	RPTR_WRITEBACK_ENABLE				(1 << 12)
+#define	RPTR_WRITEBACK_SWAP_ENABLE			(1 << 13)
+#define	RPTR_WRITEBACK_TIMER(x)				(x << 16)
+#define	RB_VMID(x)					(x << 24)
+#define	SDMA0_RLC0_RB_BASE				0xD404u
+#define	SDMA0_RLC0_RB_BASE_HI				0xD408u
+#define	SDMA0_RLC0_RB_RPTR				0xD40Cu
+#define	SDMA0_RLC0_RB_WPTR				0xD410u
+#define	SDMA0_RLC0_RB_WPTR_POLL_CNTL			0xD414u
+#define	SDMA0_RLC0_RB_WPTR_POLL_ADDR_HI			0xD418u
+#define	SDMA0_RLC0_RB_WPTR_POLL_ADDR_LO			0xD41Cu
+#define	SDMA0_RLC0_RB_RPTR_ADDR_HI			0xD420u
+#define	SDMA0_RLC0_RB_RPTR_ADDR_LO			0xD424u
+#define	SDMA0_RLC0_IB_CNTL				0xD428u
+#define	SDMA0_RLC0_IB_RPTR				0xD42Cu
+#define	SDMA0_RLC0_IB_OFFSET				0xD430u
+#define	SDMA0_RLC0_IB_BASE_LO				0xD434u
+#define	SDMA0_RLC0_IB_BASE_HI				0xD438u
+#define	SDMA0_RLC0_IB_SIZE				0xD43Cu
+#define	SDMA0_RLC0_SKIP_CNTL				0xD440u
+#define	SDMA0_RLC0_CONTEXT_STATUS			0xD444u
+#define	SELECTED					(1 << 0)
+#define	IDLE						(1 << 2)
+#define	EXPIRED						(1 << 3)
+#define	EXCEPTION					(1 << 4)
+#define	CTXSW_ABLE					(1 << 7)
+#define	CTXSW_READY					(1 << 8)
+#define	SDMA0_RLC0_DOORBELL				0xD448u
+#define	OFFSET(x)					(x << 0)
+#define	ENABLE						(1 << 28)
+#define	CAPTURED					(1 << 30)
+#define	SDMA0_RLC0_VIRTUAL_ADDR				0xD49Cu
+#define	ATC						(1 << 0)
+#define	VA_PTR32					(1 << 4)
+#define	VA_SHARED_BASE(x)				(x << 8)
+#define	VM_HOLE						(1 << 30)
+#define	SDMA0_RLC0_APE1_CNTL				0xD4A0u
+#define	SDMA0_RLC0_DOORBELL_LOG				0xD4A4u
+#define	SDMA0_RLC0_WATERMARK				0xD4A8u
+#define	SDMA0_CNTL					0xD010
+#define	SDMA1_CNTL					0xD810
+#define	AUTO_CTXSW_ENABLE				(1 << 18)
 
-#endif
+#endif /* CIK_REGS_H */

@@ -60,6 +60,9 @@ struct kfd_scheduler_class;
 /* GPU ID hash width in bits */
 #define KFD_GPU_ID_HASH_WIDTH 16
 
+#define KFD_CIK_SDMA_ENGINE_OFFSET	0x800
+#define KFD_CIK_SDMA_QUEUE_OFFSET	0x200
+
 /* Macro for allocating structures */
 #define kfd_alloc_struct(ptr_to_struct)	((typeof(ptr_to_struct)) kzalloc(sizeof(*ptr_to_struct), GFP_KERNEL));
 
@@ -237,6 +240,10 @@ struct queue_properties {
 	bool is_active;
 	/* Not relevant for user mode queues in cp scheduling */
 	unsigned int vmid;
+	/* Relevant only for sdma queues*/
+	uint32_t sdma_engine_id;
+	uint32_t sdma_queue_id;
+	uint32_t sdma_vm_addr;
 };
 
 struct queue {
@@ -253,6 +260,8 @@ struct queue {
 	uint32_t mec;
 	uint32_t pipe;
 	uint32_t queue;
+
+	unsigned int sdma_id;
 
 	struct kfd_process	*process;
 	struct kfd_dev		*device;
@@ -468,6 +477,8 @@ int kfd_init_apertures(struct kfd_process *process);
 inline uint32_t lower_32(uint64_t x);
 inline uint32_t upper_32(uint64_t x);
 inline void busy_wait(unsigned long ms);
+struct cik_sdma_rlc_registers *get_sdma_mqd(void *mqd);
+inline uint32_t get_sdma_base_addr(struct cik_sdma_rlc_registers *m);
 
 int init_queue(struct queue **q, struct queue_properties properties);
 void uninit_queue(struct queue *q);

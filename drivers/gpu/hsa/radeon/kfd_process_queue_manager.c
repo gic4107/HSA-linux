@@ -113,7 +113,6 @@ static int create_cp_queue(struct process_queue_manager *pqm, struct kfd_dev *de
 	/* let DQM handle it*/
 	q_properties->vmid = 0;
 	q_properties->queue_id = qid;
-	q_properties->type = KFD_QUEUE_TYPE_COMPUTE;
 
 	retval = init_queue(q, *q_properties);
 	if (retval != 0)
@@ -171,6 +170,7 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 	}
 
 	switch (type) {
+	case KFD_QUEUE_TYPE_SDMA:
 	case KFD_QUEUE_TYPE_COMPUTE:
 		/* check if there is over subscription */
 		if ((sched_policy == KFD_SCHED_POLICY_HWS_NO_OVERSUBSCRIPTION) &&

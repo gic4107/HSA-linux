@@ -23,6 +23,7 @@
 
 #include <linux/printk.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 #include "kfd_priv.h"
 #include "kfd_mqd_manager.h"
 #include "cik_mqds.h"
@@ -357,6 +358,169 @@ static int update_mqd_hiq(struct mqd_manager *mm, void *mqd, struct queue_proper
 	return 0;
 }
 
+/*
+ * SDMA MQD Implementation
+ */
+
+struct cik_sdma_rlc_registers *get_sdma_mqd(void *mqd)
+{
+	struct cik_sdma_rlc_registers *m;
+	BUG_ON(!mqd);
+	m = (struct cik_sdma_rlc_registers *)mqd;
+	return m;
+}
+
+inline uint32_t get_sdma_base_addr(struct cik_sdma_rlc_registers *m)
+{
+	uint32_t retval;
+	retval = m->sdma_engine_id * KFD_CIK_SDMA_ENGINE_OFFSET + m->sdma_queue_id * KFD_CIK_SDMA_QUEUE_OFFSET;
+	pr_err("kfd: sdma base address: 0x%x\n", retval);
+	return retval;
+}
+
+static int init_mqd_sdma(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj, uint64_t *gart_addr,
+			    struct queue_properties *q)
+{
+	int retval;
+	uint64_t addr;
+	struct cik_sdma_rlc_registers *m;
+	BUG_ON(!mm || !mqd || !mqd_mem_obj);
+
+	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&m, &addr, sizeof(struct cik_sdma_rlc_registers));
+	if (retval != 0)
+		return -ENOMEM;
+
+	memset(m, 0, sizeof(struct cik_sdma_rlc_registers));
+
+	*mqd = (void **)m;
+	if (gart_addr)
+		*gart_addr = addr;
+
+	retval = mm->update_mqd(mm, *mqd, q);
+
+	return retval;
+}
+
+static int load_mqd_sdma(struct mqd_manager *mm, void *mqd)
+{
+	struct cik_sdma_rlc_registers *m;
+	uint32_t sdma_base_addr;
+	BUG_ON(!mm || !mqd);
+
+	m = get_sdma_mqd(mqd);
+	sdma_base_addr = get_sdma_base_addr(m);
+
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_VIRTUAL_ADDR, m->sdma_rlc_virtual_addr);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_BASE, m->sdma_rlc_rb_base);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_BASE_HI, m->sdma_rlc_rb_base_hi);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_RPTR_ADDR_LO, m->sdma_rlc_rb_rptr_addr_lo);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_RPTR_ADDR_HI, m->sdma_rlc_rb_rptr_addr_hi);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_DOORBELL, m->sdma_rlc_doorbell);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_CNTL, m->sdma_rlc_rb_cntl);
+
+	return 0;
+}
+
+static int update_mqd_sdma(struct mqd_manager *mm, void *mqd, struct queue_properties *q)
+{
+	struct cik_sdma_rlc_registers *m;
+	BUG_ON(!mm || !mqd || !q);
+
+	m = get_sdma_mqd(mqd);
+	m->sdma_rlc_rb_cntl = RB_SIZE((ffs(q->queue_size / sizeof(unsigned int)))) | RB_VMID(q->vmid)
+			| RPTR_WRITEBACK_ENABLE | RPTR_WRITEBACK_TIMER(6);
+	m->sdma_rlc_rb_base = lower_32(q->queue_address >> 8);
+	m->sdma_rlc_rb_base_hi = upper_32(q->queue_address >> 8);
+	m->sdma_rlc_rb_rptr_addr_lo = lower_32((uint64_t)q->read_ptr);
+	m->sdma_rlc_rb_rptr_addr_hi = upper_32((uint64_t)q->read_ptr);
+	m->sdma_rlc_doorbell = OFFSET(q->doorbell_off) | ENABLE;
+	m->sdma_rlc_virtual_addr = q->sdma_vm_addr;
+
+	m->sdma_engine_id = q->sdma_engine_id;
+	m->sdma_queue_id = q->sdma_queue_id;
+
+	q->is_active = false;
+	if (q->queue_size > 0 &&
+			q->queue_address != 0 &&
+			q->queue_percent > 0) {
+		m->sdma_rlc_rb_cntl |= RB_ENABLE;
+		q->is_active = true;
+	}
+
+	return 0;
+}
+
+/*
+ * preempt type here is ignored because there is only one way to preempt sdma queue
+ */
+static int destroy_mqd_sdma(struct mqd_manager *mm, void *mqd, enum kfd_preempt_type type, unsigned int timeout)
+{
+	struct cik_sdma_rlc_registers *m;
+	uint32_t sdma_base_addr;
+	uint32_t temp;
+	BUG_ON(!mm || !mqd);
+
+	m = get_sdma_mqd(mqd);
+	sdma_base_addr = get_sdma_base_addr(m);
+
+	temp = READ_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_CNTL);
+	temp = temp & ~RB_ENABLE;
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_CNTL, temp);
+
+	while (true) {
+		temp = READ_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_CONTEXT_STATUS);
+		if (temp & IDLE)
+			break;
+		if (timeout == 0)
+			return -ETIME;
+		msleep(20);
+		timeout -= 20;
+	}
+
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_DOORBELL, 0);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_RPTR, 0);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_WPTR, 0);
+	WRITE_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_BASE, 0);
+
+	return 0;
+}
+
+static void uninit_mqd_sdma(struct mqd_manager *mm, void *mqd, kfd_mem_obj mqd_mem_obj)
+{
+	BUG_ON(!mm || !mqd);
+	radeon_kfd_vidmem_free_unmap(mm->dev, mqd_mem_obj);
+}
+
+/* empty stub - not used in sdma */
+static void acquire_hqd_sdma(struct mqd_manager *mm, unsigned int pipe, unsigned int queue, unsigned int vmid)
+{
+	BUG_ON(!mm);
+}
+
+/* empty stub - not used in sdma */
+static void release_hqd_sdma(struct mqd_manager *mm)
+{
+	BUG_ON(!mm);
+}
+
+static bool is_occupied_sdma(struct mqd_manager *mm, void *mqd, struct queue_properties *q)
+{
+	struct cik_sdma_rlc_registers *m;
+	uint32_t sdma_base_addr;
+	uint32_t sdma_rlc_rb_cntl;
+	BUG_ON(!mm || !mqd);
+
+	m = get_sdma_mqd(mqd);
+	sdma_base_addr = get_sdma_base_addr(m);
+
+	sdma_rlc_rb_cntl = READ_REG(mm->dev, sdma_base_addr + SDMA0_RLC0_RB_CNTL);
+
+	if (sdma_rlc_rb_cntl & RB_ENABLE)
+		return true;
+
+	return false;
+}
+
 struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev)
 {
 	struct mqd_manager *mqd;
@@ -392,6 +556,16 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		mqd->acquire_hqd = acquire_hqd;
 		mqd->release_hqd = release_hqd;
 		mqd->is_occupied = is_occupied;
+		break;
+	case KFD_MQD_TYPE_CIK_SDMA:
+		mqd->init_mqd = init_mqd_sdma;
+		mqd->uninit_mqd = uninit_mqd_sdma;
+		mqd->load_mqd = load_mqd_sdma;
+		mqd->update_mqd = update_mqd_sdma;
+		mqd->destroy_mqd = destroy_mqd_sdma;
+		mqd->acquire_hqd = acquire_hqd_sdma;
+		mqd->release_hqd = release_hqd_sdma;
+		mqd->is_occupied = is_occupied_sdma;
 		break;
 	default:
 		kfree(mqd);
