@@ -279,17 +279,6 @@ bool is_occupied(struct mqd_manager *mm, void *mqd, struct queue_properties *q)
 	return false;
 }
 
-static int initialize(struct mqd_manager *mm)
-{
-	BUG_ON(!mm);
-	return 0;
-}
-
-static void uninitialize(struct mqd_manager *mm)
-{
-	BUG_ON(!mm);
-}
-
 /*
  * HIQ MQD Implementation
  */
@@ -393,8 +382,6 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		mqd->acquire_hqd = acquire_hqd;
 		mqd->release_hqd = release_hqd;
 		mqd->is_occupied = is_occupied;
-		mqd->initialize = initialize;
-		mqd->uninitialize = uninitialize;
 		break;
 	case KFD_MQD_TYPE_CIK_HIQ:
 		mqd->init_mqd = init_mqd_hiq;
@@ -405,8 +392,6 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		mqd->acquire_hqd = acquire_hqd;
 		mqd->release_hqd = release_hqd;
 		mqd->is_occupied = is_occupied;
-		mqd->initialize = initialize;
-		mqd->uninitialize = uninitialize;
 		break;
 	default:
 		kfree(mqd);
@@ -414,11 +399,6 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		break;
 	}
 
-	if (mqd->initialize(mqd) != 0) {
-		pr_err("kfd: mqd manager initialization failed\n");
-		kfree(mqd);
-		return NULL;
-	}
 	return mqd;
 }
 

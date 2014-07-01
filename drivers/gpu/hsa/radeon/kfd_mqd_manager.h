@@ -36,8 +36,6 @@ struct mqd_manager {
 	void	(*acquire_hqd)(struct mqd_manager *mm, unsigned int pipe, unsigned int queue, unsigned int vmid);
 	void	(*release_hqd)(struct mqd_manager *mm);
 	bool	(*is_occupied)(struct mqd_manager *mm, void *mqd, struct queue_properties *q);
-	int	(*initialize)(struct mqd_manager *mm);
-	void	(*uninitialize)(struct mqd_manager *mm);
 
 	struct mutex		mqd_mutex;
 	struct kfd_dev		*dev;
