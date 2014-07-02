@@ -142,7 +142,7 @@ bool allocate_signal_page(struct file *devkfd, struct kfd_process *p)
 	if (!backing_store)
 		goto fail_alloc_signal_store;
 
-	memset(backing_store, 0, PAGE_SIZE); /* prevent user-mode info leaks */
+	memset(backing_store, (uint8_t)UNSIGNALED_EVENT_SLOT, PAGE_SIZE); /* prevent user-mode info leaks */
 	page->kernel_address = backing_store;
 
 	if (list_empty(&p->signal_event_pages))

@@ -36,6 +36,7 @@
 /* Written into kfd_signal_slot_t to indicate that the event is not signaled.
  * Since the event protocol may need to write the event ID into memory, this
  * must not be a valid event ID.
+ * For the sake of easy memset-ing, this must be a byte pattern.
  */
 #define UNSIGNALED_EVENT_SLOT ((uint64_t)-1)
 
