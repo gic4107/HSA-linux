@@ -133,26 +133,32 @@ set_queue_properties_from_user(struct queue_properties *q_properties, struct kfd
 	q_properties->queue_size = args->ring_size;
 	q_properties->read_ptr = (qptr_t *) args->read_pointer_address;
 	q_properties->write_ptr = (qptr_t *) args->write_pointer_address;
-	if (args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE)
+	if (args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE ||
+		args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE_AQL)
 		q_properties->type = KFD_QUEUE_TYPE_COMPUTE;
 	else if (args->queue_type == KFD_IOC_QUEUE_TYPE_SDMA)
 		q_properties->type = KFD_QUEUE_TYPE_SDMA;
 	else
 		return -ENOTSUPP;
-
+	if (args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE_AQL)
+		q_properties->format = KFD_QUEUE_FORMAT_AQL;
+	else
+		q_properties->format = KFD_QUEUE_FORMAT_PM4;
 
 	pr_debug("%s Arguments: Queue Percentage (%d, %d)\n"
 			"Queue Priority (%d, %d)\n"
 			"Queue Address (0x%llX, 0x%llX)\n"
 			"Queue Size (0x%llX, %u)\n"
-			"Queue r/w Pointers (0x%llX, 0x%llX)\n",
+			"Queue r/w Pointers (0x%llX, 0x%llX)\n"
+			"Queue Format (%d)\n",
 			__func__,
 			q_properties->queue_percent, args->queue_percentage,
 			q_properties->priority, args->queue_priority,
 			q_properties->queue_address, args->ring_base_address,
 			q_properties->queue_size, args->ring_size,
 			(uint64_t) q_properties->read_ptr,
-			(uint64_t) q_properties->write_ptr);
+			(uint64_t) q_properties->write_ptr,
+			q_properties->format);
 
 	return 0;
 }

@@ -168,6 +168,9 @@
 #define	IB_ATC_EN					(1U << 23)
 #define	DEFAULT_MIN_IB_AVAIL_SIZE			(3U << 20)
 
+#define CP_HQD_IQ_RPTR					0xC970u
+#define AQL_ENABLE					(1U << 0)
+
 #define CP_HQD_DEQUEUE_REQUEST				0xC974
 #define	DEQUEUE_REQUEST_DRAIN				1
 #define DEQUEUE_REQUEST_RESET				2

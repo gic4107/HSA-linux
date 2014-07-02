@@ -152,6 +152,8 @@ static int load_mqd(struct mqd_manager *mm, void *mqd)
 	WRITE_REG(mm->dev, CP_HQD_PIPE_PRIORITY, m->cp_hqd_pipe_priority);
 	WRITE_REG(mm->dev, CP_HQD_QUEUE_PRIORITY, m->cp_hqd_queue_priority);
 
+	WRITE_REG(mm->dev, CP_HQD_IQ_RPTR, m->cp_hqd_iq_rptr);
+
 	WRITE_REG(mm->dev, CP_HQD_ACTIVE, m->cp_hqd_active);
 
 	return 0;
@@ -175,6 +177,11 @@ static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties
 	m->cp_hqd_pq_doorbell_control = DOORBELL_EN | DOORBELL_OFFSET(q->doorbell_off);
 
 	m->cp_hqd_vmid = q->vmid;
+
+	if (q->format == KFD_QUEUE_FORMAT_AQL) {
+		m->cp_hqd_iq_rptr = AQL_ENABLE;
+		m->cp_hqd_pq_control |= NO_UPDATE_RPTR;
+	}
 
 	m->cp_hqd_active = 0;
 	q->is_active = false;

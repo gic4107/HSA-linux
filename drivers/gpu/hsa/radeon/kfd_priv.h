@@ -225,8 +225,14 @@ enum kfd_queue_type  {
 	KFD_QUEUE_TYPE_DIQ
 };
 
+enum kfd_queue_format {
+	KFD_QUEUE_FORMAT_PM4,
+	KFD_QUEUE_FORMAT_AQL
+};
+
 struct queue_properties {
 	enum kfd_queue_type type;
+	enum kfd_queue_format format;
 	unsigned int queue_id;
 	uint64_t queue_address;
 	uint64_t  queue_size;

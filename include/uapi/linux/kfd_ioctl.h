@@ -37,8 +37,9 @@ struct kfd_ioctl_get_version_args {
 };
 
 /* For kfd_ioctl_create_queue_args.queue_type. */
-#define KFD_IOC_QUEUE_TYPE_COMPUTE   0
-#define KFD_IOC_QUEUE_TYPE_SDMA      1
+#define KFD_IOC_QUEUE_TYPE_COMPUTE       0
+#define KFD_IOC_QUEUE_TYPE_SDMA          1
+#define KFD_IOC_QUEUE_TYPE_COMPUTE_AQL   2
 
 struct kfd_ioctl_create_queue_args {
 	uint64_t ring_base_address;	/* to KFD */
