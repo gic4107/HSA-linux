@@ -448,7 +448,8 @@ static void set_event(struct kfd_event *ev)
 	struct kfd_event_waiter *waiter;
 	struct kfd_event_waiter *next;
 
-	ev->signaled = true;
+	/* Auto reset if the list is non-empty and we're waking someone. */
+	ev->signaled = !ev->auto_reset || list_empty(&ev->waiters);
 
 	list_for_each_entry_safe(waiter, next, &ev->waiters, waiters) {
 		waiter->activated = true;
@@ -458,9 +459,6 @@ static void set_event(struct kfd_event *ev)
 
 		wake_up_process(waiter->sleeping_task);
 	}
-
-	if (ev->auto_reset)
-		ev->signaled = false;
 }
 
 /* Assumes that p is current. */
@@ -589,6 +587,7 @@ static int init_event_waiter(struct kfd_process *p, struct kfd_event_waiter *wai
 		return -EINVAL;
 
 	waiter->activated = ev->signaled;
+	ev->signaled = ev->signaled && !ev->auto_reset;
 
 	list_add(&waiter->waiters, &ev->waiters);
 
