@@ -74,7 +74,12 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 	m->compute_static_thread_mgmt_se2 = 0xFFFFFFFF;
 	m->compute_static_thread_mgmt_se3 = 0xFFFFFFFF;
 
-	m->cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE;
+	/*
+	 * Make sure to use the last queue state saved on mqd when the cp reassigns the queue,
+	 * so when queue is switched on/off (e.g over subscription or quantum timeout) the context will be consistent
+	 */
+	m->cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE | PRELOAD_REQ;
+	m->cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS | QUANTUM_DURATION(10);
 
 	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
 	m->cp_mqd_base_addr_lo        = lower_32(addr);

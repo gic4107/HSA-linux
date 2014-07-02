@@ -120,8 +120,7 @@
 
 #define CP_HQD_PERSISTENT_STATE				0xC924u
 #define	DEFAULT_CP_HQD_PERSISTENT_STATE			(0x33U << 8)
-#define PRELOAD_REQ								(1 << 0)
-
+#define	PRELOAD_REQ					(1 << 0)
 
 #define CP_HQD_PIPE_PRIORITY				0xC928u
 #define CP_HQD_QUEUE_PRIORITY				0xC92Cu
