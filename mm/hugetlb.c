@@ -2694,6 +2694,7 @@ again:
 unlock:
 		spin_unlock(ptl);
 	}
+	mmu_notifier_invalidate_range_free_pages(vma, start, address);
 	/*
 	 * mmu_gather ran out of room to batch pages, we break out of
 	 * the PTE lock to avoid doing the potential expensive TLB invalidate

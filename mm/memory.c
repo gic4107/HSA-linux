@@ -1078,6 +1078,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct zap_details *details)
 {
 	struct mm_struct *mm = tlb->mm;
+	unsigned long old_end;
 	int force_flush = 0;
 	int rss[NR_MM_COUNTERS];
 	spinlock_t *ptl;
@@ -1186,8 +1187,6 @@ again:
 
 	/* Do the actual TLB flush before dropping ptl */
 	if (force_flush) {
-		unsigned long old_end;
-
 		/*
 		 * Flush the TLB just for the previous segment,
 		 * then update the range to be the remaining
@@ -1196,8 +1195,6 @@ again:
 		old_end = tlb->end;
 		tlb->end = addr;
 		tlb_flush_mmu_tlbonly(tlb);
-		tlb->start = addr;
-		tlb->end = old_end;
 	}
 	pte_unmap_unlock(start_pte, ptl);
 
@@ -1209,8 +1206,11 @@ again:
 	 */
 	if (force_flush) {
 		force_flush = 0;
+		mmu_notifier_invalidate_range_free_pages(vma, tlb->start,
+							 tlb->end);
+		tlb->start = addr;
+		tlb->end = old_end;
 		tlb_flush_mmu_free(tlb);
-
 		if (addr != end)
 			goto again;
 	}
@@ -1294,6 +1294,10 @@ static void unmap_page_range(struct mmu_gather *tlb,
 
 	BUG_ON(addr >= end);
 	tlb_start_vma(tlb, vma);
+	/* Make sure tlb as proper range so intermediate call to mmu_notifier
+	 * have accurate informations.
+	 */
+	tlb->start = max(tlb->start, addr);
 	pgd = pgd_offset(vma->vm_mm, addr);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -1301,6 +1305,8 @@ static void unmap_page_range(struct mmu_gather *tlb,
 			continue;
 		next = zap_pud_range(tlb, vma, pgd, addr, next, details);
 	} while (pgd++, addr = next, addr != end);
+	mmu_notifier_invalidate_range_free_pages(vma, tlb->start,
+						 min(end, tlb->end));
 	tlb_end_vma(tlb, vma);
 }
 
