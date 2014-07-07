@@ -311,7 +311,8 @@ int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid, struct
 	pqn->q->properties.queue_percent = p->queue_percent;
 	pqn->q->properties.priority = p->priority;
 
-	retval = pqn->q->device->dqm->destroy_queues(pqn->q->device->dqm);
+	retval = pqn->q->device->dqm->destroy_queues(pqn->q->device->dqm,
+							false);
 	if (retval != 0)
 		return retval;
 

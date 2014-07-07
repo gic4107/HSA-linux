@@ -149,9 +149,12 @@ static int pm_create_map_process(struct packet_manager *pm, uint32_t *buffer, st
 	return 0;
 }
 
-static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer, struct queue *q)
+static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer,
+				struct queue *q, bool is_static)
 {
 	struct pm4_map_queues *packet;
+	bool use_static = is_static;
+
 	BUG_ON(!pm || !buffer || !q);
 
 	pr_debug("kfd: In func %s\n", __func__);
@@ -173,6 +176,7 @@ static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer, stru
 		break;
 	case KFD_QUEUE_TYPE_SDMA:
 		packet->bitfields2.engine_sel = engine_sel__mes_map_queues__sdma0;
+		use_static = false; /* no static queues under SDMA */
 		break;
 	default:
 		BUG();
@@ -180,6 +184,7 @@ static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer, stru
 	}
 
 	packet->mes_map_queues_ordinals[0].bitfields3.doorbell_offset = q->properties.doorbell_off;
+	packet->mes_map_queues_ordinals[0].bitfields3.is_static = use_static ? 1 : 0;
 	packet->mes_map_queues_ordinals[0].mqd_addr_lo = lower_32(q->gart_mqd_addr);
 	packet->mes_map_queues_ordinals[0].mqd_addr_hi = upper_32(q->gart_mqd_addr);
 	packet->mes_map_queues_ordinals[0].wptr_addr_lo = lower_32((uint64_t)q->properties.write_ptr);
@@ -223,27 +228,46 @@ static int pm_create_runlist_ib(struct packet_manager *pm, struct list_head *que
 			pm_release_ib(pm);
 			return -ENOMEM;
 		}
+
 		retval = pm_create_map_process(pm, &rl_buffer[rl_wptr], qpd);
 		if (retval != 0)
 			return retval;
+
 		proccesses_mapped++;
 		inc_wptr(&rl_wptr, sizeof(struct pm4_map_process), alloc_size_bytes);
 		list_for_each_entry(kq, &qpd->priv_queue_list, list) {
 			if (kq->queue->properties.is_active != true)
 				continue;
-			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr], kq->queue);
+
+			pr_debug("kfd: static_queue, mapping kernel q %d, is debug status %d\n",
+				kq->queue->queue, qpd->is_debug);
+
+			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr],
+						kq->queue, qpd->is_debug);
 			if (retval != 0)
 				return retval;
-			inc_wptr(&rl_wptr, sizeof(struct pm4_map_queues), alloc_size_bytes);
+
+			inc_wptr(&rl_wptr,
+				sizeof(struct pm4_map_queues),
+				alloc_size_bytes);
 		}
 
 		list_for_each_entry(q, &qpd->queues_list, list) {
 			if (q->properties.is_active != true)
 				continue;
-			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr], q);
+
+			pr_debug("kfd: static_queue, mapping user queue %d, is debug status %d\n",
+				q->queue, qpd->is_debug);
+
+			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr],
+						q,  qpd->is_debug);
+
 			if (retval != 0)
 				return retval;
-			inc_wptr(&rl_wptr, sizeof(struct pm4_map_queues), alloc_size_bytes);
+
+			inc_wptr(&rl_wptr,
+				sizeof(struct pm4_map_queues),
+				alloc_size_bytes);
 		}
 	}
 
@@ -415,7 +439,8 @@ int pm_send_unmap_queue(struct packet_manager *pm, enum kfd_queue_type type,
 
 	packet = (struct pm4_unmap_queues *)buffer;
 	memset(buffer, 0, sizeof(struct pm4_unmap_queues));
-
+	pr_debug("kfd: static_queue: unmapping queues: mode is %d , reset is %d , type is %d\n",
+		mode, reset, type);
 	packet->header.u32all = build_pm4_header(IT_UNMAP_QUEUES, sizeof(struct pm4_unmap_queues));
 	switch (type) {
 	case KFD_QUEUE_TYPE_COMPUTE:
@@ -437,20 +462,24 @@ int pm_send_unmap_queue(struct packet_manager *pm, enum kfd_queue_type type,
 
 	switch (mode) {
 	case KFD_PREEMPT_TYPE_FILTER_SINGLE_QUEUE:
-	    packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_specified_queues;
-	    packet->bitfields2.num_queues = 1;
-	    packet->bitfields3b.doorbell_offset0 = filter_param;
-	    break;
+		packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_specified_queues;
+		packet->bitfields2.num_queues = 1;
+		packet->bitfields3b.doorbell_offset0 = filter_param;
+		break;
 	case KFD_PREEMPT_TYPE_FILTER_BY_PASID:
-	    packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_pasid_queues;
-	    packet->bitfields3a.pasid = filter_param;
-	    break;
+		packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_pasid_queues;
+		packet->bitfields3a.pasid = filter_param;
+		break;
 	case KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES:
-	    packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_all_active_queues;
-	    break;
+		packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_all_active_queues;
+		break;
+	case KFD_PREEMPT_TYPE_FILTER_DYNAMIC_QUEUES:
+		/* in this case, we do not preempt static queues */
+		packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_dynamic_queues_only;
+		break;
 	default:
-	    BUG();
-	    break;
+		BUG();
+		break;
 	};
 
 	pm->priv_queue->submit_packet(pm->priv_queue);

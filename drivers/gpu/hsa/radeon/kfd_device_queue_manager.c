@@ -217,9 +217,8 @@ static int create_compute_queue_nocpsch(struct device_queue_manager *dqm, struct
 	BUG_ON(!dqm || !q || !qpd);
 
 	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_COMPUTE);
-	if (mqd == NULL) {
+	if (mqd == NULL)
 		return -ENOMEM;
-	}
 
 	retval = allocate_hqd(dqm, q);
 	if (retval != 0)
@@ -409,7 +408,7 @@ static int update_queue_nocpsch(struct device_queue_manager *dqm, struct queue *
 	return 0;
 }
 
-static int destroy_queues_nocpsch(struct device_queue_manager *dqm)
+static int destroy_queues_nocpsch(struct device_queue_manager *dqm, bool stub)
 {
 	struct device_process_node *cur;
 	struct mqd_manager *mqd, *mqd_sdma;
@@ -898,7 +897,7 @@ static int stop_cpsch(struct device_queue_manager *dqm)
 	struct kfd_process_device *pdd;
 	BUG_ON(!dqm);
 
-	dqm->destroy_queues(dqm);
+	dqm->destroy_queues(dqm, true); /* assuming no HSA debug is active */
 
 	list_for_each_entry(node, &dqm->queues, list) {
 		pdd = radeon_kfd_get_process_device_data(dqm->dev, node->qpd->pqm->process);
@@ -931,7 +930,7 @@ static void destroy_kernel_queue_cpsch(struct device_queue_manager *dqm, struct 
 
 	pr_debug("kfd: In %s\n", __func__);
 
-	dqm->destroy_queues(dqm);
+	dqm->destroy_queues(dqm, true); /* here we actually preempt the DIQ */
 
 	mutex_lock(&dqm->lock);
 	list_del(&kq->list);
@@ -1005,7 +1004,8 @@ static int destroy_sdma_queues(struct device_queue_manager *dqm, unsigned int sd
 			KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES, 0, false, sdma_engine);
 }
 
-static int destroy_queues_cpsch(struct device_queue_manager *dqm)
+static int destroy_queues_cpsch(struct device_queue_manager *dqm,
+				bool preempt_static_queues)
 {
 	int retval;
 	BUG_ON(!dqm);
@@ -1019,8 +1019,14 @@ static int destroy_queues_cpsch(struct device_queue_manager *dqm)
 	destroy_sdma_queues(dqm, 0);
 	destroy_sdma_queues(dqm, 1);
 
+	enum kfd_preempt_type_filter preempt_type;
+
+	preempt_type = preempt_static_queues ?
+			KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES :
+			KFD_PREEMPT_TYPE_FILTER_DYNAMIC_QUEUES;
+
 	retval = pm_send_unmap_queue(&dqm->packets, KFD_QUEUE_TYPE_COMPUTE,
-			KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES, 0, false, 0);
+			preempt_type, 0, false, 0);
 	if (retval != 0)
 		goto out;
 
@@ -1041,9 +1047,10 @@ static int execute_queues_cpsch(struct device_queue_manager *dqm)
 	int retval;
 	BUG_ON(!dqm);
 
-	retval = dqm->destroy_queues(dqm);
+	/* starting, we don't need to preempt static queues */
+	retval = dqm->destroy_queues(dqm, false);
 	if (retval != 0) {
-		pr_err("kfd: the cp might be in an unrecoverable state due to an unsuccesful queues premption");
+		pr_err("kfd: the CP might be in an unrecoverable state due to an unsuccessful queues preemption");
 		return retval;
 	}
 
@@ -1075,11 +1082,26 @@ static int destroy_queue_cpsch(struct device_queue_manager *dqm, struct qcm_proc
 	int retval;
 	struct mqd_manager *mqd;
 	BUG_ON(!dqm || !qpd || !q);
+	bool preempt_all_queues;
+
+	preempt_all_queues = false;
 
 	retval = 0;
 
+
 	/* remove queue from list to prevent rescheduling after preemption */
 	mutex_lock(&dqm->lock);
+
+	if (qpd->is_debug) {
+		/*
+		 * error, currently we do not allow to destroy a queue
+		 * of a currently debugged process
+		 */
+		retval = -EBUSY;
+		goto failed_try_destroy_debugged_queue;
+
+	}
+
 	mqd = dqm->get_mqd_manager(dqm, get_mqd_type_from_queue_type(q->properties.type));
 	if (!mqd) {
 		retval = -ENOMEM;
@@ -1091,11 +1113,15 @@ static int destroy_queue_cpsch(struct device_queue_manager *dqm, struct qcm_proc
 	mutex_unlock(&dqm->lock);
 
 	/* preempt queues before delete mqd */
-	dqm->destroy_queues(dqm);
+	/* since the queue we actually destroy
+	 * is not a debugged queue, we keep static queues */
+	dqm->destroy_queues(dqm, false);
 	mqd->uninit_mqd(mqd, q->mqd, q->mqd_mem_obj);
 
 	return 0;
 failed_get_mqd_manager:
+failed_try_destroy_debugged_queue:
+
 	mutex_unlock(&dqm->lock);
 	return retval;
 }
