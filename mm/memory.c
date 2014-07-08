@@ -884,7 +884,7 @@ out_set_pte:
 	return 0;
 }
 
-int copy_pte_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
+static int copy_pte_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		   pmd_t *dst_pmd, pmd_t *src_pmd, struct vm_area_struct *vma,
 		   unsigned long addr, unsigned long end)
 {
@@ -1049,8 +1049,8 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	mmun_start = addr;
 	mmun_end   = end;
 	if (is_cow)
-		mmu_notifier_invalidate_range_start(src_mm, mmun_start,
-						    mmun_end);
+		mmu_notifier_invalidate_range_start(vma, mmun_start,
+						    mmun_end, MMU_MIGRATE);
 
 	ret = 0;
 	dst_pgd = pgd_offset(dst_mm, addr);
@@ -1067,7 +1067,8 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	} while (dst_pgd++, src_pgd++, addr = next, addr != end);
 
 	if (is_cow)
-		mmu_notifier_invalidate_range_end(src_mm, mmun_start, mmun_end);
+		mmu_notifier_invalidate_range_end(vma, mmun_start,
+						  mmun_end, MMU_MIGRATE);
 	return ret;
 }
 
@@ -1077,6 +1078,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct zap_details *details)
 {
 	struct mm_struct *mm = tlb->mm;
+	unsigned long old_end;
 	int force_flush = 0;
 	int rss[NR_MM_COUNTERS];
 	spinlock_t *ptl;
@@ -1185,8 +1187,6 @@ again:
 
 	/* Do the actual TLB flush before dropping ptl */
 	if (force_flush) {
-		unsigned long old_end;
-
 		/*
 		 * Flush the TLB just for the previous segment,
 		 * then update the range to be the remaining
@@ -1195,8 +1195,6 @@ again:
 		old_end = tlb->end;
 		tlb->end = addr;
 		tlb_flush_mmu_tlbonly(tlb);
-		tlb->start = addr;
-		tlb->end = old_end;
 	}
 	pte_unmap_unlock(start_pte, ptl);
 
@@ -1208,8 +1206,11 @@ again:
 	 */
 	if (force_flush) {
 		force_flush = 0;
+		mmu_notifier_invalidate_range_free_pages(vma, tlb->start,
+							 tlb->end);
+		tlb->start = addr;
+		tlb->end = old_end;
 		tlb_flush_mmu_free(tlb);
-
 		if (addr != end)
 			goto again;
 	}
@@ -1292,8 +1293,11 @@ static void unmap_page_range(struct mmu_gather *tlb,
 		details = NULL;
 
 	BUG_ON(addr >= end);
-	mem_cgroup_uncharge_start();
 	tlb_start_vma(tlb, vma);
+	/* Make sure tlb as proper range so intermediate call to mmu_notifier
+	 * have accurate informations.
+	 */
+	tlb->start = max(tlb->start, addr);
 	pgd = pgd_offset(vma->vm_mm, addr);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -1301,8 +1305,9 @@ static void unmap_page_range(struct mmu_gather *tlb,
 			continue;
 		next = zap_pud_range(tlb, vma, pgd, addr, next, details);
 	} while (pgd++, addr = next, addr != end);
+	mmu_notifier_invalidate_range_free_pages(vma, tlb->start,
+						 min(end, tlb->end));
 	tlb_end_vma(tlb, vma);
-	mem_cgroup_uncharge_end();
 }
 
 
@@ -1319,6 +1324,11 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 	end = min(vma->vm_end, end_addr);
 	if (end <= vma->vm_start)
 		return;
+
+	mmu_notifier_invalidate_range_start(vma,
+					    max(start_addr, vma->vm_start),
+					    min(end_addr, vma->vm_end),
+					    MMU_MUNMAP);
 
 	if (vma->vm_file)
 		uprobe_munmap(vma, start, end);
@@ -1347,6 +1357,11 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 		} else
 			unmap_page_range(tlb, vma, start, end, details);
 	}
+
+	mmu_notifier_invalidate_range_end(vma,
+					  max(start_addr, vma->vm_start),
+					  min(end_addr, vma->vm_end),
+					  MMU_MUNMAP);
 }
 
 /**
@@ -1371,12 +1386,8 @@ void unmap_vmas(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long start_addr,
 		unsigned long end_addr)
 {
-	struct mm_struct *mm = vma->vm_mm;
-
-	mmu_notifier_invalidate_range_start(mm, start_addr, end_addr);
 	for ( ; vma && vma->vm_start < end_addr; vma = vma->vm_next)
 		unmap_single_vma(tlb, vma, start_addr, end_addr, NULL);
-	mmu_notifier_invalidate_range_end(mm, start_addr, end_addr);
 }
 
 /**
@@ -1398,10 +1409,8 @@ void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 	lru_add_drain();
 	tlb_gather_mmu(&tlb, mm, start, end);
 	update_hiwater_rss(mm);
-	mmu_notifier_invalidate_range_start(mm, start, end);
 	for ( ; vma && vma->vm_start < end; vma = vma->vm_next)
 		unmap_single_vma(&tlb, vma, start, end, details);
-	mmu_notifier_invalidate_range_end(mm, start, end);
 	tlb_finish_mmu(&tlb, start, end);
 }
 
@@ -1424,9 +1433,7 @@ static void zap_page_range_single(struct vm_area_struct *vma, unsigned long addr
 	lru_add_drain();
 	tlb_gather_mmu(&tlb, mm, address, end);
 	update_hiwater_rss(mm);
-	mmu_notifier_invalidate_range_start(mm, address, end);
 	unmap_single_vma(&tlb, vma, address, end, details);
-	mmu_notifier_invalidate_range_end(mm, address, end);
 	tlb_finish_mmu(&tlb, address, end);
 }
 
@@ -2049,6 +2056,7 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct page *dirty_page = NULL;
 	unsigned long mmun_start = 0;	/* For mmu_notifiers */
 	unsigned long mmun_end = 0;	/* For mmu_notifiers */
+	struct mem_cgroup *memcg;
 
 	old_page = vm_normal_page(vma, address, orig_pte);
 	if (!old_page) {
@@ -2204,12 +2212,13 @@ gotten:
 	}
 	__SetPageUptodate(new_page);
 
-	if (mem_cgroup_charge_anon(new_page, mm, GFP_KERNEL))
+	if (mem_cgroup_try_charge(new_page, mm, GFP_KERNEL, &memcg))
 		goto oom_free_new;
 
 	mmun_start  = address & PAGE_MASK;
 	mmun_end    = mmun_start + PAGE_SIZE;
-	mmu_notifier_invalidate_range_start(mm, mmun_start, mmun_end);
+	mmu_notifier_invalidate_range_start(vma, mmun_start,
+					    mmun_end, MMU_MIGRATE);
 
 	/*
 	 * Re-check the pte - we dropped the lock
@@ -2234,12 +2243,14 @@ gotten:
 		 */
 		ptep_clear_flush(vma, address, page_table);
 		page_add_new_anon_rmap(new_page, vma, address);
+		mem_cgroup_commit_charge(new_page, memcg, false);
+		lru_cache_add_active_or_unevictable(new_page, vma);
 		/*
 		 * We call the notify macro here because, when using secondary
 		 * mmu page tables (such as kvm shadow page tables), we want the
 		 * new page to be mapped directly into the secondary page table.
 		 */
-		set_pte_at_notify(mm, address, page_table, entry);
+		set_pte_at_notify(mm, address, page_table, entry, MMU_MIGRATE);
 		update_mmu_cache(vma, address, page_table);
 		if (old_page) {
 			/*
@@ -2271,14 +2282,15 @@ gotten:
 		new_page = old_page;
 		ret |= VM_FAULT_WRITE;
 	} else
-		mem_cgroup_uncharge_page(new_page);
+		mem_cgroup_cancel_charge(new_page, memcg);
 
 	if (new_page)
 		page_cache_release(new_page);
 unlock:
 	pte_unmap_unlock(page_table, ptl);
 	if (mmun_end > mmun_start)
-		mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
+		mmu_notifier_invalidate_range_end(vma, mmun_start,
+						  mmun_end, MMU_MIGRATE);
 	if (old_page) {
 		/*
 		 * Don't let another task, with possibly unlocked vma,
@@ -2407,10 +2419,10 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 {
 	spinlock_t *ptl;
 	struct page *page, *swapcache;
+	struct mem_cgroup *memcg;
 	swp_entry_t entry;
 	pte_t pte;
 	int locked;
-	struct mem_cgroup *ptr;
 	int exclusive = 0;
 	int ret = 0;
 
@@ -2486,7 +2498,7 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		goto out_page;
 	}
 
-	if (mem_cgroup_try_charge_swapin(mm, page, GFP_KERNEL, &ptr)) {
+	if (mem_cgroup_try_charge(page, mm, GFP_KERNEL, &memcg)) {
 		ret = VM_FAULT_OOM;
 		goto out_page;
 	}
@@ -2511,10 +2523,6 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * while the page is counted on swap but not yet in mapcount i.e.
 	 * before page_add_anon_rmap() and swap_free(); try_to_free_swap()
 	 * must be called after the swap_free(), or it will never succeed.
-	 * Because delete_from_swap_page() may be called by reuse_swap_page(),
-	 * mem_cgroup_commit_charge_swapin() may not be able to find swp_entry
-	 * in page->private. In this case, a record in swap_cgroup  is silently
-	 * discarded at swap_free().
 	 */
 
 	inc_mm_counter_fast(mm, MM_ANONPAGES);
@@ -2530,12 +2538,14 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	if (pte_swp_soft_dirty(orig_pte))
 		pte = pte_mksoft_dirty(pte);
 	set_pte_at(mm, address, page_table, pte);
-	if (page == swapcache)
+	if (page == swapcache) {
 		do_page_add_anon_rmap(page, vma, address, exclusive);
-	else /* ksm created a completely new copy */
+		mem_cgroup_commit_charge(page, memcg, true);
+	} else { /* ksm created a completely new copy */
 		page_add_new_anon_rmap(page, vma, address);
-	/* It's better to call commit-charge after rmap is established */
-	mem_cgroup_commit_charge_swapin(page, ptr);
+		mem_cgroup_commit_charge(page, memcg, false);
+		lru_cache_add_active_or_unevictable(page, vma);
+	}
 
 	swap_free(entry);
 	if (vm_swap_full() || (vma->vm_flags & VM_LOCKED) || PageMlocked(page))
@@ -2568,7 +2578,7 @@ unlock:
 out:
 	return ret;
 out_nomap:
-	mem_cgroup_cancel_charge_swapin(ptr);
+	mem_cgroup_cancel_charge(page, memcg);
 	pte_unmap_unlock(page_table, ptl);
 out_page:
 	unlock_page(page);
@@ -2624,6 +2634,7 @@ static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		unsigned long address, pte_t *page_table, pmd_t *pmd,
 		unsigned int flags)
 {
+	struct mem_cgroup *memcg;
 	struct page *page;
 	spinlock_t *ptl;
 	pte_t entry;
@@ -2657,7 +2668,7 @@ static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	 */
 	__SetPageUptodate(page);
 
-	if (mem_cgroup_charge_anon(page, mm, GFP_KERNEL))
+	if (mem_cgroup_try_charge(page, mm, GFP_KERNEL, &memcg))
 		goto oom_free_page;
 
 	entry = mk_pte(page, vma->vm_page_prot);
@@ -2670,6 +2681,8 @@ static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 
 	inc_mm_counter_fast(mm, MM_ANONPAGES);
 	page_add_new_anon_rmap(page, vma, address);
+	mem_cgroup_commit_charge(page, memcg, false);
+	lru_cache_add_active_or_unevictable(page, vma);
 setpte:
 	set_pte_at(mm, address, page_table, entry);
 
@@ -2679,7 +2692,7 @@ unlock:
 	pte_unmap_unlock(page_table, ptl);
 	return 0;
 release:
-	mem_cgroup_uncharge_page(page);
+	mem_cgroup_cancel_charge(page, memcg);
 	page_cache_release(page);
 	goto unlock;
 oom_free_page:
@@ -2913,6 +2926,7 @@ static int do_cow_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 		pgoff_t pgoff, unsigned int flags, pte_t orig_pte)
 {
 	struct page *fault_page, *new_page;
+	struct mem_cgroup *memcg;
 	spinlock_t *ptl;
 	pte_t *pte;
 	int ret;
@@ -2924,7 +2938,7 @@ static int do_cow_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	if (!new_page)
 		return VM_FAULT_OOM;
 
-	if (mem_cgroup_charge_anon(new_page, mm, GFP_KERNEL)) {
+	if (mem_cgroup_try_charge(new_page, mm, GFP_KERNEL, &memcg)) {
 		page_cache_release(new_page);
 		return VM_FAULT_OOM;
 	}
@@ -2944,12 +2958,14 @@ static int do_cow_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 		goto uncharge_out;
 	}
 	do_set_pte(vma, address, new_page, pte, true, true);
+	mem_cgroup_commit_charge(new_page, memcg, false);
+	lru_cache_add_active_or_unevictable(new_page, vma);
 	pte_unmap_unlock(pte, ptl);
 	unlock_page(fault_page);
 	page_cache_release(fault_page);
 	return ret;
 uncharge_out:
-	mem_cgroup_uncharge_page(new_page);
+	mem_cgroup_cancel_charge(new_page, memcg);
 	page_cache_release(new_page);
 	return ret;
 }
@@ -2964,6 +2980,8 @@ static int do_shared_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	pte_t *pte;
 	int dirtied = 0;
 	int ret, tmp;
+
+	WARN_ON_ONCE(!rwsem_is_locked(&mm->mmap_sem));
 
 	ret = __do_fault(vma, address, pgoff, flags, &fault_page);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))
@@ -2995,6 +3013,12 @@ static int do_shared_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 
 	if (set_page_dirty(fault_page))
 		dirtied = 1;
+	/*
+	 * Take a local copy of the address_space - page.mapping may be zeroed
+	 * by truncate after unlock_page().   The address_space itself remains
+	 * pinned by vma->vm_file's reference.  We rely on unlock_page()'s
+	 * release semantics to prevent the compiler from undoing this copying.
+	 */
 	mapping = fault_page->mapping;
 	unlock_page(fault_page);
 	if ((dirtied || vma->vm_ops->page_mkwrite) && mapping) {
@@ -3177,7 +3201,7 @@ static int handle_pte_fault(struct mm_struct *mm,
 	pte_t entry;
 	spinlock_t *ptl;
 
-	entry = *pte;
+	entry = ACCESS_ONCE(*pte);
 	if (!pte_present(entry)) {
 		if (pte_none(entry)) {
 			if (vma->vm_ops) {

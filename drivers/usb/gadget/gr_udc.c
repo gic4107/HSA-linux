@@ -1532,8 +1532,9 @@ static int gr_ep_enable(struct usb_ep *_ep,
 			"%s mode: multiple trans./microframe not valid\n",
 			(mode == 2 ? "Bulk" : "Control"));
 		return -EINVAL;
-	} else if (nt == 0x11) {
-		dev_err(dev->dev, "Invalid value for trans./microframe\n");
+	} else if (nt == 0x3) {
+		dev_err(dev->dev,
+			"Invalid value 0x3 for additional trans./microframe\n");
 		return -EINVAL;
 	} else if ((nt + 1) * max > buffer_size) {
 		dev_err(dev->dev, "Hw buffer size %d < max payload %d * %d\n",
@@ -2212,7 +2213,7 @@ out:
 	return retval;
 }
 
-static struct of_device_id gr_match[] = {
+static const struct of_device_id gr_match[] = {
 	{.name = "GAISLER_USBDC"},
 	{.name = "01_021"},
 	{},

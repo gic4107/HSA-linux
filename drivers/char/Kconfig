@@ -600,5 +600,14 @@ config TILE_SROM
 	  device appear much like a simple EEPROM, and knows
 	  how to partition a single ROM for multiple purposes.
 
+config HMM_DUMMY
+	tristate "hmm dummy driver to test hmm."
+	depends on HMM
+	default n
+	help
+	  Say Y here if you want to build the hmm dummy driver that allow you
+	  to test the hmm infrastructure by mapping a process address space
+	  in hmm dummy driver device file. When in doubt, say "N".
+
 endmenu
 

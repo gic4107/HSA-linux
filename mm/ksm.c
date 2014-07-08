@@ -37,6 +37,7 @@
 #include <linux/freezer.h>
 #include <linux/oom.h>
 #include <linux/numa.h>
+#include <linux/notifier.h>
 
 #include <asm/tlbflush.h>
 #include "internal.h"
@@ -872,7 +873,8 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 
 	mmun_start = addr;
 	mmun_end   = addr + PAGE_SIZE;
-	mmu_notifier_invalidate_range_start(mm, mmun_start, mmun_end);
+	mmu_notifier_invalidate_range_start(vma, mmun_start, mmun_end,
+					    MMU_WRITE_PROTECT);
 
 	ptep = page_check_address(page, mm, addr, &ptl, 0);
 	if (!ptep)
@@ -904,7 +906,7 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 		if (pte_dirty(entry))
 			set_page_dirty(page);
 		entry = pte_mkclean(pte_wrprotect(entry));
-		set_pte_at_notify(mm, addr, ptep, entry);
+		set_pte_at_notify(mm, addr, ptep, entry, MMU_WRITE_PROTECT);
 	}
 	*orig_pte = *ptep;
 	err = 0;
@@ -912,7 +914,8 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 out_unlock:
 	pte_unmap_unlock(ptep, ptl);
 out_mn:
-	mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
+	mmu_notifier_invalidate_range_end(vma, mmun_start, mmun_end,
+					  MMU_WRITE_PROTECT);
 out:
 	return err;
 }
@@ -948,7 +951,8 @@ static int replace_page(struct vm_area_struct *vma, struct page *page,
 
 	mmun_start = addr;
 	mmun_end   = addr + PAGE_SIZE;
-	mmu_notifier_invalidate_range_start(mm, mmun_start, mmun_end);
+	mmu_notifier_invalidate_range_start(vma, mmun_start, mmun_end,
+					    MMU_MIGRATE);
 
 	ptep = pte_offset_map_lock(mm, pmd, addr, &ptl);
 	if (!pte_same(*ptep, orig_pte)) {
@@ -961,7 +965,9 @@ static int replace_page(struct vm_area_struct *vma, struct page *page,
 
 	flush_cache_page(vma, addr, pte_pfn(*ptep));
 	ptep_clear_flush(vma, addr, ptep);
-	set_pte_at_notify(mm, addr, ptep, mk_pte(kpage, vma->vm_page_prot));
+	set_pte_at_notify(mm, addr, ptep,
+			  mk_pte(kpage, vma->vm_page_prot),
+			  MMU_MIGRATE);
 
 	page_remove_rmap(page);
 	if (!page_mapped(page))
@@ -971,7 +977,8 @@ static int replace_page(struct vm_area_struct *vma, struct page *page,
 	pte_unmap_unlock(ptep, ptl);
 	err = 0;
 out_mn:
-	mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
+	mmu_notifier_invalidate_range_end(vma, mmun_start, mmun_end,
+					  MMU_MIGRATE);
 out:
 	return err;
 }
@@ -1586,7 +1593,7 @@ static struct rmap_item *scan_get_next_rmap_item(struct page **page)
 		ksm_scan.mm_slot = slot;
 		spin_unlock(&ksm_mmlist_lock);
 		/*
-		 * Although we tested list_empty() above, a racing __ksm_exit
+		 * Although we tested list_empty() above, a racing ksm_exit
 		 * of the last mm on the list may have removed it since then.
 		 */
 		if (slot == &ksm_mm_head)
@@ -1658,9 +1665,9 @@ next_mm:
 		/*
 		 * We've completed a full scan of all vmas, holding mmap_sem
 		 * throughout, and found no VM_MERGEABLE: so do the same as
-		 * __ksm_exit does to remove this mm from all our lists now.
-		 * This applies either when cleaning up after __ksm_exit
-		 * (but beware: we can reach here even before __ksm_exit),
+		 * ksm_exit does to remove this mm from all our lists now.
+		 * This applies either when cleaning up after ksm_exit
+		 * (but beware: we can reach here even before ksm_exit),
 		 * or when all VM_MERGEABLE areas have been unmapped (and
 		 * mmap_sem then protects against race with MADV_MERGEABLE).
 		 */
@@ -1821,10 +1828,15 @@ int __ksm_enter(struct mm_struct *mm)
 	return 0;
 }
 
-void __ksm_exit(struct mm_struct *mm)
+static int ksm_exit(struct notifier_block *nb,
+		    unsigned long action, void *data)
 {
+	struct mm_struct *mm = data;
 	struct mm_slot *mm_slot;
 	int easy_to_free = 0;
+
+	if (!test_bit(MMF_VM_MERGEABLE, &mm->flags))
+		return 0;
 
 	/*
 	 * This process is exiting: if it's straightforward (as is the
@@ -1857,6 +1869,7 @@ void __ksm_exit(struct mm_struct *mm)
 		down_write(&mm->mmap_sem);
 		up_write(&mm->mmap_sem);
 	}
+	return 0;
 }
 
 struct page *ksm_might_need_to_copy(struct page *page,
@@ -2305,10 +2318,19 @@ static struct attribute_group ksm_attr_group = {
 };
 #endif /* CONFIG_SYSFS */
 
+static struct notifier_block ksm_mmput_nb = {
+	.notifier_call		= ksm_exit,
+	.priority		= 2,
+};
+
 static int __init ksm_init(void)
 {
 	struct task_struct *ksm_thread;
 	int err;
+
+	err = mmput_register_notifier(&ksm_mmput_nb);
+	if (err)
+		return err;
 
 	err = ksm_slab_init();
 	if (err)

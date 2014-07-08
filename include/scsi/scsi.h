@@ -31,7 +31,7 @@ enum scsi_timeouts {
  * Like SCSI_MAX_SG_SEGMENTS, but for archs that have sg chaining. This limit
  * is totally arbitrary, a setting of 2048 will get you at least 8mb ios.
  */
-#ifdef ARCH_HAS_SG_CHAIN
+#ifdef CONFIG_ARCH_HAS_SG_CHAIN
 #define SCSI_MAX_SG_CHAIN_SEGMENTS	2048
 #else
 #define SCSI_MAX_SG_CHAIN_SEGMENTS	SCSI_MAX_SG_SEGMENTS
@@ -385,7 +385,7 @@ struct scsi_lun {
 #define SCSI_W_LUN_ACCESS_CONTROL (SCSI_W_LUN_BASE + 2)
 #define SCSI_W_LUN_TARGET_LOG_PAGE (SCSI_W_LUN_BASE + 3)
 
-static inline int scsi_is_wlun(unsigned int lun)
+static inline int scsi_is_wlun(u64 lun)
 {
 	return (lun & 0xff00) == SCSI_W_LUN_BASE;
 }

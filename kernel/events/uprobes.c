@@ -37,6 +37,7 @@
 #include <linux/percpu-rwsem.h>
 #include <linux/task_work.h>
 #include <linux/shmem_fs.h>
+#include <linux/notifier.h>
 
 #include <linux/uprobes.h>
 
@@ -167,11 +168,17 @@ static int __replace_page(struct vm_area_struct *vma, unsigned long addr,
 	/* For mmu_notifiers */
 	const unsigned long mmun_start = addr;
 	const unsigned long mmun_end   = addr + PAGE_SIZE;
+	struct mem_cgroup *memcg;
+
+	err = mem_cgroup_try_charge(kpage, vma->vm_mm, GFP_KERNEL, &memcg);
+	if (err)
+		return err;
 
 	/* For try_to_free_swap() and munlock_vma_page() below */
 	lock_page(page);
 
-	mmu_notifier_invalidate_range_start(mm, mmun_start, mmun_end);
+	mmu_notifier_invalidate_range_start(vma, mmun_start,
+					    mmun_end, MMU_MIGRATE);
 	err = -EAGAIN;
 	ptep = page_check_address(page, mm, addr, &ptl, 0);
 	if (!ptep)
@@ -179,6 +186,8 @@ static int __replace_page(struct vm_area_struct *vma, unsigned long addr,
 
 	get_page(kpage);
 	page_add_new_anon_rmap(kpage, vma, addr);
+	mem_cgroup_commit_charge(kpage, memcg, false);
+	lru_cache_add_active_or_unevictable(kpage, vma);
 
 	if (!PageAnon(page)) {
 		dec_mm_counter(mm, MM_FILEPAGES);
@@ -187,7 +196,9 @@ static int __replace_page(struct vm_area_struct *vma, unsigned long addr,
 
 	flush_cache_page(vma, addr, pte_pfn(*ptep));
 	ptep_clear_flush(vma, addr, ptep);
-	set_pte_at_notify(mm, addr, ptep, mk_pte(kpage, vma->vm_page_prot));
+	set_pte_at_notify(mm, addr, ptep,
+			  mk_pte(kpage, vma->vm_page_prot),
+			  MMU_MIGRATE);
 
 	page_remove_rmap(page);
 	if (!page_mapped(page))
@@ -200,7 +211,9 @@ static int __replace_page(struct vm_area_struct *vma, unsigned long addr,
 
 	err = 0;
  unlock:
-	mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
+	mem_cgroup_cancel_charge(kpage, memcg);
+	mmu_notifier_invalidate_range_end(vma, mmun_start,
+					  mmun_end, MMU_MIGRATE);
 	unlock_page(page);
 	return err;
 }
@@ -315,18 +328,11 @@ retry:
 	if (!new_page)
 		goto put_old;
 
-	if (mem_cgroup_charge_anon(new_page, mm, GFP_KERNEL))
-		goto put_new;
-
 	__SetPageUptodate(new_page);
 	copy_highpage(new_page, old_page);
 	copy_to_page(new_page, vaddr, &opcode, UPROBE_SWBP_INSN_SIZE);
 
 	ret = __replace_page(vma, vaddr, old_page, new_page);
-	if (ret)
-		mem_cgroup_uncharge_page(new_page);
-
-put_new:
 	page_cache_release(new_page);
 put_old:
 	put_page(old_page);
@@ -846,7 +852,7 @@ static void __uprobe_unregister(struct uprobe *uprobe, struct uprobe_consumer *u
 {
 	int err;
 
-	if (!consumer_del(uprobe, uc))	/* WARN? */
+	if (WARN_ON(!consumer_del(uprobe, uc)))
 		return;
 
 	err = register_for_each_vma(uprobe, NULL);
@@ -927,7 +933,7 @@ int uprobe_apply(struct inode *inode, loff_t offset,
 	int ret = -ENOENT;
 
 	uprobe = find_uprobe(inode, offset);
-	if (!uprobe)
+	if (WARN_ON(!uprobe))
 		return ret;
 
 	down_write(&uprobe->register_rwsem);
@@ -952,7 +958,7 @@ void uprobe_unregister(struct inode *inode, loff_t offset, struct uprobe_consume
 	struct uprobe *uprobe;
 
 	uprobe = find_uprobe(inode, offset);
-	if (!uprobe)
+	if (WARN_ON(!uprobe))
 		return;
 
 	down_write(&uprobe->register_rwsem);
@@ -1219,16 +1225,19 @@ static struct xol_area *get_xol_area(void)
 /*
  * uprobe_clear_state - Free the area allocated for slots.
  */
-void uprobe_clear_state(struct mm_struct *mm)
+static int uprobe_clear_state(struct notifier_block *nb,
+			      unsigned long action, void *data)
 {
+	struct mm_struct *mm = data;
 	struct xol_area *area = mm->uprobes_state.xol_area;
 
 	if (!area)
-		return;
+		return 0;
 
 	put_page(area->page);
 	kfree(area->bitmap);
 	kfree(area);
+	return 0;
 }
 
 void uprobe_start_dup_mmap(void)
@@ -1978,15 +1987,24 @@ static struct notifier_block uprobe_exception_nb = {
 	.priority		= INT_MAX-1,	/* notified after kprobes, kgdb */
 };
 
+static struct notifier_block uprobe_mmput_nb = {
+	.notifier_call		= uprobe_clear_state,
+	.priority		= 0,
+};
+
 static int __init init_uprobes(void)
 {
-	int i;
+	int i, err;
 
 	for (i = 0; i < UPROBES_HASH_SZ; i++)
 		mutex_init(&uprobes_mmap_mutex[i]);
 
 	if (percpu_init_rwsem(&dup_mmap_sem))
 		return -ENOMEM;
+
+	err = mmput_register_notifier(&uprobe_mmput_nb);
+	if (err)
+		return err;
 
 	return register_die_notifier(&uprobe_exception_nb);
 }

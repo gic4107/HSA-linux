@@ -56,16 +56,24 @@ static const struct of_device_id musb_dsps_of_match[];
  * dependent on musb core layer symbols.
  */
 static inline u8 dsps_readb(const void __iomem *addr, unsigned offset)
-	{ return __raw_readb(addr + offset); }
+{
+	return __raw_readb(addr + offset);
+}
 
 static inline u32 dsps_readl(const void __iomem *addr, unsigned offset)
-	{ return __raw_readl(addr + offset); }
+{
+	return __raw_readl(addr + offset);
+}
 
 static inline void dsps_writeb(void __iomem *addr, unsigned offset, u8 data)
-	{ __raw_writeb(data, addr + offset); }
+{
+	__raw_writeb(data, addr + offset);
+}
 
 static inline void dsps_writel(void __iomem *addr, unsigned offset, u32 data)
-	{ __raw_writel(data, addr + offset); }
+{
+	__raw_writel(data, addr + offset);
+}
 
 /**
  * DSPS musb wrapper register offset.
@@ -494,10 +502,9 @@ static int dsps_musb_set_mode(struct musb *musb, u8 mode)
 	struct dsps_glue *glue = dev_get_drvdata(dev->parent);
 	const struct dsps_musb_wrapper *wrp = glue->wrp;
 	void __iomem *ctrl_base = musb->ctrl_base;
-	void __iomem *base = musb->mregs;
 	u32 reg;
 
-	reg = dsps_readl(base, wrp->mode);
+	reg = dsps_readl(ctrl_base, wrp->mode);
 
 	switch (mode) {
 	case MUSB_HOST:
@@ -510,7 +517,7 @@ static int dsps_musb_set_mode(struct musb *musb, u8 mode)
 		 */
 		reg |= (1 << wrp->iddig_mux);
 
-		dsps_writel(base, wrp->mode, reg);
+		dsps_writel(ctrl_base, wrp->mode, reg);
 		dsps_writel(ctrl_base, wrp->phy_utmi, 0x02);
 		break;
 	case MUSB_PERIPHERAL:
@@ -523,10 +530,10 @@ static int dsps_musb_set_mode(struct musb *musb, u8 mode)
 		 */
 		reg |= (1 << wrp->iddig_mux);
 
-		dsps_writel(base, wrp->mode, reg);
+		dsps_writel(ctrl_base, wrp->mode, reg);
 		break;
 	case MUSB_OTG:
-		dsps_writel(base, wrp->phy_utmi, 0x02);
+		dsps_writel(ctrl_base, wrp->phy_utmi, 0x02);
 		break;
 	default:
 		dev_err(glue->dev, "unsupported mode %d\n", mode);
@@ -543,7 +550,11 @@ static void dsps_musb_reset(struct musb *musb)
 	const struct dsps_musb_wrapper *wrp = glue->wrp;
 
 	dsps_writel(musb->ctrl_base, wrp->control, (1 << wrp->reset));
-	udelay(100);
+	usleep_range(100, 200);
+	usb_phy_shutdown(musb->xceiv);
+	usleep_range(100, 200);
+	usb_phy_init(musb->xceiv);
+
 }
 
 static struct musb_platform_ops dsps_ops = {

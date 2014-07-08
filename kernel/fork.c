@@ -27,6 +27,7 @@
 #include <linux/binfmts.h>
 #include <linux/mman.h>
 #include <linux/mmu_notifier.h>
+#include <linux/hmm.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
 #include <linux/vmacache.h>
@@ -86,6 +87,8 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/task.h>
+
+static BLOCKING_NOTIFIER_HEAD(mmput_notifier);
 
 /*
  * Protected counters by write_lock_irq(&tasklist_lock)
@@ -365,12 +368,11 @@ static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 	 */
 	down_write_nested(&mm->mmap_sem, SINGLE_DEPTH_NESTING);
 
-	mm->locked_vm = 0;
-	mm->mmap = NULL;
-	mm->vmacache_seqnum = 0;
-	mm->map_count = 0;
-	cpumask_clear(mm_cpumask(mm));
-	mm->mm_rb = RB_ROOT;
+	mm->total_vm = oldmm->total_vm;
+	mm->shared_vm = oldmm->shared_vm;
+	mm->exec_vm = oldmm->exec_vm;
+	mm->stack_vm = oldmm->stack_vm;
+
 	rb_link = &mm->mm_rb.rb_node;
 	rb_parent = NULL;
 	pprev = &mm->mmap;
@@ -529,17 +531,29 @@ static void mm_init_aio(struct mm_struct *mm)
 
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
 {
+	mm->mmap = NULL;
+	mm->mm_rb = RB_ROOT;
+	mm->vmacache_seqnum = 0;
 	atomic_set(&mm->mm_users, 1);
 	atomic_set(&mm->mm_count, 1);
 	init_rwsem(&mm->mmap_sem);
 	INIT_LIST_HEAD(&mm->mmlist);
 	mm->core_state = NULL;
 	atomic_long_set(&mm->nr_ptes, 0);
+	mm->map_count = 0;
+	mm->locked_vm = 0;
+	mm->pinned_vm = 0;
 	memset(&mm->rss_stat, 0, sizeof(mm->rss_stat));
 	spin_lock_init(&mm->page_table_lock);
+	mm_init_cpumask(mm);
 	mm_init_aio(mm);
 	mm_init_owner(mm, p);
+	mmu_notifier_mm_init(mm);
+	hmm_mm_init(mm);
 	clear_tlb_flush_pending(mm);
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE) && !USE_SPLIT_PMD_PTLOCKS
+	mm->pmd_huge_pte = NULL;
+#endif
 
 	if (current->mm) {
 		mm->flags = current->mm->flags & MMF_INIT_MASK;
@@ -549,11 +563,17 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
 		mm->def_flags = 0;
 	}
 
-	if (likely(!mm_alloc_pgd(mm))) {
-		mmu_notifier_mm_init(mm);
-		return mm;
-	}
+	if (mm_alloc_pgd(mm))
+		goto fail_nopgd;
 
+	if (init_new_context(p, mm))
+		goto fail_nocontext;
+
+	return mm;
+
+fail_nocontext:
+	mm_free_pgd(mm);
+fail_nopgd:
 	free_mm(mm);
 	return NULL;
 }
@@ -587,7 +607,6 @@ struct mm_struct *mm_alloc(void)
 		return NULL;
 
 	memset(mm, 0, sizeof(*mm));
-	mm_init_cpumask(mm);
 	return mm_init(mm, current);
 }
 
@@ -608,6 +627,21 @@ void __mmdrop(struct mm_struct *mm)
 EXPORT_SYMBOL_GPL(__mmdrop);
 
 /*
+ * Register a notifier that will be call by mmput
+ */
+int mmput_register_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&mmput_notifier, nb);
+}
+EXPORT_SYMBOL_GPL(mmput_register_notifier);
+
+int mmput_unregister_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&mmput_notifier, nb);
+}
+EXPORT_SYMBOL_GPL(mmput_unregister_notifier);
+
+/*
  * Decrement the use count and release all resources for an mm.
  */
 void mmput(struct mm_struct *mm)
@@ -615,11 +649,8 @@ void mmput(struct mm_struct *mm)
 	might_sleep();
 
 	if (atomic_dec_and_test(&mm->mm_users)) {
-		uprobe_clear_state(mm);
-		exit_aio(mm);
-		ksm_exit(mm);
-		khugepaged_exit(mm); /* must run before exit_mmap */
 		exit_mmap(mm);
+		blocking_notifier_call_chain(&mmput_notifier, 0, mm);
 		set_mm_exe_file(mm, NULL);
 		if (!list_empty(&mm->mmlist)) {
 			spin_lock(&mmlist_lock);
@@ -819,16 +850,9 @@ static struct mm_struct *dup_mm(struct task_struct *tsk)
 		goto fail_nomem;
 
 	memcpy(mm, oldmm, sizeof(*mm));
-	mm_init_cpumask(mm);
 
-#if defined(CONFIG_TRANSPARENT_HUGEPAGE) && !USE_SPLIT_PMD_PTLOCKS
-	mm->pmd_huge_pte = NULL;
-#endif
 	if (!mm_init(mm, tsk))
 		goto fail_nomem;
-
-	if (init_new_context(tsk, mm))
-		goto fail_nocontext;
 
 	dup_mm_exe_file(oldmm, mm);
 
@@ -850,15 +874,6 @@ free_pt:
 	mmput(mm);
 
 fail_nomem:
-	return NULL;
-
-fail_nocontext:
-	/*
-	 * If init_new_context() failed, we cannot use mmput() to free the mm
-	 * because it calls destroy_context()
-	 */
-	mm_free_pgd(mm);
-	free_mm(mm);
 	return NULL;
 }
 
@@ -1262,7 +1277,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 
 	posix_cpu_timers_init(p);
 
-	do_posix_clock_monotonic_gettime(&p->start_time);
+	ktime_get_ts(&p->start_time);
 	p->real_start_time = p->start_time;
 	monotonic_to_bootbased(&p->real_start_time);
 	p->io_context = NULL;
@@ -1328,6 +1343,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	if (retval)
 		goto bad_fork_cleanup_policy;
 	/* copy all the process information */
+	shm_init_task(p);
 	retval = copy_semundo(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_audit;
@@ -1872,6 +1888,11 @@ SYSCALL_DEFINE1(unshare, unsigned long, unshare_flags)
 			 * CLONE_SYSVSEM is equivalent to sys_exit().
 			 */
 			exit_sem(current);
+		}
+		if (unshare_flags & CLONE_NEWIPC) {
+			/* Orphan segments in old ns (see sem above). */
+			exit_shm(current);
+			shm_init_task(current);
 		}
 
 		if (new_nsproxy)

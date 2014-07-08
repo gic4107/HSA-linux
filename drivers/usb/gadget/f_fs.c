@@ -1483,11 +1483,13 @@ static int functionfs_bind(struct ffs_data *ffs, struct usb_composite_dev *cdev)
 	ffs->ep0req->context = ffs;
 
 	lang = ffs->stringtabs;
-	for (lang = ffs->stringtabs; *lang; ++lang) {
-		struct usb_string *str = (*lang)->strings;
-		int id = first_id;
-		for (; str->s; ++id, ++str)
-			str->id = id;
+	if (lang) {
+		for (; *lang; ++lang) {
+			struct usb_string *str = (*lang)->strings;
+			int id = first_id;
+			for (; str->s; ++id, ++str)
+				str->id = id;
+		}
 	}
 
 	ffs->gadget = cdev->gadget;
@@ -2899,12 +2901,12 @@ static void *ffs_acquire_dev(const char *dev_name)
 
 	ffs_dev = _ffs_find_dev(dev_name);
 	if (!ffs_dev)
-		ffs_dev = ERR_PTR(-ENODEV);
+		ffs_dev = ERR_PTR(-ENOENT);
 	else if (ffs_dev->mounted)
 		ffs_dev = ERR_PTR(-EBUSY);
 	else if (ffs_dev->ffs_acquire_dev_callback &&
 	    ffs_dev->ffs_acquire_dev_callback(ffs_dev))
-		ffs_dev = ERR_PTR(-ENODEV);
+		ffs_dev = ERR_PTR(-ENOENT);
 	else
 		ffs_dev->mounted = true;
 

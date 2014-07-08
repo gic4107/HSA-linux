@@ -40,6 +40,7 @@
 #include <linux/ramfs.h>
 #include <linux/percpu-refcount.h>
 #include <linux/mount.h>
+#include <linux/notifier.h>
 
 #include <asm/kmap_types.h>
 #include <asm/uaccess.h>
@@ -506,6 +507,8 @@ static void free_ioctx(struct work_struct *work)
 
 	aio_free_ring(ctx);
 	free_percpu(ctx->cpu);
+	percpu_ref_exit(&ctx->reqs);
+	percpu_ref_exit(&ctx->users);
 	kmem_cache_free(kioctx_cachep, ctx);
 }
 
@@ -554,8 +557,7 @@ static int ioctx_add_table(struct kioctx *ctx, struct mm_struct *mm)
 	struct aio_ring *ring;
 
 	spin_lock(&mm->ioctx_lock);
-	rcu_read_lock();
-	table = rcu_dereference(mm->ioctx_table);
+	table = rcu_dereference_raw(mm->ioctx_table);
 
 	while (1) {
 		if (table)
@@ -563,7 +565,6 @@ static int ioctx_add_table(struct kioctx *ctx, struct mm_struct *mm)
 				if (!table->table[i]) {
 					ctx->id = i;
 					table->table[i] = ctx;
-					rcu_read_unlock();
 					spin_unlock(&mm->ioctx_lock);
 
 					/* While kioctx setup is in progress,
@@ -577,8 +578,6 @@ static int ioctx_add_table(struct kioctx *ctx, struct mm_struct *mm)
 				}
 
 		new_nr = (table ? table->nr : 1) * 4;
-
-		rcu_read_unlock();
 		spin_unlock(&mm->ioctx_lock);
 
 		table = kzalloc(sizeof(*table) + sizeof(struct kioctx *) *
@@ -589,8 +588,7 @@ static int ioctx_add_table(struct kioctx *ctx, struct mm_struct *mm)
 		table->nr = new_nr;
 
 		spin_lock(&mm->ioctx_lock);
-		rcu_read_lock();
-		old = rcu_dereference(mm->ioctx_table);
+		old = rcu_dereference_raw(mm->ioctx_table);
 
 		if (!old) {
 			rcu_assign_pointer(mm->ioctx_table, table);
@@ -715,8 +713,8 @@ err_ctx:
 err:
 	mutex_unlock(&ctx->ring_lock);
 	free_percpu(ctx->cpu);
-	free_percpu(ctx->reqs.pcpu_count);
-	free_percpu(ctx->users.pcpu_count);
+	percpu_ref_exit(&ctx->reqs);
+	percpu_ref_exit(&ctx->users);
 	kmem_cache_free(kioctx_cachep, ctx);
 	pr_debug("error allocating ioctx %d\n", err);
 	return ERR_PTR(err);
@@ -737,12 +735,9 @@ static int kill_ioctx(struct mm_struct *mm, struct kioctx *ctx,
 
 
 	spin_lock(&mm->ioctx_lock);
-	rcu_read_lock();
-	table = rcu_dereference(mm->ioctx_table);
-
+	table = rcu_dereference_raw(mm->ioctx_table);
 	WARN_ON(ctx != table->table[ctx->id]);
 	table->table[ctx->id] = NULL;
-	rcu_read_unlock();
 	spin_unlock(&mm->ioctx_lock);
 
 	/* percpu_ref_kill() will do the necessary call_rcu() */
@@ -782,49 +777,42 @@ ssize_t wait_on_sync_kiocb(struct kiocb *req)
 EXPORT_SYMBOL(wait_on_sync_kiocb);
 
 /*
- * exit_aio: called when the last user of mm goes away.  At this point, there is
+ * aio_exit: called when the last user of mm goes away.  At this point, there is
  * no way for any new requests to be submited or any of the io_* syscalls to be
  * called on the context.
  *
  * There may be outstanding kiocbs, but free_ioctx() will explicitly wait on
  * them.
  */
-void exit_aio(struct mm_struct *mm)
+static int aio_exit(struct notifier_block *nb,
+		    unsigned long action, void *data)
 {
-	struct kioctx_table *table;
-	struct kioctx *ctx;
-	unsigned i = 0;
+	struct mm_struct *mm = data;
+	struct kioctx_table *table = rcu_dereference_raw(mm->ioctx_table);
+	int i;
 
-	while (1) {
-		rcu_read_lock();
-		table = rcu_dereference(mm->ioctx_table);
+	if (!table)
+		return 0;
 
-		do {
-			if (!table || i >= table->nr) {
-				rcu_read_unlock();
-				rcu_assign_pointer(mm->ioctx_table, NULL);
-				if (table)
-					kfree(table);
-				return;
-			}
+	for (i = 0; i < table->nr; ++i) {
+		struct kioctx *ctx = table->table[i];
 
-			ctx = table->table[i++];
-		} while (!ctx);
-
-		rcu_read_unlock();
-
+		if (!ctx)
+			continue;
 		/*
-		 * We don't need to bother with munmap() here -
-		 * exit_mmap(mm) is coming and it'll unmap everything.
-		 * Since aio_free_ring() uses non-zero ->mmap_size
-		 * as indicator that it needs to unmap the area,
-		 * just set it to 0; aio_free_ring() is the only
-		 * place that uses ->mmap_size, so it's safe.
+		 * We don't need to bother with munmap() here - exit_mmap(mm)
+		 * have already been call and everything is unmap by now. But
+		 * to be safe set ->mmap_size to 0 since aio_free_ring() uses
+		 * non-zero ->mmap_size as indicator that it needs to unmap the
+		 * area.
 		 */
 		ctx->mmap_size = 0;
-
 		kill_ioctx(mm, ctx, NULL);
 	}
+
+	RCU_INIT_POINTER(mm->ioctx_table, NULL);
+	kfree(table);
+	return 0;
 }
 
 static void put_reqs_available(struct kioctx *ctx, unsigned nr)
@@ -1647,3 +1635,14 @@ SYSCALL_DEFINE5(io_getevents, aio_context_t, ctx_id,
 	}
 	return ret;
 }
+
+static struct notifier_block aio_mmput_nb = {
+	.notifier_call		= aio_exit,
+	.priority		= 1,
+};
+
+static int __init aio_init(void)
+{
+	return mmput_register_notifier(&aio_mmput_nb);
+}
+subsys_initcall(aio_init);

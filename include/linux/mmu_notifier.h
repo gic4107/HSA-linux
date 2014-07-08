@@ -9,6 +9,58 @@
 struct mmu_notifier;
 struct mmu_notifier_ops;
 
+/* MMU Events report fine-grained information to the callback routine, allowing
+ * the event listener to make a more informed decision as to what action to
+ * take. The event types are:
+ *
+ *   - MMU_MIGRATE: memory is migrating from one page to another, thus all write
+ *     access must stop after invalidate_range_start callback returns.
+ *     Furthermore, no read access should be allowed either, as a new page can
+ *     be remapped with write access before the invalidate_range_end callback
+ *     happens and thus any read access to old page might read stale data. There
+ *     are several sources for this event, including:
+ *
+ *         - A page moving to swap (various reasons, including page reclaim),
+ *         - An mremap syscall,
+ *         - migration for NUMA reasons,
+ *         - balancing the memory pool,
+ *         - write fault on COW page,
+ *         - and more that are not listed here.
+ *
+ *   - MMU_MPROT: memory access protection is changing. Refer to the vma to get
+ *     the new access protection. All memory access are still valid until the
+ *     invalidate_range_end callback.
+ *
+ *   - MMU_MUNMAP: the range is being unmapped (outcome of a munmap syscall or
+ *     process destruction). However, access is still allowed, up until the
+ *     invalidate_range_free_pages callback. This also implies that secondary
+ *     page table can be trimmed, because the address range is no longer valid.
+ *
+ *   - MMU_WRITE_BACK: memory is being written back to disk, all write accesses
+ *     must stop after invalidate_range_start callback returns. Read access are
+ *     still allowed.
+ *
+ *   - MMU_WRITE_PROTECT: memory is being writte protected (ie should be mapped
+ *     read only no matter what the vma memory protection allows). All write
+ *     accesses must stop after invalidate_range_start callback returns. Read
+ *     access are still allowed.
+ *
+ *   - MMU_STATUS memory status change, like soft dirty, or huge page
+ *     splitting flag being set on pmd.
+ *
+ * If in doubt when adding a new notifier caller, please use MMU_MIGRATE,
+ * because it will always lead to reasonable behavior, but will not allow the
+ * listener a chance to optimize its events.
+ */
+enum mmu_event {
+	MMU_MIGRATE = 0,
+	MMU_MPROT,
+	MMU_MUNMAP,
+	MMU_STATUS,
+	MMU_WRITE_BACK,
+	MMU_WRITE_PROTECT,
+};
+
 #ifdef CONFIG_MMU_NOTIFIER
 
 /*
@@ -79,7 +131,8 @@ struct mmu_notifier_ops {
 	void (*change_pte)(struct mmu_notifier *mn,
 			   struct mm_struct *mm,
 			   unsigned long address,
-			   pte_t pte);
+			   pte_t pte,
+			   enum mmu_event event);
 
 	/*
 	 * Before this is invoked any secondary MMU is still ok to
@@ -89,26 +142,36 @@ struct mmu_notifier_ops {
 	 * be called internally to this method.
 	 */
 	void (*invalidate_page)(struct mmu_notifier *mn,
-				struct mm_struct *mm,
-				unsigned long address);
+				struct vm_area_struct *vma,
+				unsigned long address,
+				enum mmu_event event);
 
 	/*
 	 * invalidate_range_start() and invalidate_range_end() must be
 	 * paired and are called only when the mmap_sem and/or the
-	 * locks protecting the reverse maps are held. The subsystem
-	 * must guarantee that no additional references are taken to
-	 * the pages in the range established between the call to
-	 * invalidate_range_start() and the matching call to
-	 * invalidate_range_end().
+	 * locks protecting the reverse maps are held.
+	 * invalidate_range_free_pages() is called between the two
+	 * functions every time when the VM has unmapped pages that are
+	 * about to be freed.
+	 * The subsystem must guarantee that no additional references
+	 * are taken to the pages in the range established between the
+	 * call to invalidate_range_start() and the matching call to
+	 * invalidate_range_end(). If this guarantee can not be given
+	 * by the subsystem it has to make sure that additional
+	 * references are dropped again in the
+	 * invalidate_range_free_pages() notifier.
 	 *
-	 * Invalidation of multiple concurrent ranges may be
-	 * optionally permitted by the driver. Either way the
-	 * establishment of sptes is forbidden in the range passed to
-	 * invalidate_range_begin/end for the whole duration of the
-	 * invalidate_range_begin/end critical section.
+	 * Invalidation of multiple overlapping ranges may be optionally
+	 * permitted by the driver. Either way the establishment of sptes
+	 * should be avoided in the range passed to invalidate_range_start/
+	 * end for the whole duration of the invalidate_range_start/end
+	 * critical section.
 	 *
 	 * invalidate_range_start() is called when all pages in the
 	 * range are still mapped and have at least a refcount of one.
+	 *
+	 * invalidate_range_free_pages() is called when a bunch of pages
+	 * are unmapped but not yet freed by the VM.
 	 *
 	 * invalidate_range_end() is called when all pages in the
 	 * range have been unmapped and the pages have been freed by
@@ -136,11 +199,19 @@ struct mmu_notifier_ops {
 	 * the last refcount is dropped.
 	 */
 	void (*invalidate_range_start)(struct mmu_notifier *mn,
-				       struct mm_struct *mm,
-				       unsigned long start, unsigned long end);
+				       struct vm_area_struct *vma,
+				       unsigned long start,
+				       unsigned long end,
+				       enum mmu_event event);
+	void (*invalidate_range_free_pages)(struct mmu_notifier *mn,
+					    struct vm_area_struct *vma,
+					    unsigned long start,
+					    unsigned long end);
 	void (*invalidate_range_end)(struct mmu_notifier *mn,
-				     struct mm_struct *mm,
-				     unsigned long start, unsigned long end);
+				     struct vm_area_struct *vma,
+				     unsigned long start,
+				     unsigned long end,
+				     enum mmu_event event);
 };
 
 /*
@@ -177,13 +248,23 @@ extern int __mmu_notifier_clear_flush_young(struct mm_struct *mm,
 extern int __mmu_notifier_test_young(struct mm_struct *mm,
 				     unsigned long address);
 extern void __mmu_notifier_change_pte(struct mm_struct *mm,
-				      unsigned long address, pte_t pte);
-extern void __mmu_notifier_invalidate_page(struct mm_struct *mm,
-					  unsigned long address);
-extern void __mmu_notifier_invalidate_range_start(struct mm_struct *mm,
-				  unsigned long start, unsigned long end);
-extern void __mmu_notifier_invalidate_range_end(struct mm_struct *mm,
-				  unsigned long start, unsigned long end);
+				      unsigned long address,
+				      pte_t pte,
+				      enum mmu_event event);
+extern void __mmu_notifier_invalidate_page(struct vm_area_struct *vma,
+					   unsigned long address,
+					   enum mmu_event event);
+extern void __mmu_notifier_invalidate_range_start(struct vm_area_struct *vma,
+						  unsigned long start,
+						  unsigned long end,
+						  enum mmu_event event);
+extern void __mmu_notifier_invalidate_range_free_pages(struct vm_area_struct *vma,
+						       unsigned long start,
+						       unsigned long end);
+extern void __mmu_notifier_invalidate_range_end(struct vm_area_struct *vma,
+						unsigned long start,
+						unsigned long end,
+						enum mmu_event event);
 
 static inline void mmu_notifier_release(struct mm_struct *mm)
 {
@@ -208,31 +289,47 @@ static inline int mmu_notifier_test_young(struct mm_struct *mm,
 }
 
 static inline void mmu_notifier_change_pte(struct mm_struct *mm,
-					   unsigned long address, pte_t pte)
+					   unsigned long address,
+					   pte_t pte,
+					   enum mmu_event event)
 {
 	if (mm_has_notifiers(mm))
-		__mmu_notifier_change_pte(mm, address, pte);
+		__mmu_notifier_change_pte(mm, address, pte, event);
 }
 
-static inline void mmu_notifier_invalidate_page(struct mm_struct *mm,
-					  unsigned long address)
+static inline void mmu_notifier_invalidate_page(struct vm_area_struct *vma,
+						unsigned long address,
+						enum mmu_event event)
 {
-	if (mm_has_notifiers(mm))
-		__mmu_notifier_invalidate_page(mm, address);
+	if (mm_has_notifiers(vma->vm_mm))
+		__mmu_notifier_invalidate_page(vma, address, event);
 }
 
-static inline void mmu_notifier_invalidate_range_start(struct mm_struct *mm,
-				  unsigned long start, unsigned long end)
+static inline void mmu_notifier_invalidate_range_start(struct vm_area_struct *vma,
+						       unsigned long start,
+						       unsigned long end,
+						       enum mmu_event event)
 {
-	if (mm_has_notifiers(mm))
-		__mmu_notifier_invalidate_range_start(mm, start, end);
+	if (mm_has_notifiers(vma->vm_mm))
+		__mmu_notifier_invalidate_range_start(vma, start,
+						      end, event);
 }
 
-static inline void mmu_notifier_invalidate_range_end(struct mm_struct *mm,
-				  unsigned long start, unsigned long end)
+static inline void mmu_notifier_invalidate_range_free_pages(struct vm_area_struct *vma,
+							    unsigned long start,
+							    unsigned long end)
 {
-	if (mm_has_notifiers(mm))
-		__mmu_notifier_invalidate_range_end(mm, start, end);
+	if (mm_has_notifiers(vma->vm_mm))
+		__mmu_notifier_invalidate_range_free_pages(vma, start, end);
+}
+
+static inline void mmu_notifier_invalidate_range_end(struct vm_area_struct *vma,
+						     unsigned long start,
+						     unsigned long end,
+						     enum mmu_event event)
+{
+	if (mm_has_notifiers(vma->vm_mm))
+		__mmu_notifier_invalidate_range_end(vma, start, end, event);
 }
 
 static inline void mmu_notifier_mm_init(struct mm_struct *mm)
@@ -278,13 +375,13 @@ static inline void mmu_notifier_mm_destroy(struct mm_struct *mm)
  * old page would remain mapped readonly in the secondary MMUs after the new
  * page is already writable by some CPU through the primary MMU.
  */
-#define set_pte_at_notify(__mm, __address, __ptep, __pte)		\
+#define set_pte_at_notify(__mm, __address, __ptep, __pte, __event)	\
 ({									\
 	struct mm_struct *___mm = __mm;					\
 	unsigned long ___address = __address;				\
 	pte_t ___pte = __pte;						\
 									\
-	mmu_notifier_change_pte(___mm, ___address, ___pte);		\
+	mmu_notifier_change_pte(___mm, ___address, ___pte, __event);	\
 	set_pte_at(___mm, ___address, __ptep, ___pte);			\
 })
 
@@ -307,22 +404,35 @@ static inline int mmu_notifier_test_young(struct mm_struct *mm,
 }
 
 static inline void mmu_notifier_change_pte(struct mm_struct *mm,
-					   unsigned long address, pte_t pte)
+					   unsigned long address,
+					   pte_t pte,
+					   enum mmu_event event)
 {
 }
 
-static inline void mmu_notifier_invalidate_page(struct mm_struct *mm,
-					  unsigned long address)
+static inline void mmu_notifier_invalidate_page(struct vm_area_struct *vma,
+						unsigned long address,
+						enum mmu_event event)
 {
 }
 
-static inline void mmu_notifier_invalidate_range_start(struct mm_struct *mm,
-				  unsigned long start, unsigned long end)
+static inline void mmu_notifier_invalidate_range_start(struct vm_area_struct *vma,
+						       unsigned long start,
+						       unsigned long end,
+						       enum mmu_event event)
 {
 }
 
-static inline void mmu_notifier_invalidate_range_end(struct mm_struct *mm,
-				  unsigned long start, unsigned long end)
+static inline void mmu_notifier_invalidate_range_free_pages(struct vm_area_struct *vma,
+							    unsigned long start,
+							    unsigned long end)
+{
+}
+
+static inline void mmu_notifier_invalidate_range_end(struct vm_area_struct *vma,
+						     unsigned long start,
+						     unsigned long end,
+						     enum mmu_event event)
 {
 }
 
