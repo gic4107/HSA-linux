@@ -157,8 +157,6 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 {
 	kfd->shared_resources = *gpu_resources;
 
-	kfd->regs = gpu_resources->mmio_registers;
-
 	radeon_kfd_doorbell_init(kfd);
 
 	if (radeon_kfd_interrupt_init(kfd))

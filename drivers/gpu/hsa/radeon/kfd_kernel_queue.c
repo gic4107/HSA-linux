@@ -108,10 +108,7 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 		pr_debug("assigning hiq to hqd\n");
 		kq->queue->pipe = KFD_CIK_HIQ_PIPE;
 		kq->queue->queue = KFD_CIK_HIQ_QUEUE;
-
-		kq->mqd->acquire_hqd(kq->mqd, kq->queue->pipe, kq->queue->queue, 0);
-		kq->mqd->load_mqd(kq->mqd, kq->queue->mqd);
-		kq->mqd->release_hqd(kq->mqd);
+		kq->mqd->load_mqd(kq->mqd, kq->queue->mqd, kq->queue->pipe, kq->queue->queue, NULL);
 	} else {
 		/* allocate fence for DIQ */
 		retval = radeon_kfd_vidmem_alloc_map(
@@ -152,9 +149,10 @@ static void uninitialize(struct kernel_queue *kq)
 
 	if (kq->queue->properties.type == KFD_QUEUE_TYPE_HIQ)
 		kq->mqd->destroy_mqd(kq->mqd,
-					kq->queue->mqd,
-					KFD_PREEMPT_TYPE_WAVEFRONT,
-					QUEUE_PREEMPT_DEFAULT_TIMEOUT_MS);
+					false,
+					QUEUE_PREEMPT_DEFAULT_TIMEOUT_MS,
+					kq->queue->pipe,
+					kq->queue->queue);
 
 	radeon_kfd_vidmem_free_unmap(kq->dev, kq->rptr_mem);
 	radeon_kfd_vidmem_free_unmap(kq->dev, kq->wptr_mem);

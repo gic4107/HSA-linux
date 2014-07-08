@@ -112,30 +112,15 @@ static void init_process_memory(struct device_queue_manager *dqm, struct qcm_pro
 
 static void program_sh_mem_settings(struct device_queue_manager *dqm, struct qcm_process_device *qpd)
 {
-	struct mqd_manager *mqd;
-
-	BUG_ON(qpd->vmid < KFD_VMID_START_OFFSET);
-
-	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_COMPUTE);
-	if (mqd == NULL)
-		return;
-
-	mqd->acquire_hqd(mqd, 0, 0, qpd->vmid);
-
-	WRITE_REG(dqm->dev, SH_MEM_CONFIG, qpd->sh_mem_config);
-
-	WRITE_REG(dqm->dev, SH_MEM_APE1_BASE, qpd->sh_mem_ape1_base);
-	WRITE_REG(dqm->dev, SH_MEM_APE1_LIMIT, qpd->sh_mem_ape1_limit);
-	WRITE_REG(dqm->dev, SH_MEM_BASES, qpd->sh_mem_bases);
-
-	mqd->release_hqd(mqd);
+	return kfd2kgd->program_sh_mem_settings(dqm->dev->kgd, qpd->vmid, qpd->sh_mem_config,
+			qpd->sh_mem_ape1_base, qpd->sh_mem_ape1_limit, qpd->sh_mem_bases);
 }
 
 static int create_queue_nocpsch(struct device_queue_manager *dqm, struct queue *q,
 			struct qcm_process_device *qpd, int *allocate_vmid)
 {
 	bool set, is_new_vmid;
-	int bit, retval, pipe;
+	int bit, retval, pipe, i;
 	struct mqd_manager *mqd;
 
 	BUG_ON(!dqm || !q || !qpd || !allocate_vmid);
@@ -171,8 +156,8 @@ static int create_queue_nocpsch(struct device_queue_manager *dqm, struct queue *
 	q->properties.vmid = qpd->vmid;
 
 	set = false;
-	for (pipe = dqm->next_pipe_to_allocate; pipe < get_pipes_num(dqm);
-			pipe = (pipe + 1) % get_pipes_num(dqm)) {
+	for (i = 0, pipe = dqm->next_pipe_to_allocate; i < get_pipes_num(dqm);
+			pipe = (pipe + i++) % get_pipes_num(dqm)) {
 		if (dqm->allocated_queues[pipe] != 0) {
 			bit = find_first_bit((unsigned long *)&dqm->allocated_queues[pipe], QUEUES_PER_PIPE);
 			clear_bit(bit, (unsigned long *)&dqm->allocated_queues[pipe]);
@@ -238,9 +223,7 @@ static int destroy_queue_nocpsch(struct device_queue_manager *dqm, struct qcm_pr
 		retval = -ENOMEM;
 		goto out;
 	}
-	mqd->acquire_hqd(mqd, q->pipe, q->queue, 0);
-	retval = mqd->destroy_mqd(mqd, q->mqd, KFD_PREEMPT_TYPE_WAVEFRONT, QUEUE_PREEMPT_DEFAULT_TIMEOUT_MS);
-	mqd->release_hqd(mqd);
+	retval = mqd->destroy_mqd(mqd, false, QUEUE_PREEMPT_DEFAULT_TIMEOUT_MS, q->pipe, q->queue);
 	if (retval != 0)
 		goto out;
 
@@ -299,12 +282,7 @@ static int destroy_queues_nocpsch(struct device_queue_manager *dqm)
 
 	list_for_each_entry(cur, &dqm->queues, list) {
 		list_for_each_entry(q, &cur->qpd->queues_list, list) {
-
-
-			mqd->acquire_hqd(mqd, q->pipe, q->queue, 0);
-			mqd->destroy_mqd(mqd, q->mqd, KFD_PREEMPT_TYPE_WAVEFRONT,
-					QUEUE_PREEMPT_DEFAULT_TIMEOUT_MS);
-			mqd->release_hqd(mqd);
+			mqd->destroy_mqd(mqd, false, QUEUE_PREEMPT_DEFAULT_TIMEOUT_MS, q->pipe, q->queue);
 		}
 	}
 
@@ -352,10 +330,9 @@ static int execute_queues_nocpsch(struct device_queue_manager *dqm)
 		qpd = node->qpd;
 		list_for_each_entry(q, &qpd->queues_list, list) {
 			pr_debug("kfd: executing queue (%d, %d)\n", q->pipe, q->queue);
-			mqd->acquire_hqd(mqd, q->pipe, q->queue, 0);
-			if (mqd->is_occupied(mqd, q->mqd, &q->properties) == false)
-				mqd->load_mqd(mqd, q->mqd);
-			mqd->release_hqd(mqd);
+			if (mqd->is_occupied(mqd, q->properties.queue_address, q->pipe, q->queue) == false &&
+					q->properties.is_active == true)
+				mqd->load_mqd(mqd, q->mqd, q->pipe, q->queue, q->properties.write_ptr);
 		}
 	}
 
@@ -420,25 +397,9 @@ out:
 static int
 set_pasid_vmid_mapping(struct device_queue_manager *dqm, unsigned int pasid, unsigned int vmid)
 {
-	/* We have to assume that there is no outstanding mapping.
-	 * The ATC_VMID_PASID_MAPPING_UPDATE_STATUS bit could be 0 because a mapping
-	 * is in progress or because a mapping finished and the SW cleared it.
-	 * So the protocol is to always wait & clear.
-	 */
 	uint32_t pasid_mapping;
-
-	BUG_ON(!dqm);
-
-	pr_debug("kfd: In %s set pasid: %d to vmid: %d\n", __func__, pasid, vmid);
 	pasid_mapping = (pasid == 0) ? 0 : (uint32_t)pasid | ATC_VMID_PASID_MAPPING_VALID;
-
-	WRITE_REG(dqm->dev, ATC_VMID0_PASID_MAPPING + vmid*sizeof(uint32_t), pasid_mapping);
-
-	while (!(READ_REG(dqm->dev, ATC_VMID_PASID_MAPPING_UPDATE_STATUS) & (1U << vmid)))
-		cpu_relax();
-	WRITE_REG(dqm->dev, ATC_VMID_PASID_MAPPING_UPDATE_STATUS, 1U << vmid);
-
-	return 0;
+	return kfd2kgd->set_pasid_vmid_mapping(dqm->dev->kgd, pasid_mapping, vmid);
 }
 
 static uint32_t compute_sh_mem_bases_64bit(unsigned int top_address_nybble)
@@ -463,45 +424,17 @@ static uint32_t compute_sh_mem_bases_64bit(unsigned int top_address_nybble)
 
 static int init_memory(struct device_queue_manager *dqm)
 {
-	int i;
-	struct mqd_manager *mqd;
+	int i, retval;
 
-	BUG_ON(!dqm);
-
-	pr_debug("kfd: In func %s\n", __func__);
-	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_COMPUTE);
-	if (mqd == NULL)
-		return -ENOMEM;
-	for (i = 0; i < 16; i++) {
-		uint32_t sh_mem_config;
-
-		mqd->acquire_hqd(mqd, 0, 0, i);
+	for (i = 8; i < 16; i++)
 		set_pasid_vmid_mapping(dqm, 0, i);
 
-		sh_mem_config = ALIGNMENT_MODE(SH_MEM_ALIGNMENT_MODE_UNALIGNED);
-		sh_mem_config |= DEFAULT_MTYPE(MTYPE_NONCACHED);
-
-		WRITE_REG(dqm->dev, SH_MEM_CONFIG, sh_mem_config);
-
-		/* Configure apertures:
-		 * LDS:         0x60000000'00000000 - 0x60000001'00000000 (4GB)
-		 * Scratch:     0x60000001'00000000 - 0x60000002'00000000 (4GB)
-		 * GPUVM:       0x60010000'00000000 - 0x60020000'00000000 (1TB)
-		 */
-		WRITE_REG(dqm->dev, SH_MEM_BASES, compute_sh_mem_bases_64bit(6));
-
-		/* Scratch aperture is not supported for now. */
-		WRITE_REG(dqm->dev, SH_STATIC_MEM_CONFIG, 0);
-
-		/* APE1 disabled for now. */
-		WRITE_REG(dqm->dev, SH_MEM_APE1_BASE, 1);
-		WRITE_REG(dqm->dev, SH_MEM_APE1_LIMIT, 0);
-
-		mqd->release_hqd(mqd);
-	}
-	is_mem_initialized = true;
-	return 0;
+	retval = kfd2kgd->init_memory(dqm->dev->kgd);
+	if (retval == 0)
+		is_mem_initialized = true;
+	return retval;
 }
+
 
 static int init_pipelines(struct device_queue_manager *dqm, unsigned int pipes_num, unsigned int first_pipe)
 {
@@ -552,13 +485,7 @@ static int init_pipelines(struct device_queue_manager *dqm, unsigned int pipes_n
 		inx = i + first_pipe;
 		pipe_hpd_addr = dqm->pipelines_addr + i * CIK_HPD_SIZE;
 		pr_debug("kfd: pipeline address %llX\n", pipe_hpd_addr);
-
-		mqd->acquire_hqd(mqd, inx, 0, 0);
-		WRITE_REG(dqm->dev, CP_HPD_EOP_BASE_ADDR, lower_32(pipe_hpd_addr >> 8));
-		WRITE_REG(dqm->dev, CP_HPD_EOP_BASE_ADDR_HI, upper_32(pipe_hpd_addr >> 8));
-		WRITE_REG(dqm->dev, CP_HPD_EOP_VMID, 0);
-		WRITE_REG(dqm->dev, CP_HPD_EOP_CONTROL, CIK_HPD_SIZE_LOG2 - 1);
-		mqd->release_hqd(mqd);
+		kfd2kgd->init_pipeline(dqm->dev->kgd, i, CIK_HPD_SIZE_LOG2, pipe_hpd_addr);
 	}
 
 	return 0;
@@ -925,7 +852,6 @@ static bool set_cache_memory_policy(struct device_queue_manager *dqm,
 	uint32_t ape1_mtype;
 
 	pr_debug("kfd: In func %s\n", __func__);
-
 	mutex_lock(&dqm->lock);
 
 	if (alternate_aperture_size == 0) {
@@ -954,6 +880,7 @@ static bool set_cache_memory_policy(struct device_queue_manager *dqm,
 
 		qpd->sh_mem_ape1_base = base >> 16;
 		qpd->sh_mem_ape1_limit = limit >> 16;
+
 	}
 
 	default_mtype = (default_policy == cache_policy_coherent) ?

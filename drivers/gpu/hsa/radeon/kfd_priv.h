@@ -100,8 +100,6 @@ struct kfd_dev {
 	const struct kfd_device_info *device_info;
 	struct pci_dev *pdev;
 
-	void __iomem *regs;
-
 	bool init_complete;
 
 	unsigned int id;		/* topology stub index */
@@ -148,11 +146,6 @@ void kgd2kfd_device_exit(struct kfd_dev *kfd);
 
 extern const struct kfd2kgd_calls *kfd2kgd;
 
-
-/* KFD2KGD callback wrappers */
-void radeon_kfd_lock_srbm_index(struct kfd_dev *kfd);
-void radeon_kfd_unlock_srbm_index(struct kfd_dev *kfd);
-
 enum kfd_mempool {
 	KFD_MEMPOOL_SYSTEM_CACHEABLE = 1,
 	KFD_MEMPOOL_SYSTEM_WRITECOMBINE = 2,
@@ -196,11 +189,6 @@ enum kfd_preempt_type_filter {
 	KFD_PREEMPT_TYPE_FILTER_SINGLE_QUEUE,
 	KFD_PRERMPT_TYPE_FILTER_ALL_QUEUES,
 	KFD_PRERMPT_TYPE_FILTER_BY_PASID
-};
-
-enum kfd_preempt_type {
-	KFD_PREEMPT_TYPE_WAVEFRONT,
-	KFD_PREEMPT_TYPE_WAVEFRONT_RESET
 };
 
 enum kfd_queue_type  {
@@ -405,12 +393,6 @@ int kfd_topology_remove_device(struct kfd_dev *gpu);
 struct kfd_dev *radeon_kfd_device_by_id(uint32_t gpu_id);
 struct kfd_dev *radeon_kfd_device_by_pci_dev(const struct pci_dev *pdev);
 struct kfd_dev *kfd_topology_enum_kfd_devices(uint8_t idx);
-
-/* MMIO registers */
-#define WRITE_REG(dev, reg, value) radeon_kfd_write_reg((dev), (reg), (value))
-#define READ_REG(dev, reg) radeon_kfd_read_reg((dev), (reg))
-void radeon_kfd_write_reg(struct kfd_dev *dev, uint32_t reg, uint32_t value);
-uint32_t radeon_kfd_read_reg(struct kfd_dev *dev, uint32_t reg);
 
 /* Interrupts */
 int radeon_kfd_interrupt_init(struct kfd_dev *dev);

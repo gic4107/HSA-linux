@@ -108,59 +108,10 @@ static void uninit_mqd(struct mqd_manager *mm, void *mqd, kfd_mem_obj mqd_mem_ob
 	radeon_kfd_vidmem_free_unmap(mm->dev, mqd_mem_obj);
 }
 
-static int load_mqd(struct mqd_manager *mm, void *mqd)
+static int load_mqd(struct mqd_manager *mm, void *mqd, uint32_t pipe_id, uint32_t queue_id, uint32_t __user *wptr)
 {
-	struct cik_mqd *m;
+	return kfd2kgd->hqd_load(mm->dev->kgd, mqd, pipe_id, queue_id, wptr);
 
-	BUG_ON(!mm || !mqd);
-
-	m = get_mqd(mqd);
-
-	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR, m->queue_state.cp_mqd_base_addr);
-	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR_HI, m->queue_state.cp_mqd_base_addr_hi);
-	WRITE_REG(mm->dev, CP_MQD_CONTROL, m->queue_state.cp_mqd_control);
-
-	WRITE_REG(mm->dev, CP_HQD_PQ_BASE, m->queue_state.cp_hqd_pq_base);
-	WRITE_REG(mm->dev, CP_HQD_PQ_BASE_HI, m->queue_state.cp_hqd_pq_base_hi);
-	WRITE_REG(mm->dev, CP_HQD_PQ_CONTROL, m->queue_state.cp_hqd_pq_control);
-
-	WRITE_REG(mm->dev, CP_HQD_IB_CONTROL, m->queue_state.cp_hqd_ib_control);
-	WRITE_REG(mm->dev, CP_HQD_IB_BASE_ADDR, m->queue_state.cp_hqd_ib_base_addr);
-	WRITE_REG(mm->dev, CP_HQD_IB_BASE_ADDR_HI, m->queue_state.cp_hqd_ib_base_addr_hi);
-
-	WRITE_REG(mm->dev, CP_HQD_IB_RPTR, m->queue_state.cp_hqd_ib_rptr);
-
-	WRITE_REG(mm->dev, CP_HQD_PERSISTENT_STATE, m->queue_state.cp_hqd_persistent_state);
-	WRITE_REG(mm->dev, CP_HQD_SEMA_CMD, m->queue_state.cp_hqd_sema_cmd);
-	WRITE_REG(mm->dev, CP_HQD_MSG_TYPE, m->queue_state.cp_hqd_msg_type);
-
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC0_PREOP_LO, m->queue_state.cp_hqd_atomic0_preop_lo);
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC0_PREOP_HI, m->queue_state.cp_hqd_atomic0_preop_hi);
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC1_PREOP_LO, m->queue_state.cp_hqd_atomic1_preop_lo);
-	WRITE_REG(mm->dev, CP_HQD_ATOMIC1_PREOP_HI, m->queue_state.cp_hqd_atomic1_preop_hi);
-
-	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR_REPORT_ADDR, m->queue_state.cp_hqd_pq_rptr_report_addr);
-	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR_REPORT_ADDR_HI, m->queue_state.cp_hqd_pq_rptr_report_addr_hi);
-	WRITE_REG(mm->dev, CP_HQD_PQ_RPTR, m->queue_state.cp_hqd_pq_rptr);
-
-	WRITE_REG(mm->dev, CP_HQD_PQ_WPTR_POLL_ADDR, m->queue_state.cp_hqd_pq_wptr_poll_addr);
-	WRITE_REG(mm->dev, CP_HQD_PQ_WPTR_POLL_ADDR_HI, m->queue_state.cp_hqd_pq_wptr_poll_addr_hi);
-
-	WRITE_REG(mm->dev, CP_HQD_PQ_DOORBELL_CONTROL, m->queue_state.cp_hqd_pq_doorbell_control);
-
-	WRITE_REG(mm->dev, CP_HQD_VMID, m->queue_state.cp_hqd_vmid);
-
-	WRITE_REG(mm->dev, CP_HQD_QUANTUM, m->queue_state.cp_hqd_quantum);
-
-	WRITE_REG(mm->dev, CP_HQD_PIPE_PRIORITY, m->queue_state.cp_hqd_pipe_priority);
-	WRITE_REG(mm->dev, CP_HQD_QUEUE_PRIORITY, m->queue_state.cp_hqd_queue_priority);
-
-	WRITE_REG(mm->dev, CP_HQD_HQ_SCHEDULER0, m->queue_state.cp_hqd_hq_scheduler0);
-	WRITE_REG(mm->dev, CP_HQD_HQ_SCHEDULER1, m->queue_state.cp_hqd_hq_scheduler1);
-
-	WRITE_REG(mm->dev, CP_HQD_ACTIVE, m->queue_state.cp_hqd_active);
-
-	return 0;
 }
 
 static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties *q)
@@ -195,117 +146,16 @@ static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties
 	return 0;
 }
 
-static int destroy_mqd(struct mqd_manager *mm, void *mqd, enum kfd_preempt_type type, unsigned int timeout)
+static int destroy_mqd(struct mqd_manager *mm, bool is_reset, unsigned int timeout, uint32_t pipe_id, uint32_t queue_id)
 {
-	int status;
-	uint32_t temp;
-	bool sync;
-
-	status = 0;
-	BUG_ON(!mm || !mqd);
-
-	pr_debug("kfd: In func %s\n", __func__);
-
-	WRITE_REG(mm->dev, CP_HQD_PQ_DOORBELL_CONTROL, 0);
-
-	if (type == KFD_PREEMPT_TYPE_WAVEFRONT_RESET)
-		WRITE_REG(mm->dev, CP_HQD_DEQUEUE_REQUEST, DEQUEUE_REQUEST_RESET);
-	else
-		WRITE_REG(mm->dev, CP_HQD_DEQUEUE_REQUEST, DEQUEUE_REQUEST_DRAIN);
-
-	sync = (timeout > 0);
-	temp = timeout;
-
-	while (READ_REG(mm->dev, CP_HQD_ACTIVE) != 0) {
-		if (sync && timeout <= 0) {
-			status = -EBUSY;
-			pr_err("kfd: cp queue preemption time out (%dms)\n", temp);
-			break;
-		}
-		busy_wait(1000);
-		if (sync)
-			timeout--;
-	}
-
-	return status;
+	return kfd2kgd->hqd_destroy(mm->dev->kgd, is_reset, timeout, pipe_id, queue_id);
 }
 
-static inline uint32_t make_srbm_gfx_cntl_mpqv(unsigned int me,
-						unsigned int pipe,
-						unsigned int queue,
-						unsigned int vmid)
+bool is_occupied(struct mqd_manager *mm, uint64_t queue_address, uint32_t pipe_id, uint32_t queue_id)
 {
-	return QUEUEID(queue) | VMID(vmid) | MEID(me) | PIPEID(pipe);
-}
 
-static inline uint32_t get_first_pipe_offset(struct mqd_manager *mm)
-{
-	BUG_ON(!mm);
-	return mm->dev->shared_resources.first_compute_pipe;
-}
+	return kfd2kgd->hqd_is_occupies(mm->dev->kgd, queue_address, pipe_id, queue_id);
 
-static void acquire_hqd(struct mqd_manager *mm, unsigned int pipe, unsigned int queue, unsigned int vmid)
-{
-	unsigned int mec, pipe_in_mec;
-
-	BUG_ON(!mm);
-
-	radeon_kfd_lock_srbm_index(mm->dev);
-
-	pipe_in_mec = (pipe + get_first_pipe_offset(mm)) % 4;
-	mec = (pipe + get_first_pipe_offset(mm)) / 4;
-	mec++;
-
-	pr_debug("kfd: acquire mec: %d pipe: %d queue: %d vmid: %d\n",
-			mec,
-			pipe_in_mec,
-			queue,
-			vmid);
-
-	WRITE_REG(mm->dev, SRBM_GFX_CNTL, make_srbm_gfx_cntl_mpqv(mec,
-			pipe_in_mec, queue, vmid));
-}
-
-static void release_hqd(struct mqd_manager *mm)
-{
-	BUG_ON(!mm);
-	/* Be nice to KGD, reset indexed CP registers to the GFX pipe. */
-	WRITE_REG(mm->dev, SRBM_GFX_CNTL, 0);
-	radeon_kfd_unlock_srbm_index(mm->dev);
-}
-
-bool is_occupied(struct mqd_manager *mm, void *mqd, struct queue_properties *q)
-{
-	int act;
-	struct cik_mqd *m;
-	uint32_t low, high;
-
-	BUG_ON(!mm || !mqd || !q);
-
-	m = get_mqd(mqd);
-
-	act = READ_REG(mm->dev, CP_HQD_ACTIVE);
-	if (act) {
-		low = lower_32((uint64_t)q->queue_address >> 8);
-		high = upper_32((uint64_t)q->queue_address >> 8);
-
-		if (low == READ_REG(mm->dev, CP_HQD_PQ_BASE) &&
-			high == READ_REG(mm->dev, CP_HQD_PQ_BASE_HI))
-			return true;
-	}
-
-	return false;
-}
-
-static int initialize(struct mqd_manager *mm)
-{
-	BUG_ON(!mm);
-	return 0;
-}
-
-static void uninitialize(struct mqd_manager *mm)
-{
-	BUG_ON(!mm);
 }
 
 /*
@@ -418,11 +268,7 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		mqd->load_mqd = load_mqd;
 		mqd->update_mqd = update_mqd;
 		mqd->destroy_mqd = destroy_mqd;
-		mqd->acquire_hqd = acquire_hqd;
-		mqd->release_hqd = release_hqd;
 		mqd->is_occupied = is_occupied;
-		mqd->initialize = initialize;
-		mqd->uninitialize = uninitialize;
 		break;
 	case KFD_MQD_TYPE_CIK_HIQ:
 		mqd->init_mqd = init_mqd_hiq;
@@ -430,11 +276,7 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		mqd->load_mqd = load_mqd;
 		mqd->update_mqd = update_mqd_hiq;
 		mqd->destroy_mqd = destroy_mqd;
-		mqd->acquire_hqd = acquire_hqd;
-		mqd->release_hqd = release_hqd;
 		mqd->is_occupied = is_occupied;
-		mqd->initialize = initialize;
-		mqd->uninitialize = uninitialize;
 		break;
 	default:
 		kfree(mqd);
@@ -442,11 +284,6 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		break;
 	}
 
-	if (mqd->initialize(mqd) != 0) {
-		pr_err("kfd: mqd manager initialization failed\n");
-		kfree(mqd);
-		return NULL;
-	}
 	return mqd;
 }
 

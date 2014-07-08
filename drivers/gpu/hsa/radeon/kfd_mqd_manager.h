@@ -27,21 +27,28 @@
 #include "kfd_priv.h"
 
 struct mqd_manager {
-	int	(*init_mqd)(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj, uint64_t *gart_addr,
-			    struct queue_properties *q);
-	int	(*load_mqd)(struct mqd_manager *mm, void *mqd);
-	int	(*update_mqd)(struct mqd_manager *mm, void *mqd, struct queue_properties *q);
-	int	(*destroy_mqd)(struct mqd_manager *mm, void *mqd, enum kfd_preempt_type type, unsigned int timeout);
-	void	(*uninit_mqd)(struct mqd_manager *mm, void *mqd, kfd_mem_obj mqd_mem_obj);
-	void	(*acquire_hqd)(struct mqd_manager *mm, unsigned int pipe, unsigned int queue, unsigned int vmid);
-	void	(*release_hqd)(struct mqd_manager *mm);
-	bool	(*is_occupied)(struct mqd_manager *mm, void *mqd, struct queue_properties *q);
-	int	(*initialize)(struct mqd_manager *mm);
-	void	(*uninitialize)(struct mqd_manager *mm);
+	int	(*init_mqd)(struct mqd_manager *mm, void **mqd,
+			kfd_mem_obj *mqd_mem_obj, uint64_t *gart_addr,
+			struct queue_properties *q);
 
-	struct mutex		mqd_mutex;
-	struct kfd_dev		*dev;
+	int	(*load_mqd)(struct mqd_manager *mm, void *mqd,
+				uint32_t pipe_id, uint32_t queue_id,
+				uint32_t __user *wptr);
+
+	int	(*update_mqd)(struct mqd_manager *mm, void *mqd,
+				struct queue_properties *q);
+
+	int	(*destroy_mqd)(struct mqd_manager *mm, bool is_reset,
+				unsigned int timeout, uint32_t pipe_id,
+				uint32_t queue_id);
+
+	void	(*uninit_mqd)(struct mqd_manager *mm, void *mqd,
+				kfd_mem_obj mqd_mem_obj);
+	bool	(*is_occupied)(struct mqd_manager *mm, uint64_t queue_address,
+				uint32_t pipe_id, uint32_t queue_id);
+
+	struct mutex	mqd_mutex;
+	struct kfd_dev	*dev;
 };
-
 
 #endif /* KFD_MQD_MANAGER_H_ */
