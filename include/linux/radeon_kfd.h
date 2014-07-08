@@ -45,8 +45,6 @@ enum kgd_memory_pool {
 };
 
 struct kgd2kfd_shared_resources {
-	void __iomem *mmio_registers; /* Mapped pointer to GFX MMIO registers. */
-
 	unsigned int compute_vmid_bitmap; /* Bit n == 1 means VMID n is available for KFD. */
 
 	unsigned int first_compute_pipe; /* Compute pipes are counted starting from MEC0/pipe0 as 0. */
@@ -85,14 +83,6 @@ struct kfd2kgd_calls {
 
 	uint64_t (*get_vmem_size)(struct kgd_dev *kgd);
 	uint64_t (*get_gpu_clock_counter)(struct kgd_dev *kgd);
-
-	/* SRBM_GFX_CNTL mutex */
-	void (*lock_srbm_gfx_cntl)(struct kgd_dev *kgd);
-	void (*unlock_srbm_gfx_cntl)(struct kgd_dev *kgd);
-
-	/* GRBM_GFX_INDEX mutex */
-	void (*lock_grbm_gfx_idx)(struct kgd_dev *kgd);
-	void (*unlock_grbm_gfx_idx)(struct kgd_dev *kgd);
 
 	uint32_t (*get_max_engine_clock_in_mhz)(struct kgd_dev *kgd);
 

@@ -115,12 +115,6 @@ static void unkmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem);
 static uint64_t get_vmem_size(struct kgd_dev *kgd);
 static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd);
 
-static void lock_srbm_gfx_cntl(struct kgd_dev *kgd);
-static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd);
-
-static void lock_grbm_gfx_idx(struct kgd_dev *kgd);
-static void unlock_grbm_gfx_idx(struct kgd_dev *kgd);
-
 static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd);
 
 /*
@@ -146,10 +140,6 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.unkmap_mem = unkmap_mem,
 	.get_vmem_size = get_vmem_size,
 	.get_gpu_clock_counter = get_gpu_clock_counter,
-	.lock_srbm_gfx_cntl = lock_srbm_gfx_cntl,
-	.unlock_srbm_gfx_cntl = unlock_srbm_gfx_cntl,
-	.lock_grbm_gfx_idx = lock_grbm_gfx_idx,
-	.unlock_grbm_gfx_idx = unlock_grbm_gfx_idx,
 	.get_max_engine_clock_in_mhz = get_max_engine_clock_in_mhz,
 	.program_sh_mem_settings = kgd_program_sh_mem_settings,
 	.set_pasid_vmid_mapping = kgd_set_pasid_vmid_mapping,
@@ -200,8 +190,6 @@ void radeon_kfd_device_init(struct radeon_device *rdev)
 {
 	if (rdev->kfd) {
 		struct kgd2kfd_shared_resources gpu_resources = {
-			.mmio_registers = rdev->rmmio,
-
 			.compute_vmid_bitmap = 0xFF00,
 
 			.first_compute_pipe = 1,
@@ -361,38 +349,6 @@ static uint64_t get_vmem_size(struct kgd_dev *kgd)
 	BUG_ON(kgd == NULL);
 
 	return rdev->mc.real_vram_size;
-}
-
-static void lock_srbm_gfx_cntl(struct kgd_dev *kgd)
-{
-	struct radeon_device *rdev = (struct radeon_device *)kgd;
-
-	mutex_lock(&rdev->srbm_mutex);
-}
-
-static void unlock_srbm_gfx_cntl(struct kgd_dev *kgd)
-{
-	struct radeon_device *rdev = (struct radeon_device *)kgd;
-
-	mutex_unlock(&rdev->srbm_mutex);
-}
-
-static void lock_grbm_gfx_idx(struct kgd_dev *kgd)
-{
-	struct radeon_device *rdev = (struct radeon_device *)kgd;
-
-	BUG_ON(kgd == NULL);
-
-	mutex_lock(&rdev->grbm_idx_mutex);
-}
-
-static void unlock_grbm_gfx_idx(struct kgd_dev *kgd)
-{
-	struct radeon_device *rdev = (struct radeon_device *)kgd;
-
-	BUG_ON(kgd == NULL);
-
-	mutex_unlock(&rdev->grbm_idx_mutex);
 }
 
 static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd)
