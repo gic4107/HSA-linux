@@ -273,6 +273,73 @@ void dce6_afmt_write_sad_regs(struct drm_encoder *encoder)
 	kfree(sads);
 }
 
+void dce6_afmt_write_sinkinfo(struct drm_encoder *encoder)
+{
+	struct radeon_device *rdev = encoder->dev->dev_private;
+	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
+	struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
+	struct drm_connector *connector;
+	u32 tmp = 0, offset;
+	char description[18];
+	uint8_t *eld;
+
+	if (!dig || !dig->afmt || !dig->afmt->pin)
+		return;
+
+	offset = dig->afmt->pin->offset;
+
+	list_for_each_entry(connector, &encoder->dev->mode_config.connector_list, head) {
+		if (connector->encoder == encoder)
+			break;
+	}
+
+	if (!connector) {
+		DRM_ERROR("Couldn't find encoder's connector\n");
+		return;
+	}
+
+	if (!connector->eld[0]) {
+		DRM_ERROR("Connector has no ELD\n");
+		return;
+	}
+
+	eld = connector->eld;
+
+	tmp = MANUFACTURER_ID(eld[16]<<8 | eld[17]) | PRODUCT_ID(eld[18]<<8 | eld[19]);
+	WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO0, tmp);
+
+	tmp = SINK_DESCRIPTION_LEN(strlen(&eld[20])) + 1;
+	tmp = (tmp > 19) ? 19 : tmp;
+	WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO1, tmp);
+
+	strncpy(description, &eld[20], 18);
+
+	tmp = PORT_ID0(0x1);
+	/*WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO2, tmp);*/
+
+	tmp = PORT_ID1(0x100);
+	/*WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO3, tmp);*/
+
+	tmp = DESCRIPTION0(description[0]) | DESCRIPTION1(description[1]) |
+	      DESCRIPTION2(description[2]) | DESCRIPTION3(description[3]);
+	WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO4, tmp);
+
+	tmp = DESCRIPTION4(description[4]) | DESCRIPTION5(description[5]) |
+	      DESCRIPTION6(description[6]) | DESCRIPTION7(description[7]);
+	WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO5, tmp);
+
+	tmp = DESCRIPTION8(description[8]) | DESCRIPTION9(description[9]) |
+	      DESCRIPTION10(description[10]) | DESCRIPTION11(description[11]);
+	WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO6, tmp);
+
+	tmp = DESCRIPTION12(description[12]) | DESCRIPTION13(description[13]) |
+	      DESCRIPTION14(description[14]) | DESCRIPTION15(description[15]);
+	WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO7, tmp);
+
+	tmp = DESCRIPTION16(description[16]) | DESCRIPTION17(description[17]);
+	WREG32_ENDPOINT(offset, AZ_F0_CODEC_PIN_CONTROL_SINK_INFO8, tmp);
+}
+
 static int dce6_audio_chipset_supported(struct radeon_device *rdev)
 {
 	return !ASIC_IS_NODCE(rdev);
