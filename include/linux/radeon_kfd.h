@@ -95,6 +95,17 @@ struct kfd2kgd_calls {
 	void (*unlock_grbm_gfx_idx)(struct kgd_dev *kgd);
 
 	uint32_t (*get_max_engine_clock_in_mhz)(struct kgd_dev *kgd);
+
+	/* Register access functions */
+	void (*program_sh_mem_settings)(struct kgd_dev *kgd, uint32_t vmid, uint32_t sh_mem_config,
+			uint32_t sh_mem_ape1_base, uint32_t sh_mem_ape1_limit, uint32_t sh_mem_bases);
+	int (*set_pasid_vmid_mapping)(struct kgd_dev *kgd, unsigned int pasid, unsigned int vmid);
+	int (*init_memory)(struct kgd_dev *kgd);
+	int (*init_pipeline)(struct kgd_dev *kgd, uint32_t pipe_id, uint32_t hpd_size, uint64_t hpd_gpu_addr);
+	int (*hqd_load)(struct kgd_dev *kgd, void *mqd, uint32_t pipe_id, uint32_t queue_id, uint32_t __user *wptr);
+	bool (*hqd_is_occupies)(struct kgd_dev *kgd, uint64_t queue_address, uint32_t pipe_id, uint32_t queue_id);
+	int (*hqd_destroy)(struct kgd_dev *kgd, bool is_reset, unsigned int timeout,
+				uint32_t pipe_id, uint32_t queue_id);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
