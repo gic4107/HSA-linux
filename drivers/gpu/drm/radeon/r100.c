@@ -620,7 +620,6 @@ int r100_pci_gart_enable(struct radeon_device *rdev)
 {
 	uint32_t tmp;
 
-	radeon_gart_restore(rdev);
 	/* discard memory request outside of configured range */
 	tmp = RREG32(RADEON_AIC_CNTL) | RADEON_DIS_OUT_OF_PCI_GART_ACCESS;
 	WREG32(RADEON_AIC_CNTL, tmp);
@@ -4029,39 +4028,6 @@ int r100_init(struct radeon_device *rdev)
 		rdev->accel_working = false;
 	}
 	return 0;
-}
-
-uint32_t r100_mm_rreg(struct radeon_device *rdev, uint32_t reg,
-		      bool always_indirect)
-{
-	if (reg < rdev->rmmio_size && !always_indirect)
-		return readl(((void __iomem *)rdev->rmmio) + reg);
-	else {
-		unsigned long flags;
-		uint32_t ret;
-
-		spin_lock_irqsave(&rdev->mmio_idx_lock, flags);
-		writel(reg, ((void __iomem *)rdev->rmmio) + RADEON_MM_INDEX);
-		ret = readl(((void __iomem *)rdev->rmmio) + RADEON_MM_DATA);
-		spin_unlock_irqrestore(&rdev->mmio_idx_lock, flags);
-
-		return ret;
-	}
-}
-
-void r100_mm_wreg(struct radeon_device *rdev, uint32_t reg, uint32_t v,
-		  bool always_indirect)
-{
-	if (reg < rdev->rmmio_size && !always_indirect)
-		writel(v, ((void __iomem *)rdev->rmmio) + reg);
-	else {
-		unsigned long flags;
-
-		spin_lock_irqsave(&rdev->mmio_idx_lock, flags);
-		writel(reg, ((void __iomem *)rdev->rmmio) + RADEON_MM_INDEX);
-		writel(v, ((void __iomem *)rdev->rmmio) + RADEON_MM_DATA);
-		spin_unlock_irqrestore(&rdev->mmio_idx_lock, flags);
-	}
 }
 
 u32 r100_io_rreg(struct radeon_device *rdev, u32 reg)
