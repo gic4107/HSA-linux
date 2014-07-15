@@ -39,6 +39,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/vga_switcheroo.h>
 #include "drm_crtc_helper.h"
+#include "radeon_kfd.h"
+
 /*
  * KMS wrapper.
  * - 2.0.0 - initial interface
@@ -647,12 +649,15 @@ static int __init radeon_init(void)
 #endif
 	}
 
+	radeon_kfd_init();
+
 	/* let modprobe override vga console setting */
 	return drm_pci_init(driver, pdriver);
 }
 
 static void __exit radeon_exit(void)
 {
+	radeon_kfd_fini();
 	drm_pci_exit(driver, pdriver);
 	radeon_unregister_atpx_handler();
 }
