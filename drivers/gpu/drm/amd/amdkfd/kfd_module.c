@@ -29,10 +29,10 @@
 #define KFD_DRIVER_AUTHOR	"AMD Inc. and others"
 
 #define KFD_DRIVER_DESC		"Standalone HSA driver for AMD's GPUs"
-#define KFD_DRIVER_DATE		"20140804"
+#define KFD_DRIVER_DATE		"20140807"
 #define KFD_DRIVER_MAJOR	0
-#define KFD_DRIVER_MINOR	6
-#define KFD_DRIVER_PATCHLEVEL	4
+#define KFD_DRIVER_MINOR	8
+#define KFD_DRIVER_PATCHLEVEL	0
 
 const struct kfd2kgd_calls *kfd2kgd;
 static const struct kgd2kfd_calls kgd2kfd = {
@@ -44,6 +44,11 @@ static const struct kgd2kfd_calls kgd2kfd = {
 	.suspend	= kgd2kfd_suspend,
 	.resume		= kgd2kfd_resume,
 };
+
+int sched_policy = KFD_SCHED_POLICY_HWS;
+module_param(sched_policy, int, 0444);
+MODULE_PARM_DESC(sched_policy,
+	"Kernel cmdline parameter that defines the amdkfd scheduling policy");
 
 int max_num_of_processes = KFD_MAX_NUM_OF_PROCESSES_DEFAULT;
 module_param(max_num_of_processes, int, 0444);
@@ -86,6 +91,13 @@ static int __init kfd_module_init(void)
 	int err;
 
 	kfd2kgd = NULL;
+
+	/* Verify module parameters */
+	if ((sched_policy < KFD_SCHED_POLICY_HWS) ||
+		(sched_policy > KFD_SCHED_POLICY_NO_HWS)) {
+		pr_err("kfd: sched_policy has invalid value\n");
+		return -1;
+	}
 
 	/* Verify module parameters */
 	if ((max_num_of_processes < 0) ||
