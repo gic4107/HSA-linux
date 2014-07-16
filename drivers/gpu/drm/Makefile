@@ -68,3 +68,4 @@ obj-$(CONFIG_DRM_STI) += sti/
 obj-y			+= i2c/
 obj-y			+= panel/
 obj-y			+= bridge/
+obj-$(CONFIG_HSA_AMD) += amd/amdkfd/
