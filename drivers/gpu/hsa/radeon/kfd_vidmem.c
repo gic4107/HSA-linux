@@ -67,15 +67,15 @@ int radeon_kfd_vidmem_alloc_map(struct kfd_dev *kfd, kfd_mem_obj *mem_obj,
 	int retval;
 
 	retval = radeon_kfd_vidmem_alloc(kfd, size, PAGE_SIZE, KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-			mem_obj);
+			mem_obj);	// get mem_obj
 	if (retval != 0)
 		goto fail_vidmem_alloc;
 
-	retval = radeon_kfd_vidmem_kmap(kfd, *mem_obj, ptr);
+	retval = radeon_kfd_vidmem_kmap(kfd, *mem_obj, ptr);	// get ptr
 	if (retval != 0)
 		goto fail_vidmem_kmap;
 
-	retval = radeon_kfd_vidmem_gpumap(kfd, *mem_obj, vmid0_address);
+	retval = radeon_kfd_vidmem_gpumap(kfd, *mem_obj, vmid0_address);	// get vmid0_address
 	if (retval != 0)
 		goto fail_vidmem_gpumap;
 

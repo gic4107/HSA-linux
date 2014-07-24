@@ -261,8 +261,8 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 	mqd->dev = dev;
 
 	switch (type) {
-	case KFD_MQD_TYPE_CIK_CP:
-	case KFD_MQD_TYPE_CIK_COMPUTE:
+	case KFD_MQD_TYPE_CIK_CP:		// create_queue_nocpsch
+	case KFD_MQD_TYPE_CIK_COMPUTE:		// create_queue_cpsch
 		mqd->init_mqd = init_mqd;
 		mqd->uninit_mqd = uninit_mqd;
 		mqd->load_mqd = load_mqd;
@@ -270,7 +270,7 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 		mqd->destroy_mqd = destroy_mqd;
 		mqd->is_occupied = is_occupied;
 		break;
-	case KFD_MQD_TYPE_CIK_HIQ:
+	case KFD_MQD_TYPE_CIK_HIQ:		// only kernel queue
 		mqd->init_mqd = init_mqd_hiq;
 		mqd->uninit_mqd = uninit_mqd;
 		mqd->load_mqd = load_mqd;

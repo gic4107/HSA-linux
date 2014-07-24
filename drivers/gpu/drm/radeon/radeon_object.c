@@ -215,7 +215,7 @@ int radeon_bo_kmap(struct radeon_bo *bo, void **ptr)
 	if (r) {
 		return r;
 	}
-	bo->kptr = ttm_kmap_obj_virtual(&bo->kmap, &is_iomem);
+	bo->kptr = ttm_kmap_obj_virtual(&bo->kmap, &is_iomem);	// kernel virtual address of a buffer object area mapped by ttm_bo_kmap
 	if (ptr) {
 		*ptr = bo->kptr;
 	}

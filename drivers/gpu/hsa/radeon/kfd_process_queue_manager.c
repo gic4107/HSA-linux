@@ -214,7 +214,7 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 
 	pr_debug("kfd: PQM After DQM create queue\n");
 
-	list_add(&pqn->process_queue_list, &pqm->queues);
+	list_add(&pqn->process_queue_list, &pqm->queues);		// add to pqm
 
 	retval = dev->dqm->execute_queues(dev->dqm);
 	if (retval != 0) {
@@ -269,7 +269,7 @@ int pqm_destroy_queue(struct process_queue_manager *pqm, unsigned int qid)
 	pdd = radeon_kfd_get_process_device_data(dev, pqm->process);
 	BUG_ON(!pdd);
 
-	if (pqn->kq) {
+	if (pqn->kq) {		// only for DIQ
 		/* destroy kernel queue (DIQ) */
 		dqm = pqn->kq->dev->dqm;
 		dqm->destroy_kernel_queue(dqm, pqn->kq, &pdd->qpd);

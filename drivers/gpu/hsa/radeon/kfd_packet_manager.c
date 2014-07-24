@@ -87,7 +87,7 @@ static int pm_allocate_runlist_ib(struct packet_manager *pm, unsigned int **rl_b
 	BUG_ON(pm->allocated == true);
 	BUG_ON(is_over_subscription == NULL);
 
-	pm_calc_rlib_size(pm, rl_buffer_size, is_over_subscription);
+	pm_calc_rlib_size(pm, rl_buffer_size, is_over_subscription);	// get rl_buffer_size, is_over_subscription
 
 	retval = radeon_kfd_vidmem_alloc_map(pm->dqm->dev, &pm->ib_buffer_obj, (void **)rl_buffer,
 					     rl_gpu_buffer, ALIGN(*rl_buffer_size, PAGE_SIZE));
@@ -212,6 +212,7 @@ static int pm_create_runlist_ib(struct packet_manager *pm, struct list_head *que
 	rl_wptr = retval = proccesses_mapped = 0;
 
 	retval = pm_allocate_runlist_ib(pm, &rl_buffer, rl_gpu_addr, &alloc_size_bytes, &is_over_subscription);
+					// rl_buffer for kmap, rl_gpu_add for gpumap
 	if (retval != 0)
 		return retval;
 
@@ -222,7 +223,7 @@ static int pm_create_runlist_ib(struct packet_manager *pm, struct list_head *que
 			pm->dqm->queue_count);
 
 	/* build the run list ib packet */
-	list_for_each_entry(cur, queues, list) {
+	list_for_each_entry(cur, queues, list) {	// list_add to queues in pqm_create_queue->register_process
 		qpd = cur->qpd;
 		/* build map process packet */
 		if (proccesses_mapped >= pm->dqm->processes_count) {
@@ -230,12 +231,13 @@ static int pm_create_runlist_ib(struct packet_manager *pm, struct list_head *que
 			pm_release_ib(pm);
 			return -ENOMEM;
 		}
-		retval = pm_create_map_process(pm, &rl_buffer[rl_wptr], qpd);
+		retval = pm_create_map_process(pm, &rl_buffer[rl_wptr], qpd);	// rl_buffer get from pm_allocate_runlist_ib, rl_wptr increase
+										// construct the packet
 		if (retval != 0)
 			return retval;
 		proccesses_mapped++;
 		inc_wptr(&rl_wptr, sizeof(struct pm4_map_process), alloc_size_bytes);
-		list_for_each_entry(kq, &qpd->priv_queue_list, list) {
+		list_for_each_entry(kq, &qpd->priv_queue_list, list) {		// add in create_kernel_queue (only call in KFD_QUEUE_TYPE_DIQ)
 			if (kq->queue->properties.is_active != true)
 				continue;
 			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr], kq->queue);
@@ -244,10 +246,10 @@ static int pm_create_runlist_ib(struct packet_manager *pm, struct list_head *que
 			inc_wptr(&rl_wptr, sizeof(struct pm4_map_queues), alloc_size_bytes);
 		}
 
-		list_for_each_entry(q, &qpd->queues_list, list) {
+		list_for_each_entry(q, &qpd->queues_list, list) {		// add in dqm->create_queue for SW/HW
 			if (q->properties.is_active != true)
 				continue;
-			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr], q);
+			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr], q);	// construct packet
 			if (retval != 0)
 				return retval;
 			inc_wptr(&rl_wptr, sizeof(struct pm4_map_queues), alloc_size_bytes);
@@ -340,7 +342,7 @@ int pm_send_runlist(struct packet_manager *pm, struct list_head *dqm_queues)
 
 	BUG_ON(!pm || !dqm_queues);
 
-	retval = pm_create_runlist_ib(pm, dqm_queues, &rl_gpu_ib_addr, &rl_ib_size);
+	retval = pm_create_runlist_ib(pm, dqm_queues, &rl_gpu_ib_addr, &rl_ib_size);	// get rl_gpu_ib_addr, rl_ib_size
 	if (retval != 0)
 		goto fail_create_runlist_ib;
 
@@ -349,7 +351,8 @@ int pm_send_runlist(struct packet_manager *pm, struct list_head *dqm_queues)
 	packet_size_dwords = sizeof(struct pm4_runlist) / sizeof(uint32_t);
 	mutex_lock(&pm->lock);
 
-	retval = pm->priv_queue->acquire_packet_buffer(pm->priv_queue, packet_size_dwords, &rl_buffer);
+	retval = pm->priv_queue->acquire_packet_buffer(pm->priv_queue, packet_size_dwords, &rl_buffer);	// get rl_buffer
+	// &kq->pq_kernel_addr[*kq->wptr_kernel]
 	if (retval != 0)
 		goto fail_acquire_packet_buffer;
 

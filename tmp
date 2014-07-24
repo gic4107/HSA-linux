@@ -1,0 +1,441 @@
+diff --git a/drivers/gpu/hsa/radeon/Makefile b/drivers/gpu/hsa/radeon/Makefile
+index 813b31f..18e1639 100644
+--- a/drivers/gpu/hsa/radeon/Makefile
++++ b/drivers/gpu/hsa/radeon/Makefile
+@@ -5,6 +5,7 @@
+ radeon_kfd-y	:= kfd_module.o kfd_device.o kfd_chardev.o \
+ 		kfd_pasid.o kfd_topology.o kfd_process.o \
+ 		kfd_doorbell.o kfd_sched_cik_static.o kfd_registers.o \
+-		kfd_vidmem.o kfd_interrupt.o kfd_aperture.o
++		kfd_vidmem.o kfd_interrupt.o kfd_aperture.o \
++		kfd_queue.o kfd_hw_pointer_store.o
+ 
+ obj-$(CONFIG_HSA_RADEON)	+= radeon_kfd.o
+diff --git a/drivers/gpu/hsa/radeon/kfd_hw_pointer_store.c b/drivers/gpu/hsa/radeon/kfd_hw_pointer_store.c
+new file mode 100644
+index 0000000..1372fb2
+--- /dev/null
++++ b/drivers/gpu/hsa/radeon/kfd_hw_pointer_store.c
+@@ -0,0 +1,150 @@
++/*
++ * Copyright 2014 Advanced Micro Devices, Inc.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR
++ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
++ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
++ * OTHER DEALINGS IN THE SOFTWARE.
++ *
++ * Author: Ben Goz
++ */
++
++#include <linux/types.h>
++#include <linux/version.h>
++#include <linux/kernel.h>
++#include <linux/mutex.h>
++#include <linux/mm.h>
++#include <linux/mman.h>
++#include <linux/slab.h>
++#include <linux/io.h>
++#include "kfd_hw_pointer_store.h"
++#include "kfd_priv.h"
++
++/* do the same trick as in map_doorbells() */
++static int hw_pointer_store_map(struct hw_pointer_store_properties *ptr,
++		struct file *devkfd)
++{
++	qptr_t __user *user_address;
++
++	BUG_ON(!ptr || !devkfd);
++
++	if (!ptr->page_mapping) {
++		if (!ptr->page_address)
++			return -EINVAL;
++
++		user_address = (qptr_t __user *)vm_mmap(devkfd, 0, PAGE_SIZE,
++			PROT_WRITE | PROT_READ , MAP_SHARED, ptr->offset);
++
++		if (IS_ERR(user_address))
++			return PTR_ERR(user_address);
++
++		ptr->page_mapping = user_address;
++	}
++
++	return 0;
++}
++
++int hw_pointer_store_init(struct hw_pointer_store_properties *ptr,
++		enum hw_pointer_store_type type)
++{
++	unsigned long *addr;
++
++	BUG_ON(!ptr);
++
++	/* using the offset value as a hint for mmap to distinguish between page types */
++	if (type == KFD_HW_POINTER_STORE_TYPE_RPTR)
++		ptr->offset = KFD_MMAP_RPTR_START << PAGE_SHIFT;
++	else if (type == KFD_HW_POINTER_STORE_TYPE_WPTR)
++		ptr->offset = KFD_MMAP_WPTR_START << PAGE_SHIFT;
++	else
++		return -EINVAL;
++
++	addr = (unsigned long *)get_zeroed_page(GFP_KERNEL);
++	if (!addr) {
++		pr_debug("Error allocating page\n");
++		return -ENOMEM;
++	}
++
++	ptr->page_address = addr;
++	ptr->page_mapping = NULL;
++
++	return 0;
++}
++
++void hw_pointer_store_destroy(struct hw_pointer_store_properties *ptr)
++{
++	BUG_ON(!ptr);
++	pr_debug("kfd in func: %s\n", __func__);
++	if (ptr->page_address)
++		free_page((unsigned long)ptr->page_address);
++	if (ptr->page_mapping)
++		vm_munmap((uintptr_t)ptr->page_mapping, PAGE_SIZE);
++	ptr->page_address = NULL;
++	ptr->page_mapping = NULL;
++}
++
++qptr_t __user *
++hw_pointer_store_create_queue(struct hw_pointer_store_properties *ptr,
++		unsigned int queue_id, struct file *devkfd)
++{
++	BUG_ON(!ptr || queue_id >= MAX_PROCESS_QUEUES);
++
++	/* mapping value to user space*/
++	hw_pointer_store_map(ptr, devkfd);
++
++	/* User process address */
++	if (!ptr->page_mapping) {
++		pr_debug(KERN_ERR "kfd: hw pointer store doesn't mapped to user space\n");
++		return NULL;
++	}
++
++	ptr->page_mapping[queue_id] = 0;
++
++	return ptr->page_mapping + queue_id;
++}
++
++unsigned long *hw_pointer_store_get_address
++	(struct hw_pointer_store_properties *ptr, unsigned int queue_id)
++{
++	return ptr->page_address + queue_id;
++}
++
++int radeon_kfd_hw_pointer_store_mmap(struct hw_pointer_store_properties *ptr,
++		struct vm_area_struct *vma)
++{
++	BUG_ON(!ptr || !vma);
++
++	if (vma->vm_end - vma->vm_start != PAGE_SIZE) {
++		pr_debug("start address(0x%lx) - end address(0x%lx) != len(0x%lx)\n",
++				vma->vm_end, vma->vm_start, PAGE_SIZE);
++		return -EINVAL;
++	}
++
++	vma->vm_flags |= VM_IO | VM_DONTCOPY | VM_DONTEXPAND | VM_NORESERVE
++		       | VM_DONTDUMP | VM_PFNMAP;
++
++	pr_debug("kfd: mapping hw pointer page in radeon_kfd_hw_pointer_store_mmap\n"
++			 "     target user address == 0x%016llX\n"
++			 "     physical address    == 0x%016lX\n"
++			 "     vm_flags            == 0x%08lX\n"
++			 "     size                == 0x%08lX\n",
++			 (long long unsigned int) vma->vm_start,
++			 __pa(ptr->page_address), vma->vm_flags, PAGE_SIZE);
++
++	/* mapping the page to user process */
++	return remap_pfn_range(vma, vma->vm_start, __pa(ptr->page_address) >> PAGE_SHIFT, PAGE_SIZE, vma->vm_page_prot);
++}
++
+diff --git a/drivers/gpu/hsa/radeon/kfd_hw_pointer_store.h b/drivers/gpu/hsa/radeon/kfd_hw_pointer_store.h
+new file mode 100644
+index 0000000..be1d6cb
+--- /dev/null
++++ b/drivers/gpu/hsa/radeon/kfd_hw_pointer_store.h
+@@ -0,0 +1,65 @@
++/*
++ * Copyright 2014 Advanced Micro Devices, Inc.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR
++ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
++ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
++ * OTHER DEALINGS IN THE SOFTWARE.
++ *
++ * Author: Ben Goz
++ */
++
++#ifndef HW_POINTER_STORE_H_
++#define HW_POINTER_STORE_H_
++
++#include <linux/mutex.h>
++
++/* Type that represents a HW doorbell slot. and read/write HW pointers */
++typedef u32 qptr_t;
++
++/* Hw Pointer Store */
++enum hw_pointer_store_type {
++	KFD_HW_POINTER_STORE_TYPE_RPTR = 0,
++	KFD_HW_POINTER_STORE_TYPE_WPTR
++};
++
++struct hw_pointer_store_properties {
++	qptr_t __user		*page_mapping;
++	unsigned long		*page_address;
++	unsigned long		offset;
++};
++
++int
++hw_pointer_store_init(struct hw_pointer_store_properties *ptr,
++		enum hw_pointer_store_type type);
++
++void
++hw_pointer_store_destroy(struct hw_pointer_store_properties *ptr);
++
++qptr_t __user *
++hw_pointer_store_create_queue(struct hw_pointer_store_properties *ptr,
++		unsigned int queue_id, struct file *devkfd);
++
++unsigned long *
++hw_pointer_store_get_address(struct hw_pointer_store_properties *ptr,
++		unsigned int queue_id);
++
++int
++radeon_kfd_hw_pointer_store_mmap(struct hw_pointer_store_properties *ptr,
++		struct vm_area_struct *vma);
++
++
++#endif /* HW_POINTER_STORE_H_ */
+diff --git a/drivers/gpu/hsa/radeon/kfd_priv.h b/drivers/gpu/hsa/radeon/kfd_priv.h
+index 28155bc..14a3f9b 100644
+--- a/drivers/gpu/hsa/radeon/kfd_priv.h
++++ b/drivers/gpu/hsa/radeon/kfd_priv.h
+@@ -31,6 +31,7 @@
+ #include <linux/atomic.h>
+ #include <linux/workqueue.h>
+ #include <linux/spinlock.h>
++#include "kfd_hw_pointer_store.h"
+ 
+ struct kfd_scheduler_class;
+ 
+@@ -49,6 +50,10 @@ struct kfd_scheduler_class;
+ ** We figure out what type of memory the caller wanted by comparing the mmap page offset to known ranges. */
+ #define KFD_MMAP_DOORBELL_START	(((1ULL << 32)*1) >> PAGE_SHIFT)
+ #define KFD_MMAP_DOORBELL_END	(((1ULL << 32)*2) >> PAGE_SHIFT)
++#define KFD_MMAP_RPTR_START	KFD_MMAP_DOORBELL_END
++#define KFD_MMAP_RPTR_END	(((1ULL << 32)*3) >> PAGE_SHIFT)
++#define KFD_MMAP_WPTR_START	KFD_MMAP_RPTR_END
++#define KFD_MMAP_WPTR_END	(((1ULL << 32)*4) >> PAGE_SHIFT)
+ 
+ /* GPU ID hash width in bits */
+ #define KFD_GPU_ID_HASH_WIDTH 16
+@@ -155,6 +160,49 @@ struct kfd_queue {
+ 	struct kfd_scheduler_queue scheduler_queue;
+ };
+ 
++enum kfd_queue_type  {
++	KFD_QUEUE_TYPE_COMPUTE,
++	KFD_QUEUE_TYPE_SDMA,
++	KFD_QUEUE_TYPE_HIQ,
++	KFD_QUEUE_TYPE_DIQ
++};
++
++struct queue_properties {
++	enum kfd_queue_type type;
++	unsigned int queue_id;
++	uint64_t queue_address;
++	uint64_t  queue_size;
++	uint32_t priority;
++	uint32_t queue_percent;
++	qptr_t *read_ptr;
++	qptr_t *write_ptr;
++	qptr_t *doorbell_ptr;
++	qptr_t doorbell_off;
++	bool is_interop;
++	bool is_active;
++	/* Not relevant for user mode queues in cp scheduling */
++	unsigned int vmid;
++};
++
++struct queue {
++	struct list_head list;
++	void *mqd;
++	/* kfd_mem_obj contains the mqd */
++	kfd_mem_obj mqd_mem_obj;
++	uint64_t gart_mqd_addr; /* needed for cp scheduling */
++	struct queue_properties properties;
++
++	/* Used by the queue device manager to track the hqd slot per queue
++	 * when using no cp scheduling
++	 */
++	uint32_t mec;
++	uint32_t pipe;
++	uint32_t queue;
++
++	struct kfd_process	*process;
++	struct kfd_dev		*device;
++};
++
+ /* Data that is per-process-per device. */
+ struct kfd_process_device {
+ 	/* List of all per-device data for a process. Starts from kfd_process.per_device_data. */
+@@ -271,4 +319,11 @@ int kgd2kfd_resume(struct kfd_dev *dev);
+ /*HSA apertures*/
+ int kfd_init_apertures(struct kfd_process *process);
+ 
++/* Queue Context Management */
++
++int init_queue(struct queue **q, struct queue_properties properties);
++void uninit_queue(struct queue *q);
++void print_queue_properties(struct queue_properties *q);
++void print_queue(struct queue *q);
++
+ #endif
+diff --git a/drivers/gpu/hsa/radeon/kfd_queue.c b/drivers/gpu/hsa/radeon/kfd_queue.c
+new file mode 100644
+index 0000000..78fe180
+--- /dev/null
++++ b/drivers/gpu/hsa/radeon/kfd_queue.c
+@@ -0,0 +1,110 @@
++/*
++ * Copyright 2014 Advanced Micro Devices, Inc.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE COPYRIGHT HOLDER(S) OR AUTHOR(S) BE LIABLE FOR ANY CLAIM, DAMAGES OR
++ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
++ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
++ * OTHER DEALINGS IN THE SOFTWARE.
++ *
++ * Author: Ben Goz
++ */
++
++#include <linux/slab.h>
++#include "kfd_priv.h"
++
++void print_queue_properties(struct queue_properties *q)
++{
++	if (!q)
++		return;
++
++	pr_debug("Printing queue properties\n"
++			"Queue Type: %u\n"
++			"Queue Size: %llu\n"
++			"Queue percent: %u\n"
++			"Queue Address: 0x%llX\n"
++			"Queue Id: %u\n"
++			"Queue Process Vmid: %u\n"
++			"Queue Read Pointer: 0x%p\n"
++			"Queue Write Pointer: 0x%p\n"
++			"Queue Doorbell Pointer: 0x%p\n"
++			"Queue Doorbell Offset: %u\n",  q->type,
++							q->queue_size,
++							q->queue_percent,
++							q->queue_address,
++							q->queue_id,
++							q->vmid,
++							q->read_ptr,
++							q->write_ptr,
++							q->doorbell_ptr,
++							q->doorbell_off);
++}
++
++void print_queue(struct queue *q)
++{
++	if (!q)
++		return;
++	pr_debug("Printing queue\n"
++			"Queue Type: %u\n"
++			"Queue Size: %llu\n"
++			"Queue percent: %u\n"
++			"Queue Address: 0x%llX\n"
++			"Queue Id: %u\n"
++			"Queue Process Vmid: %u\n"
++			"Queue Read Pointer: 0x%p\n"
++			"Queue Write Pointer: 0x%p\n"
++			"Queue Doorbell Pointer: 0x%p\n"
++			"Queue Doorbell Offset: %u\n"
++			"Queue MQD Address: 0x%p\n"
++			"Queue MQD Gart: 0x%p\n"
++			"Queue Process Address: 0x%p\n"
++			"Queue Device Address: 0x%p\n",
++					q->properties.type,
++					q->properties.queue_size,
++					q->properties.queue_percent,
++					q->properties.queue_address,
++					q->properties.queue_id,
++					q->properties.vmid,
++					q->properties.read_ptr,
++					q->properties.write_ptr,
++					q->properties.doorbell_ptr,
++					q->properties.doorbell_off,
++					q->mqd,
++					q->gart_mqd_addr,
++					q->process,
++					q->device);
++}
++
++int init_queue(struct queue **q, struct queue_properties properties)
++{
++	struct queue *tmp;
++
++	BUG_ON(!q);
++
++	tmp = kzalloc(sizeof(struct queue), GFP_KERNEL);
++	if (!tmp)
++		return -ENOMEM;
++
++	memset(&tmp->properties, 0, sizeof(struct queue_properties));
++	memcpy(&tmp->properties, &properties, sizeof(struct queue_properties));
++
++	*q = tmp;
++	return 0;
++}
++
++void uninit_queue(struct queue *q)
++{
++	kfree(q);
++}

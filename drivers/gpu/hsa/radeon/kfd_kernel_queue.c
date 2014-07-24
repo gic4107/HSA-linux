@@ -106,8 +106,8 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 	/* assign HIQ to HQD */
 	if (type == KFD_QUEUE_TYPE_HIQ) {
 		pr_debug("assigning hiq to hqd\n");
-		kq->queue->pipe = KFD_CIK_HIQ_PIPE;
-		kq->queue->queue = KFD_CIK_HIQ_QUEUE;
+		kq->queue->pipe = KFD_CIK_HIQ_PIPE;		// 4
+		kq->queue->queue = KFD_CIK_HIQ_QUEUE;		// 0
 		kq->mqd->load_mqd(kq->mqd, kq->queue->mqd, kq->queue->pipe, kq->queue->queue, NULL);
 	} else {
 		/* allocate fence for DIQ */
@@ -184,7 +184,7 @@ static int acquire_packet_buffer(struct kernel_queue *kq,
 			packet_size_in_dwords >= available_size)
 		return -ENOMEM;
 
-	if (wptr + packet_size_in_dwords > queue_size_dwords) {
+	if (wptr + packet_size_in_dwords > queue_size_dwords) {		// reset kq's previous packet
 		while (wptr > 0) {
 			queue_address[wptr] = kq->nop_packet;
 			wptr = (wptr + 1) % queue_size_dwords;
