@@ -1007,10 +1007,10 @@ static int destroy_sdma_queues(struct device_queue_manager *dqm, unsigned int sd
 static int destroy_queues_cpsch(struct device_queue_manager *dqm,
 				bool preempt_static_queues)
 {
-	int retval;
-	BUG_ON(!dqm);
+	enum kfd_preempt_type_filter preempt_type;
+	int retval = 0;
 
-	retval = 0;
+	BUG_ON(!dqm);
 
 	mutex_lock(&dqm->lock);
 	if (dqm->active_runlist == false)
@@ -1018,8 +1018,6 @@ static int destroy_queues_cpsch(struct device_queue_manager *dqm,
 
 	destroy_sdma_queues(dqm, 0);
 	destroy_sdma_queues(dqm, 1);
-
-	enum kfd_preempt_type_filter preempt_type;
 
 	preempt_type = preempt_static_queues ?
 			KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES :
@@ -1081,13 +1079,13 @@ static int destroy_queue_cpsch(struct device_queue_manager *dqm, struct qcm_proc
 {
 	int retval;
 	struct mqd_manager *mqd;
-	BUG_ON(!dqm || !qpd || !q);
 	bool preempt_all_queues;
+
+	BUG_ON(!dqm || !qpd || !q);
 
 	preempt_all_queues = false;
 
 	retval = 0;
-
 
 	/* remove queue from list to prevent rescheduling after preemption */
 	mutex_lock(&dqm->lock);
