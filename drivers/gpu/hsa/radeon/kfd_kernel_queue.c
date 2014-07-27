@@ -77,7 +77,7 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 		goto err_rptr_allocate_vidmem;
 
 	retval = radeon_kfd_vidmem_alloc_map(kq->dev, &kq->wptr_mem, (void **)&kq->wptr_kernel, &kq->wptr_gpu_addr,
-					     sizeof(*kq->rptr_kernel));
+					     sizeof(*kq->wptr_kernel));
 	if (retval != 0)
 		goto err_wptr_allocate_vidmem;
 
