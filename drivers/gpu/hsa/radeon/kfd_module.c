@@ -44,7 +44,7 @@ static const struct kgd2kfd_calls kgd2kfd = {
 	.resume		= kgd2kfd_resume,
 };
 
-int sched_policy = 0;
+int sched_policy = KFD_SCHED_POLICY_HWS_NO_OVERSUBSCRIPTION;
 module_param(sched_policy, int, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(sched_policy, "Kernel cmdline parameter define the kfd scheduling policy");
 
