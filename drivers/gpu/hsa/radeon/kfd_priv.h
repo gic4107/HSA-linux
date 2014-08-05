@@ -529,7 +529,7 @@ int fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsig
 
 #define KFD_FENCE_COMPLETED (100)
 #define KFD_FENCE_INIT   (10)
-#define KFD_UNMAP_LATENCY (15)
+#define KFD_UNMAP_LATENCY (150)
 
 struct packet_manager {
 	struct device_queue_manager *dqm;

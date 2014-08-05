@@ -81,6 +81,10 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 	if (retval != 0)
 		goto err_wptr_allocate_vidmem;
 
+	memset(kq->pq_kernel_addr, 0, queue_size);
+	memset(kq->rptr_kernel, 0, sizeof(*kq->rptr_kernel));
+	memset(kq->wptr_kernel, 0, sizeof(*kq->wptr_kernel));
+
 	prop.queue_size = queue_size;
 	prop.is_interop = false;
 	prop.priority = 1;

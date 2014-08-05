@@ -65,7 +65,7 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 	if (retval != 0)
 		return -ENOMEM;
 
-	memset(m, 0, sizeof(struct cik_mqd));
+	memset(m, 0, ALIGN(sizeof(struct cik_mqd), 256));
 
 	m->header = 0xC0310800;
 	m->compute_pipelinestat_enable = 1;
@@ -311,7 +311,7 @@ static int init_mqd_hiq(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem
 	if (retval != 0)
 		return -ENOMEM;
 
-	memset(m, 0, sizeof(struct cik_mqd));
+	memset(m, 0, ALIGN(sizeof(struct cik_mqd), 256));
 
 	m->header = 0xC0310800;
 	m->compute_pipelinestat_enable = 1;
@@ -320,7 +320,8 @@ static int init_mqd_hiq(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem
 	m->compute_static_thread_mgmt_se2 = 0xFFFFFFFF;
 	m->compute_static_thread_mgmt_se3 = 0xFFFFFFFF;
 
-	m->cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE;
+	m->cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE | PRELOAD_REQ;
+	m->cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS | QUANTUM_DURATION(10);
 
 	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
 	m->cp_mqd_base_addr_lo        = lower_32(addr);

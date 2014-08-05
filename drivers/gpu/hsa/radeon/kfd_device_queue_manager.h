@@ -58,14 +58,10 @@ struct device_queue_manager {
 	int	(*update_queue)(struct device_queue_manager *dqm,
 				struct queue *q);
 
-	int	(*destroy_queues)(struct device_queue_manager *dqm,
-				bool preempt_static_queues);
-
 	struct mqd_manager * (*get_mqd_manager)
 					(struct device_queue_manager *dqm,
 					enum KFD_MQD_TYPE type);
 
-	int	(*execute_queues)(struct device_queue_manager *dqm);
 	int	(*register_process)(struct device_queue_manager *dqm,
 					struct qcm_process_device *qpd);
 

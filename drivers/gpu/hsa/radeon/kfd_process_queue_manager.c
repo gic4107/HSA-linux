@@ -214,16 +214,6 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 
 	list_add(&pqn->process_queue_list, &pqm->queues);
 
-	retval = dev->dqm->execute_queues(dev->dqm);
-	if (retval != 0) {
-		if (pqn->kq)
-			dev->dqm->destroy_kernel_queue(dev->dqm, pqn->kq, &pdd->qpd);
-		if (pqn->q)
-			dev->dqm->destroy_queue(dev->dqm, &pdd->qpd, pqn->q);
-
-		goto err_execute_runlist;
-	}
-
 	if (q) {
 		*properties = q->properties;
 		pr_debug("kfd: PQM done creating queue\n");
@@ -232,8 +222,6 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 
 	return retval;
 
-err_execute_runlist:
-	list_del(&pqn->process_queue_list);
 err_create_queue:
 	kfree(pqn);
 err_allocate_pqn:
@@ -292,8 +280,6 @@ int pqm_destroy_queue(struct process_queue_manager *pqm, unsigned int qid)
 	if (list_empty(&pqm->queues))
 		dqm->unregister_process(dqm, &pdd->qpd);
 
-	retval = dqm->execute_queues(dqm);
-
 	return retval;
 }
 
@@ -311,16 +297,7 @@ int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid, struct
 	pqn->q->properties.queue_percent = p->queue_percent;
 	pqn->q->properties.priority = p->priority;
 
-	retval = pqn->q->device->dqm->destroy_queues(pqn->q->device->dqm,
-							false);
-	if (retval != 0)
-		return retval;
-
 	retval = pqn->q->device->dqm->update_queue(pqn->q->device->dqm, pqn->q);
-	if (retval != 0)
-		return retval;
-
-	retval = pqn->q->device->dqm->execute_queues(pqn->q->device->dqm);
 	if (retval != 0)
 		return retval;
 
