@@ -321,19 +321,30 @@ static int create_process_vm(struct kgd_dev *kgd, void **vm)
 	radeon_vm_init(rdev, new_vm);
 	/* About to reference VM manager, lock must be acquired */
 	mutex_lock(&rdev->vm_manager.lock);
+	mutex_lock(&new_vm->mutex);
 	/* Allocate the page directory and table */
 	ret = radeon_vm_alloc_pt(rdev, new_vm);
 	/* Release the VM manager lock */
 	mutex_unlock(&rdev->vm_manager.lock);
+	mutex_unlock(&new_vm->mutex);
 
-	if (ret != 0) {
-		/* Undo everything related to the new VM context */
-		radeon_vm_fini(rdev, new_vm);
-		kfree(new_vm);
-		new_vm = NULL;
-	}
+	if (ret != 0)
+		goto err;
+
+	/* Wait for the page table update to complete. */
+	ret = radeon_fence_wait(new_vm->fence, true);
+	if (ret != 0)
+		goto err;
 
 	*vm = (void *) new_vm;
+
+	return ret;
+
+err:
+	/* Undo everything related to the new VM context */
+	radeon_vm_fini(rdev, new_vm);
+	kfree(new_vm);
+	*vm = NULL;
 
 	return ret;
 }
@@ -378,7 +389,6 @@ static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, 
 	/* Pin bo */
 	radeon_bo_reserve(bo, true);
 	ret = radeon_bo_pin(bo, RADEON_GEM_DOMAIN_VRAM, NULL);
-	radeon_bo_unreserve(bo);
 	ret = 0;
 	if (ret != 0) {
 		ret = -EINVAL;
@@ -411,7 +421,11 @@ static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, 
 		goto err_vmsetaddr;
 
 	/* Wait for the page table update to complete. */
-	radeon_fence_wait(rvm->fence, true);
+	ret = radeon_fence_wait(rvm->fence, true);
+	if (ret != 0)
+		goto err_vmsetaddr;
+
+	radeon_bo_unreserve(bo);
 
 	(*mem)->bo = bo;
 	(*mem)->bo_va = bo_va;
@@ -423,6 +437,7 @@ err_vmsetaddr:
 err_vmadd:
 	radeon_bo_unpin(bo);
 err_pin:
+	radeon_bo_unreserve(bo);
 	radeon_bo_unref(&bo);
 	kfree(*mem);
 	return ret;
@@ -436,8 +451,8 @@ static void destroy_process_gpumem(struct kgd_dev *kgd, struct kgd_mem *mem)
 	BUG_ON(kgd == NULL);
 	BUG_ON(mem == NULL);
 
-	radeon_vm_bo_rmv(rdev, mem->bo_va);
 	radeon_bo_reserve(mem->bo, true);
+	radeon_vm_bo_rmv(rdev, mem->bo_va);
 	radeon_bo_unpin(mem->bo);
 	radeon_bo_unreserve(mem->bo);
 	radeon_bo_unref(&mem->bo);
@@ -494,7 +509,6 @@ static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm, int f
 	/* Pin bo */
 	radeon_bo_reserve(bo, true);
 	ret = radeon_bo_pin(bo, RADEON_GEM_DOMAIN_VRAM, NULL);
-	radeon_bo_unreserve(bo);
 	ret = 0;
 	if (ret != 0) {
 		ret = -EINVAL;
@@ -527,7 +541,11 @@ static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm, int f
 		goto err_vmsetaddr;
 
 	/* Wait for the page table update to complete. */
-	radeon_fence_wait(rvm->fence, true);
+	ret = radeon_fence_wait(rvm->fence, true);
+	if (ret != 0)
+		goto err_vmsetaddr;
+
+	radeon_bo_unreserve(bo);
 
 	(*mem)->bo = bo;
 	(*mem)->bo_va = bo_va;
@@ -539,6 +557,7 @@ err_vmsetaddr:
 err_vmadd:
 	radeon_bo_unpin(bo);
 err_pin:
+	radeon_bo_unreserve(bo);
 	radeon_bo_unref(&bo);
 	kfree(*mem);
 	return ret;
