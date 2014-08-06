@@ -524,23 +524,24 @@ static int dbgdev_wave_control_set_registers(
 	union GRBM_GFX_INDEX_BITS reg_gfx_index;
 
 	reg_sq_cmd.u32All = 0;
-	reg_sq_cmd.bits.simd_id = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.SIMD;
-	reg_sq_cmd.bits.wave_id = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.WaveId;
-	reg_sq_cmd.bits.check_vmid = 1;
 
 	reg_gfx_index.u32All = 0;
-	reg_gfx_index.bits.sh_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.ShaderArray;
-	reg_gfx_index.bits.se_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.ShaderEngine;
-	reg_gfx_index.bits.instance_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.HSACU;
 
 	switch (wac_info->mode) {
 	case HSA_DBG_WAVEMODE_SINGLE:	/*  Send command to single wave  */
 
+		reg_sq_cmd.bits.simd_id = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.SIMD;
+		reg_sq_cmd.bits.wave_id = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.WaveId;
 		reg_sq_cmd.bits.mode = SQ_IND_CMD_MODE_SINGLE;
+
+		reg_gfx_index.bits.sh_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.ShaderArray;
+		reg_gfx_index.bits.se_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.ShaderEngine;
+		reg_gfx_index.bits.instance_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.HSACU;
 
 		break;
 
 	case HSA_DBG_WAVEMODE_BROADCAST_PROCESS:	/*  Send command to all waves with matching VMID  */
+
 
 		reg_gfx_index.bits.sh_broadcast_writes = 1;
 		reg_gfx_index.bits.se_broadcast_writes = 1;
@@ -551,7 +552,13 @@ static int dbgdev_wave_control_set_registers(
 
 	case HSA_DBG_WAVEMODE_BROADCAST_PROCESS_CU:	/*  Send command to all CU waves with matching VMID  */
 
+		reg_sq_cmd.bits.check_vmid = 1;
 		reg_sq_cmd.bits.mode = SQ_IND_CMD_MODE_BROADCAST;
+
+		reg_gfx_index.bits.sh_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.ShaderArray;
+		reg_gfx_index.bits.se_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.ShaderEngine;
+		reg_gfx_index.bits.instance_index = wac_info->dbgWave_msg.DbgWaveMsg.WaveMsgInfoGen2.ui32.HSACU;
+
 		break;
 
 	default:
@@ -680,6 +687,7 @@ static int dbgdev_wave_control_diq(struct kfd_dbgdev *dbgdev,
 		reg_gfx_index.bits.instance_broadcast_writes = 1;
 		reg_gfx_index.bits.se_broadcast_writes = 1;
 
+
 		packets_vec[2].ordinal1 = packets_vec[0].ordinal1;
 		packets_vec[2].bitfields2.reg_offset = GRBM_GFX_INDEX / (sizeof(uint32_t)) - USERCONFIG_REG_BASE;
 		packets_vec[2].bitfields2.insert_vmid = 0;
@@ -786,7 +794,7 @@ void kfd_dbgdev_init(struct kfd_dbgdev *pdbgdev, struct kfd_dev *pdev,
 
 		pdbgdev->dbgdev_register = dbgdev_register_diq;
 		pdbgdev->dbgdev_unregister = dbgdev_unregister_diq;
-		pdbgdev->dbgdev_wave_control = dbgdev_wave_control_diq;
+		pdbgdev->dbgdev_wave_control =  dbgdev_wave_control_diq;
 		pdbgdev->dbgdev_address_watch = dbgdev_address_watch_diq;
 
 		break;
