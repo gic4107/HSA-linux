@@ -149,8 +149,7 @@ static int pm_create_map_process(struct packet_manager *pm, uint32_t *buffer, st
 	return 0;
 }
 
-static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer,
-				struct queue *q, bool is_static)
+static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer, struct queue *q, bool is_static)
 {
 	struct pm4_map_queues *packet;
 	bool use_static = is_static;
@@ -228,46 +227,29 @@ static int pm_create_runlist_ib(struct packet_manager *pm, struct list_head *que
 			pm_release_ib(pm);
 			return -ENOMEM;
 		}
-
 		retval = pm_create_map_process(pm, &rl_buffer[rl_wptr], qpd);
 		if (retval != 0)
 			return retval;
-
 		proccesses_mapped++;
 		inc_wptr(&rl_wptr, sizeof(struct pm4_map_process), alloc_size_bytes);
 		list_for_each_entry(kq, &qpd->priv_queue_list, list) {
 			if (kq->queue->properties.is_active != true)
 				continue;
-
-			pr_debug("kfd: static_queue, mapping kernel q %d, is debug status %d\n",
-				kq->queue->queue, qpd->is_debug);
-
-			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr],
-						kq->queue, qpd->is_debug);
+			pr_debug("kfd: static_queue, mapping kernel q %d, is debug status %d\n", kq->queue->queue, qpd->is_debug);
+			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr], kq->queue, qpd->is_debug);
 			if (retval != 0)
 				return retval;
-
-			inc_wptr(&rl_wptr,
-				sizeof(struct pm4_map_queues),
-				alloc_size_bytes);
+			inc_wptr(&rl_wptr, sizeof(struct pm4_map_queues), alloc_size_bytes);
 		}
 
 		list_for_each_entry(q, &qpd->queues_list, list) {
 			if (q->properties.is_active != true)
 				continue;
-
-			pr_debug("kfd: static_queue, mapping user queue %d, is debug status %d\n",
-				q->queue, qpd->is_debug);
-
-			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr],
-						q,  qpd->is_debug);
-
+			pr_debug("kfd: static_queue, mapping user queue %d, is debug status %d\n", q->queue, qpd->is_debug);
+			retval = pm_create_map_queue(pm, &rl_buffer[rl_wptr], q,  qpd->is_debug);
 			if (retval != 0)
 				return retval;
-
-			inc_wptr(&rl_wptr,
-				sizeof(struct pm4_map_queues),
-				alloc_size_bytes);
+			inc_wptr(&rl_wptr, sizeof(struct pm4_map_queues), alloc_size_bytes);
 		}
 	}
 
@@ -439,8 +421,7 @@ int pm_send_unmap_queue(struct packet_manager *pm, enum kfd_queue_type type,
 
 	packet = (struct pm4_unmap_queues *)buffer;
 	memset(buffer, 0, sizeof(struct pm4_unmap_queues));
-	pr_debug("kfd: static_queue: unmapping queues: mode is %d , reset is %d , type is %d\n",
-		mode, reset, type);
+	pr_debug("kfd: static_queue: unmapping queues: mode is %d , reset is %d , type is %d\n", mode, reset, type);
 	packet->header.u32all = build_pm4_header(IT_UNMAP_QUEUES, sizeof(struct pm4_unmap_queues));
 	switch (type) {
 	case KFD_QUEUE_TYPE_COMPUTE:
