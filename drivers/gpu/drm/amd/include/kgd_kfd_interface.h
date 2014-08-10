@@ -155,6 +155,16 @@ struct kfd2kgd_calls {
 
 	uint32_t (*get_max_engine_clock_in_mhz)(struct kgd_dev *kgd);
 
+	int (*create_process_vm)(struct kgd_dev *kgd, void **vm);
+	void (*destroy_process_vm)(struct kgd_dev *kgd, void *vm);
+
+	int (*create_process_gpumem)(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem);
+	void (*destroy_process_gpumem)(struct kgd_dev *kgd, struct kgd_mem *mem);
+
+	uint32_t (*get_process_page_dir)(void *vm);
+
+	int (*open_graphic_handle)(struct kgd_dev *kgd, uint64_t va, void *vm, int fd, uint32_t handle, struct kgd_mem **mem);
+
 	/* Register access functions */
 	void (*program_sh_mem_settings)(struct kgd_dev *kgd, uint32_t vmid,
 			uint32_t sh_mem_config,	uint32_t sh_mem_ape1_base,

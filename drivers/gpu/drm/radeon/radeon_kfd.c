@@ -29,6 +29,8 @@
 #include "cik_reg.h"
 #include "radeon_kfd.h"
 
+#define RADEON_KFD_SKIP_ERRORS 1
+
 #define CIK_PIPE_PER_MEC	(4)
 
 struct kgd_mem {
@@ -49,6 +51,16 @@ static uint64_t get_vmem_size(struct kgd_dev *kgd);
 static uint64_t get_gpu_clock_counter(struct kgd_dev *kgd);
 
 static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd);
+
+static int create_process_vm(struct kgd_dev *kgd, void **vm);
+static void destroy_process_vm(struct kgd_dev *kgd, void *vm);
+
+static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem);
+static void destroy_process_gpumem(struct kgd_dev *kgd, struct kgd_mem *mem);
+
+static uint32_t get_process_page_dir(void *vm);
+
+static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm, int fd, uint32_t handle, struct kgd_mem **mem);
 
 /*
  * Register access functions
@@ -84,6 +96,12 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.get_vmem_size = get_vmem_size,
 	.get_gpu_clock_counter = get_gpu_clock_counter,
 	.get_max_engine_clock_in_mhz = get_max_engine_clock_in_mhz,
+	.create_process_vm = create_process_vm,
+	.destroy_process_vm = destroy_process_vm,
+	.create_process_gpumem = create_process_gpumem,
+	.destroy_process_gpumem = destroy_process_gpumem,
+	.get_process_page_dir = get_process_page_dir,
+	.open_graphic_handle = open_graphic_handle,
 	.program_sh_mem_settings = kgd_program_sh_mem_settings,
 	.set_pasid_vmid_mapping = kgd_set_pasid_vmid_mapping,
 	.init_memory = kgd_init_memory,
@@ -284,6 +302,273 @@ static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd)
 
 	/* The sclk is in quantas of 10kHz */
 	return rdev->pm.dpm.dyn_state.max_clock_voltage_on_ac.sclk / 100;
+}
+
+/*
+ * Creates a VM context for HSA process
+ */
+static int create_process_vm(struct kgd_dev *kgd, void **vm)
+{
+	int ret;
+	struct radeon_vm *new_vm;
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+
+	BUG_ON(kgd == NULL);
+	BUG_ON(vm == NULL);
+
+	new_vm = kzalloc(sizeof(struct radeon_vm), GFP_KERNEL);
+	if (new_vm == NULL)
+		return -ENOMEM;
+
+	/* Initialize the VM context */
+	radeon_vm_init(rdev, new_vm);
+	/* About to reference VM manager, lock must be acquired */
+#ifndef RADEON_KFD_SKIP_ERRORS
+	mutex_lock(&rdev->vm_manager.lock);
+	/* Allocate the page directory and table */
+	ret = radeon_vm_alloc_pt(rdev, new_vm);
+	/* Release the VM manager lock */
+	mutex_unlock(&rdev->vm_manager.lock);
+#endif
+
+	if (ret != 0) {
+		/* Undo everything related to the new VM context */
+		radeon_vm_fini(rdev, new_vm);
+		kfree(new_vm);
+		new_vm = NULL;
+	}
+
+	*vm = (void *) new_vm;
+
+	return ret;
+}
+
+/*
+ * Destroys a VM context of HSA process
+ */
+static void destroy_process_vm(struct kgd_dev *kgd, void *vm)
+{
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	struct radeon_vm *rvm = (struct radeon_vm *) vm;
+
+	BUG_ON(kgd == NULL);
+	BUG_ON(vm == NULL);
+
+	/* Release the VM context */
+	radeon_vm_fini(rdev, rvm);
+	kfree(vm);
+}
+
+static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem)
+{
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	struct radeon_vm *rvm = (struct radeon_vm *) vm;
+	int ret;
+	struct radeon_bo_va *bo_va;
+	struct radeon_bo *bo;
+
+	BUG_ON(kgd == NULL);
+	BUG_ON(va == 0);
+	BUG_ON(size == 0);
+	BUG_ON(vm == NULL);
+	BUG_ON(mem == NULL);
+
+	*mem = kzalloc(sizeof(struct kgd_mem), GFP_KERNEL);
+
+	/* Allocate the physical memory on the GPU */
+	ret = radeon_bo_create(rdev, size, PAGE_SIZE, false,
+				RADEON_GEM_DOMAIN_VRAM,
+				RADEON_GEM_NO_BACKING_STORE, NULL, &bo);
+
+	if (ret != 0)
+		return ret;
+
+	/* Pin bo */
+	radeon_bo_reserve(bo, true);
+	ret = radeon_bo_pin(bo, RADEON_GEM_DOMAIN_VRAM, NULL);
+	radeon_bo_unreserve(bo);
+	ret = 0;
+	if (ret != 0) {
+		ret = -EINVAL;
+		goto err_pin;
+	}
+
+	/* Add the allocation to the VM context */
+	bo_va = radeon_vm_bo_add(rdev, rvm, bo);
+	if (bo_va == NULL) {
+		ret = -EINVAL;
+		goto err_vmadd;
+	}
+
+	/* Set virtual address for the allocation */
+	ret = radeon_vm_bo_set_addr(rdev, bo_va, va, RADEON_VM_PAGE_READABLE | RADEON_VM_PAGE_WRITEABLE);
+	if (ret != 0)
+		goto err_vmsetaddr;
+
+#ifndef RADEON_KFD_SKIP_ERRORS
+	/* About to refernce VM manager, lock must be acquired */
+	mutex_lock(&rdev->vm_manager.lock);
+#endif
+	mutex_lock(&rvm->mutex);
+
+#ifndef RADEON_KFD_SKIP_ERRORS
+	/* Update the page tables, so the GPU could start using the allocation */
+	ret = radeon_vm_bo_update(rdev, rvm, bo, &bo->tbo.mem);
+#endif
+
+	mutex_unlock(&rvm->mutex);
+#ifndef RADEON_KFD_SKIP_ERRORS
+	mutex_unlock(&rdev->vm_manager.lock);
+#endif
+
+	if (ret != 0)
+		goto err_vmsetaddr;
+
+	/* Wait for the page table update to complete. */
+	radeon_fence_wait(rvm->fence, true);
+
+#ifndef RADEON_KFD_SKIP_ERRORS
+	(*mem)->bo = bo;
+	(*mem)->bo_va = bo_va;
+	(*mem)->domain = RADEON_GEM_DOMAIN_VRAM;
+#endif
+	return 0;
+
+err_vmsetaddr:
+	radeon_vm_bo_rmv(rdev, bo_va);
+err_vmadd:
+	radeon_bo_unpin(bo);
+err_pin:
+	radeon_bo_unref(&bo);
+	kfree(*mem);
+	return ret;
+}
+
+/* Destroys the GPU allocation and frees the kgd_mem structure */
+static void destroy_process_gpumem(struct kgd_dev *kgd, struct kgd_mem *mem)
+{
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+
+	BUG_ON(kgd == NULL);
+	BUG_ON(mem == NULL);
+
+#ifndef RADEON_KFD_SKIP_ERRORS
+	radeon_vm_bo_rmv(rdev, mem->bo_va);
+	radeon_bo_reserve(mem->bo, true);
+	radeon_bo_unpin(mem->bo);
+	radeon_bo_unreserve(mem->bo);
+	radeon_bo_unref(&mem->bo);
+#endif
+	kfree(mem);
+}
+
+static uint32_t get_process_page_dir(void *vm)
+{
+	struct radeon_vm *rvm = (struct radeon_vm *) vm;
+
+	BUG_ON(vm == NULL);
+
+	return rvm->pd_gpu_addr >> RADEON_GPU_PAGE_SHIFT;
+}
+
+static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm, int fd, uint32_t handle, struct kgd_mem **mem)
+{
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	struct radeon_vm *rvm = (struct radeon_vm *) vm;
+	int ret;
+	struct radeon_bo_va *bo_va;
+	struct radeon_bo *bo;
+	struct file *filp;
+	struct drm_gem_object *gem_obj;
+
+	BUG_ON(kgd == NULL);
+	BUG_ON(va == 0);
+	BUG_ON(vm == NULL);
+	BUG_ON(mem == NULL);
+
+	*mem = kzalloc(sizeof(struct kgd_mem), GFP_KERNEL);
+	if (!*mem)
+		return -ENOMEM;
+
+	/* Translate fd to file */
+	rcu_read_lock();
+	filp = fcheck(fd);
+	rcu_read_unlock();
+
+	BUG_ON(filp == NULL);
+
+	/* Get object by handle*/
+	gem_obj = drm_gem_object_lookup(rdev->ddev, filp->private_data, handle);
+	BUG_ON(gem_obj == NULL);
+
+	/* No need to increment GEM refcount*/
+	drm_gem_object_unreference(gem_obj);
+
+	bo = gem_to_radeon_bo(gem_obj);
+
+	/* Inc TTM refcount*/
+	ttm_bo_reference(&bo->tbo);
+
+	/* Pin bo */
+	radeon_bo_reserve(bo, true);
+	ret = radeon_bo_pin(bo, RADEON_GEM_DOMAIN_VRAM, NULL);
+	radeon_bo_unreserve(bo);
+	ret = 0;
+	if (ret != 0) {
+		ret = -EINVAL;
+		goto err_pin;
+	}
+
+	/* Add the allocation to the VM context */
+	bo_va = radeon_vm_bo_add(rdev, rvm, bo);
+	if (bo_va == NULL) {
+		ret = -EINVAL;
+		goto err_vmadd;
+	}
+
+	/* Set virtual address for the allocation */
+	ret = radeon_vm_bo_set_addr(rdev, bo_va, va, RADEON_VM_PAGE_READABLE | RADEON_VM_PAGE_WRITEABLE);
+	if (ret != 0)
+		goto err_vmsetaddr;
+
+#ifndef RADEON_KFD_SKIP_ERRORS
+	/* About to refernce VM manager, lock must be acquired */
+	mutex_lock(&rdev->vm_manager.lock);
+#endif
+	mutex_lock(&rvm->mutex);
+
+#ifndef RADEON_KFD_SKIP_ERRORS
+	/* Update the page tables, so the GPU could start using the allocation */
+	ret = radeon_vm_bo_update(rdev, rvm, bo, &bo->tbo.mem);
+#endif
+
+	mutex_unlock(&rvm->mutex);
+#ifndef RADEON_KFD_SKIP_ERRORS
+	mutex_unlock(&rdev->vm_manager.lock);
+#endif
+
+	if (ret != 0)
+		goto err_vmsetaddr;
+
+	/* Wait for the page table update to complete. */
+	radeon_fence_wait(rvm->fence, true);
+
+#ifndef RADEON_KFD_SKIP_ERRORS
+	(*mem)->bo = bo;
+	(*mem)->bo_va = bo_va;
+	(*mem)->domain = RADEON_GEM_DOMAIN_VRAM;
+#endif
+	return 0;
+
+err_vmsetaddr:
+	radeon_vm_bo_rmv(rdev, bo_va);
+err_vmadd:
+	radeon_bo_unpin(bo);
+err_pin:
+	radeon_bo_unref(&bo);
+	kfree(*mem);
+	return ret;
+
 }
 
 static inline struct radeon_device *get_radeon_device(struct kgd_dev *kgd)
