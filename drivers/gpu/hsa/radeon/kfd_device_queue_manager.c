@@ -1002,7 +1002,7 @@ int fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value, unsig
 static int destroy_sdma_queues(struct device_queue_manager *dqm, unsigned int sdma_engine)
 {
 	return pm_send_unmap_queue(&dqm->packets, KFD_QUEUE_TYPE_SDMA,
-			KFD_PRERMPT_TYPE_FILTER_ALL_QUEUES, 0, false, sdma_engine);
+			KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES, 0, false, sdma_engine);
 }
 
 static int destroy_queues_cpsch(struct device_queue_manager *dqm)
@@ -1020,7 +1020,7 @@ static int destroy_queues_cpsch(struct device_queue_manager *dqm)
 	destroy_sdma_queues(dqm, 1);
 
 	retval = pm_send_unmap_queue(&dqm->packets, KFD_QUEUE_TYPE_COMPUTE,
-			KFD_PRERMPT_TYPE_FILTER_ALL_QUEUES, 0, false, 0);
+			KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES, 0, false, 0);
 	if (retval != 0)
 		goto out;
 

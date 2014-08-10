@@ -441,11 +441,11 @@ int pm_send_unmap_queue(struct packet_manager *pm, enum kfd_queue_type type,
 	    packet->bitfields2.num_queues = 1;
 	    packet->bitfields3b.doorbell_offset0 = filter_param;
 	    break;
-	case KFD_PRERMPT_TYPE_FILTER_BY_PASID:
+	case KFD_PREEMPT_TYPE_FILTER_BY_PASID:
 	    packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_pasid_queues;
 	    packet->bitfields3a.pasid = filter_param;
 	    break;
-	case KFD_PRERMPT_TYPE_FILTER_ALL_QUEUES:
+	case KFD_PREEMPT_TYPE_FILTER_ALL_QUEUES:
 	    packet->bitfields2.queue_sel = queue_sel__mes_unmap_queues__perform_request_on_all_active_queues;
 	    break;
 	default:
