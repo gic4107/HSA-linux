@@ -60,7 +60,7 @@ static void pm_calc_rlib_size(struct packet_manager *pm, unsigned int *rlib_size
 
 	/* check if there is over subscription*/
 	*over_subscription = false;
-	if ((process_count >= VMID_PER_DEVICE) ||
+	if ((process_count > VMID_PER_DEVICE) ||
 			queue_count > PIPE_PER_ME_CP_SCHEDULING * QUEUES_PER_PIPE) {
 		*over_subscription = true;
 		pr_debug("kfd: over subscribed runlist\n");
@@ -122,6 +122,8 @@ static int pm_create_runlist(struct packet_manager *pm, uint32_t *buffer, uint64
 static int pm_create_map_process(struct packet_manager *pm, uint32_t *buffer, struct qcm_process_device *qpd)
 {
 	struct pm4_map_process *packet;
+	struct queue *cur;
+	uint32_t num_queues;
 	BUG_ON(!pm || !buffer || !qpd);
 
 	packet = (struct pm4_map_process *)buffer;
@@ -132,11 +134,16 @@ static int pm_create_map_process(struct packet_manager *pm, uint32_t *buffer, st
 
 	packet->header.u32all = build_pm4_header(IT_MAP_PROCESS, sizeof(struct pm4_map_process));
 	packet->bitfields2.diq_enable = (qpd->is_debug) ? 1 : 0;
+	packet->bitfields2.process_quantum = 1;
 	packet->bitfields2.pasid = qpd->pqm->process->pasid;
 	packet->bitfields3.page_table_base = qpd->page_table_base;
 	packet->bitfields10.gds_size = qpd->gds_size;
 	packet->bitfields10.num_gws = qpd->num_gws;
 	packet->bitfields10.num_oac = qpd->num_oac;
+	num_queues = 0;
+	list_for_each_entry(cur, &qpd->queues_list, list)
+		num_queues++;
+	packet->bitfields10.num_queues = num_queues;
 
 	packet->sh_mem_config = qpd->sh_mem_config;
 	packet->sh_mem_bases = qpd->sh_mem_bases;

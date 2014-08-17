@@ -147,7 +147,7 @@ struct pm4_map_process {
 			uint32_t pasid:16;
 			uint32_t reserved1:8;
 			uint32_t diq_enable:1;
-			uint32_t reserved2:7;
+			uint32_t process_quantum:7;
 		} bitfields2;
 		uint32_t ordinal2;
 	};
