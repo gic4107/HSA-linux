@@ -554,6 +554,15 @@ static int init_pipelines(struct device_queue_manager *dqm,
 	return 0;
 }
 
+static void init_interrupts(struct device_queue_manager *dqm)
+{
+	unsigned int i;
+
+	BUG_ON(dqm == NULL);
+
+	for (i = 0 ; i < get_pipes_num(dqm) ; i++)
+		kfd2kgd->init_interrupts(dqm->dev->kgd, i);
+}
 
 static int init_sdma_engines(struct device_queue_manager *dqm)
 {
@@ -623,6 +632,7 @@ static void uninitialize_nocpsch(struct device_queue_manager *dqm)
 
 static int start_nocpsch(struct device_queue_manager *dqm)
 {
+	init_interrupts(dqm);
 	return 0;
 }
 
@@ -778,6 +788,8 @@ static int start_cpsch(struct device_queue_manager *dqm)
 
 	dqm->fence_addr = dqm->fence_mem->cpu_ptr;
 	dqm->fence_gpu_addr = dqm->fence_mem->gpu_addr;
+
+	init_interrupts(dqm);
 
 	init_sdma_engines(dqm);
 
