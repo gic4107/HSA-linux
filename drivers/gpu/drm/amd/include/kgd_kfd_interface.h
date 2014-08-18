@@ -176,16 +176,19 @@ struct kfd2kgd_calls {
 	int (*init_memory)(struct kgd_dev *kgd);
 	int (*init_pipeline)(struct kgd_dev *kgd, uint32_t pipe_id,
 				uint32_t hpd_size, uint64_t hpd_gpu_addr);
-
+	int (*init_sdma_engines)(struct kgd_dev *kgd);
 	int (*hqd_load)(struct kgd_dev *kgd, void *mqd, uint32_t pipe_id,
 			uint32_t queue_id, uint32_t __user *wptr);
-
+	int (*hqd_sdma_load)(struct kgd_dev *kgd, void *mqd);
 	bool (*hqd_is_occupies)(struct kgd_dev *kgd, uint64_t queue_address,
 				uint32_t pipe_id, uint32_t queue_id);
 
 	int (*hqd_destroy)(struct kgd_dev *kgd, uint32_t reset_type,
 				unsigned int timeout, uint32_t pipe_id,
 				uint32_t queue_id);
+	bool (*hqd_sdma_is_occupies)(struct kgd_dev *kgd, void *mqd);
+	int (*hqd_sdma_destroy)(struct kgd_dev *kgd, void *mqd,
+				unsigned int timeout);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
