@@ -848,6 +848,7 @@ static int create_kernel_queue_cpsch(struct device_queue_manager *dqm, struct ke
 	list_add(&kq->list, &qpd->priv_queue_list);
 	dqm->queue_count++;
 	qpd->is_debug = true;
+	execute_queues_cpsch(dqm, false);
 	mutex_unlock(&dqm->lock);
 
 	return 0;
@@ -864,6 +865,7 @@ static void destroy_kernel_queue_cpsch(struct device_queue_manager *dqm, struct 
 	list_del(&kq->list);
 	dqm->queue_count--;
 	qpd->is_debug = false;
+	execute_queues_cpsch(dqm, false);
 	mutex_unlock(&dqm->lock);
 }
 
