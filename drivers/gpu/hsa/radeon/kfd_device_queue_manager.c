@@ -987,14 +987,15 @@ static int execute_queues_cpsch(struct device_queue_manager *dqm, bool lock)
 	int retval;
 	BUG_ON(!dqm);
 
-	retval = destroy_queues_cpsch(dqm, false, lock);
-	if (retval != 0) {
-		pr_err("kfd: the cp might be in an unrecoverable state due to an unsuccesful queues premption");
-		return retval;
-	}
-
 	if (lock)
 		mutex_lock(&dqm->lock);
+
+	retval = destroy_queues_cpsch(dqm, false, NULL);
+	if (retval != 0) {
+		pr_err("kfd: the cp might be in an unrecoverable state due to an unsuccesful queues premption");
+		goto out;
+	}
+
 	if (dqm->queue_count <= 0 || dqm->processes_count <= 0) {
 		retval = 0;
 		goto out;
@@ -1022,9 +1023,10 @@ static int unmap_queue(struct device_queue_manager *dqm, struct queue *q)
 {
 	int retval;
 
-	retval = pm_send_unmap_queue(&dqm->packets, KFD_QUEUE_TYPE_COMPUTE,
+	/* sdma engine id relevant only in case queue type is sdma*/
+	retval = pm_send_unmap_queue(&dqm->packets, q->properties.type,
 			KFD_PREEMPT_TYPE_FILTER_SINGLE_QUEUE,
-			q->properties.doorbell_off, false, 0);
+			q->properties.doorbell_off, false, q->properties.sdma_engine_id);
 	if (retval != 0) {
 		pr_err("kfd: couldn't preempt queue\n");
 		return retval;
@@ -1079,7 +1081,14 @@ static int destroy_queue_cpsch(struct device_queue_manager *dqm, struct qcm_proc
 	if (retval != 0)
 		goto failed;
 
-	execute_queues_cpsch(dqm, false);
+	/*
+	 * If we're unmaps queue while the CP executes chained runlist (over subscribed
+	 * runlist) than we break the runlist execution.
+	 * In order to bypass it we should publish new runlist.
+	 */
+	if ((dqm->processes_count >= VMID_PER_DEVICE) ||
+		dqm->queue_count >= PIPE_PER_ME_CP_SCHEDULING * QUEUES_PER_PIPE)
+			execute_queues_cpsch(dqm, false);
 
 	mqd->uninit_mqd(mqd, q->mqd, q->mqd_mem_obj);
 
