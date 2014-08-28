@@ -331,6 +331,9 @@ static void destroy_event(struct kfd_process *p, struct kfd_event *ev)
 		p->signal_event_count--;
 	}
 
+	/* Abandon the list of waiters. Individual waiting threads will clean up their own data.*/
+	list_del(&ev->waiters);
+
 	hash_del(&ev->events);
 	kfree(ev);
 }
