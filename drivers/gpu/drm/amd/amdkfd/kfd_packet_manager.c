@@ -166,7 +166,7 @@ static int pm_create_map_process(struct packet_manager *pm, uint32_t *buffer,
 	num_queues = 0;
 	list_for_each_entry(cur, &qpd->queues_list, list)
 		num_queues++;
-	packet->bitfields10.num_queues = num_queues;
+	packet->bitfields10.num_queues = (qpd->is_debug) ? 0 : num_queues;
 
 	packet->sh_mem_config = qpd->sh_mem_config;
 	packet->sh_mem_bases = qpd->sh_mem_bases;
@@ -222,7 +222,7 @@ static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer, stru
 			q->properties.doorbell_off;
 			
 	packet->mes_map_queues_ordinals[0].bitfields3.is_static = 
-			use_static ? 1 : 0;
+			(use_static == true) ? 1 : 0;
 			
 	packet->mes_map_queues_ordinals[0].mqd_addr_lo =
 			lower_32_bits(q->gart_mqd_addr);
