@@ -143,7 +143,7 @@ static int pm_create_map_process(struct packet_manager *pm, uint32_t *buffer, st
 	num_queues = 0;
 	list_for_each_entry(cur, &qpd->queues_list, list)
 		num_queues++;
-	packet->bitfields10.num_queues = num_queues;
+	packet->bitfields10.num_queues = (qpd->is_debug) ? 0 : num_queues;
 
 	packet->sh_mem_config = qpd->sh_mem_config;
 	packet->sh_mem_bases = qpd->sh_mem_bases;
@@ -190,7 +190,7 @@ static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer, stru
 	}
 
 	packet->mes_map_queues_ordinals[0].bitfields3.doorbell_offset = q->properties.doorbell_off;
-	packet->mes_map_queues_ordinals[0].bitfields3.is_static = use_static ? 1 : 0;
+	packet->mes_map_queues_ordinals[0].bitfields3.is_static = (use_static == true) ? 1 : 0;
 	packet->mes_map_queues_ordinals[0].mqd_addr_lo = lower_32(q->gart_mqd_addr);
 	packet->mes_map_queues_ordinals[0].mqd_addr_hi = upper_32(q->gart_mqd_addr);
 	packet->mes_map_queues_ordinals[0].wptr_addr_lo = lower_32((uint64_t)q->properties.write_ptr);
