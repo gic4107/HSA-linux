@@ -677,4 +677,6 @@ int kfd_event_create(struct file *devkfd, struct kfd_process *p,
 		     uint32_t *event_id, void __user **event_trigger_address, uint32_t *event_trigger_data);
 int kfd_event_destroy(struct kfd_process *p, uint32_t event_id);
 
+void radeon_flush_tlb(struct kfd_dev *dev, uint32_t pasid);
+
 #endif
