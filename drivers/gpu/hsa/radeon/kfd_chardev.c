@@ -37,6 +37,7 @@
 #include <asm/processor.h>
 #include "kfd_device_queue_manager.h"
 #include "kfd_dbgmgr.h"
+#include "cik_regs.h"
 
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
 static int kfd_open(struct inode *, struct file *);
@@ -814,6 +815,8 @@ kfd_ioctl_create_vidmem(struct file *filep, struct kfd_process *p, void __user *
 	if (err != 0)
 		goto gpuvm_alloc_failed;
 
+	radeon_flush_tlb(dev, p->pasid);
+
 	idr_handle = radeon_kfd_process_device_create_obj_handle(pdd, mem);
 	if (idr_handle < 0)
 		goto handle_creation_failed;
@@ -866,6 +869,8 @@ kfd_ioctl_destroy_vidmem(struct file *filep, struct kfd_process *p, void __user 
 
 	radeon_kfd_process_device_remove_obj_handle(pdd, GET_IDR_HANDLE(args.handle));
 	radeon_kfd_process_gpuvm_free(dev, mem);
+
+	radeon_flush_tlb(dev, p->pasid);
 
 	mutex_unlock(&p->mutex);
 	return 0;
