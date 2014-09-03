@@ -107,8 +107,8 @@ static void init_process_memory(struct device_queue_manager *dqm, struct qcm_pro
 			APE1_MTYPE(MTYPE_NONCACHED);
 		qpd->sh_mem_ape1_limit = 0;
 		qpd->sh_mem_ape1_base = 0;
-		qpd->page_table_base = kfd2kgd->get_process_page_dir(pdd->vm);
 	}
+	qpd->page_table_base = kfd2kgd->get_process_page_dir(pdd->vm);
 
 	if (qpd->pqm->process->is_32bit_user_mode) {
 		temp = get_sh_mem_bases_32(qpd->pqm->process, dqm->dev);
