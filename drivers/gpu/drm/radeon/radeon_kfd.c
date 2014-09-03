@@ -25,6 +25,7 @@
 #include <drm/drmP.h>
 #include "radeon.h"
 #include <linux/fdtable.h>
+#include "cikd.h"
 
 struct kgd_mem {
 	struct radeon_bo *bo;
@@ -61,6 +62,10 @@ static void unlock_grbm_gfx_idx(struct kgd_dev *kgd);
 static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd);
 static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm, int fd, uint32_t handle, struct kgd_mem **mem);
 
+static bool read_atc_vmid_pasid_mapping_reg_valid_field(struct kgd_dev *kgd, uint8_t vmid);
+static uint16_t read_atc_vmid_pasid_mapping_reg_pasid_field(struct kgd_dev *kgd, uint8_t vmid);
+static void write_vmid_invalidate_request(struct kgd_dev *kgd, uint8_t vmid);
+
 static const struct kfd2kgd_calls kfd2kgd = {
 	.allocate_mem = allocate_mem,
 	.free_mem = free_mem,
@@ -81,6 +86,9 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.unlock_grbm_gfx_idx = unlock_grbm_gfx_idx,
 	.get_max_engine_clock_in_mhz = get_max_engine_clock_in_mhz,
 	.open_graphic_handle = open_graphic_handle,
+	.read_atc_vmid_pasid_mapping_reg_pasid_field = read_atc_vmid_pasid_mapping_reg_pasid_field,
+	.read_atc_vmid_pasid_mapping_reg_valid_field = read_atc_vmid_pasid_mapping_reg_valid_field,
+	.write_vmid_invalidate_request = write_vmid_invalidate_request
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -562,4 +570,26 @@ err_pin:
 	kfree(*mem);
 	return ret;
 
+}
+
+static bool read_atc_vmid_pasid_mapping_reg_valid_field(struct kgd_dev *kgd, uint8_t vmid)
+{
+	uint32_t reg;
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	reg = RREG32(ATC_VMID0_PASID_MAPPING + vmid*4);
+	return reg & ATC_VMID_PASID_MAPPING_VALID_MASK;
+}
+
+static uint16_t read_atc_vmid_pasid_mapping_reg_pasid_field(struct kgd_dev *kgd, uint8_t vmid)
+{
+	uint32_t reg;
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	reg = RREG32(ATC_VMID0_PASID_MAPPING + vmid*4);
+	return reg & ATC_VMID_PASID_MAPPING_PASID_MASK;
+}
+
+static void write_vmid_invalidate_request(struct kgd_dev *kgd, uint8_t vmid)
+{
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	return WREG32(VM_INVALIDATE_REQUEST, 1 << vmid);
 }

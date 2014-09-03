@@ -2019,4 +2019,10 @@
 /* UVD CTX indirect */
 #define	UVD_CGC_MEM_CTRL				0xC0
 
+#define ATC_VMID0_PASID_MAPPING                                0x339Cu
+#define        ATC_VMID_PASID_MAPPING_PASID_MASK               (0xFFFF)
+#define        ATC_VMID_PASID_MAPPING_PASID_SHIFT              0
+#define        ATC_VMID_PASID_MAPPING_VALID_MASK               (0x1 << 31)
+#define        ATC_VMID_PASID_MAPPING_VALID_SHIFT              31
+
 #endif

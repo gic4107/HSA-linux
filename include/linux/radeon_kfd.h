@@ -100,6 +100,12 @@ struct kfd2kgd_calls {
 	uint32_t (*get_max_engine_clock_in_mhz)(struct kgd_dev *kgd);
 
 	int (*open_graphic_handle)(struct kgd_dev *kgd, uint64_t va, void *vm, int fd, uint32_t handle, struct kgd_mem **mem);
+
+	bool (*read_atc_vmid_pasid_mapping_reg_valid_field)(struct kgd_dev *kgd, uint8_t vmid);
+	uint16_t (*read_atc_vmid_pasid_mapping_reg_pasid_field)(struct kgd_dev *kgd, uint8_t vmid);
+	void (*write_vmid_invalidate_request)(struct kgd_dev *kgd, uint8_t vmid);
+
+
 };
 
 bool kgd2kfd_init(unsigned interface_version,
