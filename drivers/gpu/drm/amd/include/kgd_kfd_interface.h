@@ -202,6 +202,15 @@ struct kfd2kgd_calls {
 	uint32_t (*address_watch_get_offset)(struct kgd_dev *kgd,
 					unsigned int watch_point_id,
 					unsigned int reg_offset);
+	bool (*read_atc_vmid_pasid_mapping_reg_valid_field)(
+					struct kgd_dev *kgd,
+					uint8_t vmid);
+	uint16_t (*read_atc_vmid_pasid_mapping_reg_pasid_field)(
+					struct kgd_dev *kgd,
+					uint8_t vmid);
+	void (*write_vmid_invalidate_request)(struct kgd_dev *kgd,
+					uint8_t vmid);
+
 };
 
 bool kgd2kfd_init(unsigned interface_version,

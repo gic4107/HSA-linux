@@ -117,6 +117,10 @@ static uint32_t kgd_address_watch_get_offset(struct kgd_dev *kgd,
 					unsigned int watch_point_id,
 					unsigned int reg_offset);
 
+static bool read_atc_vmid_pasid_mapping_reg_valid_field(struct kgd_dev *kgd, uint8_t vmid);
+static uint16_t read_atc_vmid_pasid_mapping_reg_pasid_field(struct kgd_dev *kgd, uint8_t vmid);
+static void write_vmid_invalidate_request(struct kgd_dev *kgd, uint8_t vmid);
+
 static const struct kfd2kgd_calls kfd2kgd = {
 	.init_sa_manager = init_sa_manager,
 	.fini_sa_manager = fini_sa_manager,
@@ -146,7 +150,10 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.address_watch_disable = kgd_address_watch_disable,
 	.address_watch_execute = kgd_address_watch_execute,
 	.wave_control_execute = kgd_wave_control_execute,
-	.address_watch_get_offset = kgd_address_watch_get_offset
+	.address_watch_get_offset = kgd_address_watch_get_offset,
+	.read_atc_vmid_pasid_mapping_reg_pasid_field = read_atc_vmid_pasid_mapping_reg_pasid_field,
+	.read_atc_vmid_pasid_mapping_reg_valid_field = read_atc_vmid_pasid_mapping_reg_valid_field,
+	.write_vmid_invalidate_request = write_vmid_invalidate_request
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -657,8 +664,8 @@ static int kgd_set_pasid_vmid_mapping(struct kgd_dev *kgd, unsigned int pasid,
 	 * the SW cleared it.
 	 * So the protocol is to always wait & clear.
 	 */
-	uint32_t pasid_mapping = (pasid == 0) ? 0 :
-				(uint32_t)pasid | ATC_VMID_PASID_MAPPING_VALID;
+	uint32_t pasid_mapping = (pasid == 0) ? 0 : (uint32_t)pasid | 
+					ATC_VMID_PASID_MAPPING_VALID_MASK;
 
 	write_register(kgd, ATC_VMID0_PASID_MAPPING + vmid*sizeof(uint32_t),
 			pasid_mapping);
@@ -1059,4 +1066,26 @@ static uint32_t kgd_address_watch_get_offset(struct kgd_dev *kgd,
 					unsigned int reg_offset)
 {
 	return watchRegs[watch_point_id * ADDRESS_WATCH_REG_MAX + reg_offset];
+}
+
+static bool read_atc_vmid_pasid_mapping_reg_valid_field(struct kgd_dev *kgd, uint8_t vmid)
+{
+	uint32_t reg;
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	reg = RREG32(ATC_VMID0_PASID_MAPPING + vmid*4);
+	return reg & ATC_VMID_PASID_MAPPING_VALID_MASK;
+}
+
+static uint16_t read_atc_vmid_pasid_mapping_reg_pasid_field(struct kgd_dev *kgd, uint8_t vmid)
+{
+	uint32_t reg;
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	reg = RREG32(ATC_VMID0_PASID_MAPPING + vmid*4);
+	return reg & ATC_VMID_PASID_MAPPING_PASID_MASK;
+}
+
+static void write_vmid_invalidate_request(struct kgd_dev *kgd, uint8_t vmid)
+{
+	struct radeon_device *rdev = (struct radeon_device *) kgd;
+	return WREG32(VM_INVALIDATE_REQUEST, 1 << vmid);
 }
