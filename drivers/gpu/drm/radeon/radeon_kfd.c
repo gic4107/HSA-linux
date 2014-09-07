@@ -29,8 +29,6 @@
 #include "cik_reg.h"
 #include "radeon_kfd.h"
 
-#define RADEON_KFD_SKIP_ERRORS 1
-
 #define CIK_PIPE_PER_MEC	(4)
 
 static const uint32_t watchRegs[MAX_WATCH_ADDRESSES * ADDRESS_WATCH_REG_MAX] = {
@@ -41,9 +39,17 @@ static const uint32_t watchRegs[MAX_WATCH_ADDRESSES * ADDRESS_WATCH_REG_MAX] = {
 };
 
 struct kgd_mem {
-	struct radeon_sa_bo *sa_bo;
-	uint64_t gpu_addr;
-	void *ptr;
+	union {
+		struct {
+			struct radeon_sa_bo *sa_bo;
+			uint64_t gpu_addr;
+			uint32_t *ptr;
+		} data1;
+		struct {
+			struct radeon_bo *bo;
+			struct radeon_bo_va *bo_va;
+		} data2;
+	};
 };
 
 static int init_sa_manager(struct kgd_dev *kgd, unsigned int size);
@@ -289,15 +295,15 @@ static int allocate_mem(struct kgd_dev *kgd, size_t size, size_t alignment,
 	if ((*mem) == NULL)
 		return -ENOMEM;
 
-	r = radeon_sa_bo_new(rdev, &rdev->kfd_bo, &(*mem)->sa_bo, size,
-				alignment);
+	r = radeon_sa_bo_new(rdev, &rdev->kfd_bo, &(*mem)->data1.sa_bo, 
+				size, alignment);
 	if (r) {
 		dev_err(rdev->dev, "failed to get memory for kfd (%d)\n", r);
 		return r;
 	}
 
-	(*mem)->ptr = radeon_sa_bo_cpu_addr((*mem)->sa_bo);
-	(*mem)->gpu_addr = radeon_sa_bo_gpu_addr((*mem)->sa_bo);
+	(*mem)->data1.ptr = radeon_sa_bo_cpu_addr((*mem)->data1.sa_bo);
+	(*mem)->data1.gpu_addr = radeon_sa_bo_gpu_addr((*mem)->data1.sa_bo);
 
 	return 0;
 }
@@ -308,7 +314,7 @@ static void free_mem(struct kgd_dev *kgd, struct kgd_mem *mem)
 
 	BUG_ON(kgd == NULL);
 
-	radeon_sa_bo_free(rdev, &mem->sa_bo, NULL);
+	radeon_sa_bo_free(rdev, &mem->data1.sa_bo, NULL);
 	kfree(mem);
 }
 
@@ -352,17 +358,8 @@ static int create_process_vm(struct kgd_dev *kgd, void **vm)
 	if (new_vm == NULL)
 		return -ENOMEM;
 
-	/* Initialize the VM context */
-	radeon_vm_init(rdev, new_vm);
-	/* About to reference VM manager, lock must be acquired */
-#ifndef RADEON_KFD_SKIP_ERRORS
-	mutex_lock(&rdev->vm_manager.lock);
-	/* Allocate the page directory and table */
-	ret = radeon_vm_alloc_pt(rdev, new_vm);
-	/* Release the VM manager lock */
-	mutex_unlock(&rdev->vm_manager.lock);
-#endif
-
+	/* Initialize the VM context, allocate the page directory and zero it */
+	ret = radeon_vm_init(rdev, new_vm);
 	if (ret != 0) {
 		/* Undo everything related to the new VM context */
 		radeon_vm_fini(rdev, new_vm);
@@ -407,7 +404,7 @@ static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, 
 
 	*mem = kzalloc(sizeof(struct kgd_mem), GFP_KERNEL);
 
-	/* Allocate the physical memory on the GPU */
+	/* Allocate the memory on the GPU */
 	ret = radeon_bo_create(rdev, size, PAGE_SIZE, false,
 				RADEON_GEM_DOMAIN_VRAM,
 				RADEON_GEM_NO_BACKING_STORE, NULL, &bo);
@@ -432,26 +429,19 @@ static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, 
 		goto err_vmadd;
 	}
 
-	/* Set virtual address for the allocation */
+	/* Set virtual address for the allocation, allocate PTs, if needed, and zero them */
 	ret = radeon_vm_bo_set_addr(rdev, bo_va, va, RADEON_VM_PAGE_READABLE | RADEON_VM_PAGE_WRITEABLE);
 	if (ret != 0)
 		goto err_vmsetaddr;
 
-#ifndef RADEON_KFD_SKIP_ERRORS
-	/* About to refernce VM manager, lock must be acquired */
-	mutex_lock(&rdev->vm_manager.lock);
-#endif
 	mutex_lock(&rvm->mutex);
 
-#ifndef RADEON_KFD_SKIP_ERRORS
-	/* Update the page tables, so the GPU could start using the allocation */
-	ret = radeon_vm_bo_update(rdev, rvm, bo, &bo->tbo.mem);
-#endif
+	/* Update the page tables  */
+	ret = radeon_vm_bo_update(rdev, bo_va, &bo->tbo.mem);
+	/* Update the page directory */
+	ret = radeon_vm_update_page_directory(rdev, rvm);
 
 	mutex_unlock(&rvm->mutex);
-#ifndef RADEON_KFD_SKIP_ERRORS
-	mutex_unlock(&rdev->vm_manager.lock);
-#endif
 
 	if (ret != 0)
 		goto err_vmsetaddr;
@@ -459,11 +449,8 @@ static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, 
 	/* Wait for the page table update to complete. */
 	radeon_fence_wait(rvm->fence, true);
 
-#ifndef RADEON_KFD_SKIP_ERRORS
-	(*mem)->bo = bo;
-	(*mem)->bo_va = bo_va;
-	(*mem)->domain = RADEON_GEM_DOMAIN_VRAM;
-#endif
+	(*mem)->data2.bo = bo;
+	(*mem)->data2.bo_va = bo_va;
 	return 0;
 
 err_vmsetaddr:
@@ -484,13 +471,14 @@ static void destroy_process_gpumem(struct kgd_dev *kgd, struct kgd_mem *mem)
 	BUG_ON(kgd == NULL);
 	BUG_ON(mem == NULL);
 
-#ifndef RADEON_KFD_SKIP_ERRORS
-	radeon_vm_bo_rmv(rdev, mem->bo_va);
-	radeon_bo_reserve(mem->bo, true);
-	radeon_bo_unpin(mem->bo);
-	radeon_bo_unreserve(mem->bo);
-	radeon_bo_unref(&mem->bo);
-#endif
+	radeon_vm_bo_rmv(rdev, mem->data2.bo_va);
+	mutex_lock(&mem->data2.bo_va->vm->mutex);
+	radeon_vm_clear_freed(rdev, mem->data2.bo_va->vm);
+	mutex_unlock(&mem->data2.bo_va->vm->mutex);
+	radeon_bo_reserve(mem->data2.bo, true);
+	radeon_bo_unpin(mem->data2.bo);
+	radeon_bo_unreserve(mem->data2.bo);
+	radeon_bo_unref(&mem->data2.bo);
 	kfree(mem);
 }
 
@@ -563,33 +551,22 @@ static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm, int f
 	if (ret != 0)
 		goto err_vmsetaddr;
 
-#ifndef RADEON_KFD_SKIP_ERRORS
-	/* About to refernce VM manager, lock must be acquired */
-	mutex_lock(&rdev->vm_manager.lock);
-#endif
 	mutex_lock(&rvm->mutex);
 
-#ifndef RADEON_KFD_SKIP_ERRORS
 	/* Update the page tables, so the GPU could start using the allocation */
-	ret = radeon_vm_bo_update(rdev, rvm, bo, &bo->tbo.mem);
-#endif
+	ret = radeon_vm_bo_update(rdev, bo_va, &bo->tbo.mem);
+	/* Update the page directory */
+	ret = radeon_vm_update_page_directory(rdev, rvm);
 
 	mutex_unlock(&rvm->mutex);
-#ifndef RADEON_KFD_SKIP_ERRORS
-	mutex_unlock(&rdev->vm_manager.lock);
-#endif
-
 	if (ret != 0)
 		goto err_vmsetaddr;
 
 	/* Wait for the page table update to complete. */
 	radeon_fence_wait(rvm->fence, true);
 
-#ifndef RADEON_KFD_SKIP_ERRORS
-	(*mem)->bo = bo;
-	(*mem)->bo_va = bo_va;
-	(*mem)->domain = RADEON_GEM_DOMAIN_VRAM;
-#endif
+	(*mem)->data2.bo = bo;
+	(*mem)->data2.bo_va = bo_va;
 	return 0;
 
 err_vmsetaddr:
