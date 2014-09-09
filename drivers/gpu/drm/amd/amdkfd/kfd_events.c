@@ -58,14 +58,14 @@ struct kfd_event_waiter {
 
 struct signal_page {
 	struct list_head event_pages;	/* kfd_process.signal_event_pages */
-	kfd_signal_slot_t *kernel_address;
-	kfd_signal_slot_t __user *user_address;
+	uint64_t *kernel_address;
+	uint64_t __user *user_address;
 	uint32_t page_index;		/* Index into the mmap aperture. */
 	unsigned int free_slots;
 	unsigned long used_slot_bitmap[0];
 };
 
-#define SLOTS_PER_PAGE (PAGE_SIZE / sizeof(kfd_signal_slot_t))
+#define SLOTS_PER_PAGE (PAGE_SIZE / sizeof(uint64_t))
 #define SLOT_BITMAP_SIZE BITS_TO_LONGS(SLOTS_PER_PAGE)
 #define BITS_PER_PAGE (ilog2(SLOTS_PER_PAGE)+1)
 #define SIGNAL_PAGE_SIZE (sizeof(struct signal_page) + SLOT_BITMAP_SIZE * sizeof(long))
@@ -78,7 +78,7 @@ struct signal_page {
 #define INTERRUPT_DATA_BITS 8
 #define SIGNAL_EVENT_ID_SLOT_SHIFT 0
 
-static kfd_signal_slot_t *page_slots(struct signal_page *page)
+static uint64_t *page_slots(struct signal_page *page)
 {
 	return page->kernel_address;
 }
@@ -186,12 +186,12 @@ allocate_event_notification_slot(struct file *devkfd, struct kfd_process *p,
  * Requires that p->event_mutex is held and p isn't going away.
  * We do this when destroying an event, maybe the event should just store the page pointer.
  */
-struct signal_page *slot_to_page(struct kfd_process *p, kfd_signal_slot_t *slot)
+struct signal_page *slot_to_page(struct kfd_process *p, uint64_t *slot)
 {
 	struct signal_page *page;
 
 	list_for_each_entry(page, &p->signal_event_pages, event_pages) {
-		kfd_signal_slot_t *slots = page_slots(page);
+		uint64_t *slots = page_slots(page);
 
 		if (slot >= slots && slot < slots + SLOTS_PER_PAGE)
 			return page;

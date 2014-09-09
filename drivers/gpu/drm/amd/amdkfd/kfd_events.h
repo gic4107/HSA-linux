@@ -40,8 +40,6 @@
  */
 #define UNSIGNALED_EVENT_SLOT ((uint64_t)-1)
 
-typedef uint64_t kfd_signal_slot_t;
-
 struct kfd_event_waiter;
 struct signal_page;
 
@@ -61,7 +59,7 @@ struct kfd_event {
 	/* Only for signal events. */
 	struct signal_page *signal_page;
 	unsigned int signal_slot_index;
-	kfd_signal_slot_t __user *user_signal_address;
+	uint64_t __user *user_signal_address;
 };
 
 #define KFD_EVENT_TIMEOUT_IMMEDIATE 0
