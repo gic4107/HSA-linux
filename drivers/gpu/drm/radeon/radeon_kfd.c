@@ -422,8 +422,6 @@ static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, 
 	/* Pin bo */
 	radeon_bo_reserve(bo, true);
 	ret = radeon_bo_pin(bo, RADEON_GEM_DOMAIN_VRAM, NULL);
-	radeon_bo_unreserve(bo);
-	ret = 0;
 	if (ret != 0) {
 		ret = -EINVAL;
 		goto err_pin;
