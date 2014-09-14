@@ -111,9 +111,13 @@ static uint32_t compute_sh_mem_bases_64bit(unsigned int top_address_nybble);
 static void init_process_memory(struct device_queue_manager *dqm,
 				struct qcm_process_device *qpd)
 {
+	struct kfd_process_device *pdd;
 	unsigned int temp;
 
 	BUG_ON(!dqm || !qpd);
+
+	pdd = kfd_get_process_device_data(dqm->dev, qpd->pqm->process, 0);
+	BUG_ON(!pdd);
 
 	/* check if sh_mem_config register already configured */
 	if (qpd->sh_mem_config == 0) {
@@ -123,6 +127,7 @@ static void init_process_memory(struct device_queue_manager *dqm,
 			APE1_MTYPE(MTYPE_NONCACHED);
 		qpd->sh_mem_ape1_limit = 0;
 		qpd->sh_mem_ape1_base = 0;
+		qpd->page_table_base = kfd2kgd->get_process_page_dir(pdd->vm);
 	}
 
 	if (qpd->pqm->process->is_32bit_user_mode) {
