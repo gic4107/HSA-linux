@@ -1077,18 +1077,7 @@ static int destroy_queue_cpsch(struct device_queue_manager *dqm, struct qcm_proc
 	list_del(&q->list);
 	dqm->queue_count--;
 
-	retval = unmap_queue(dqm, q);
-	if (retval != 0)
-		goto failed;
-
-	/*
-	 * If we're unmaps queue while the CP executes chained runlist (over subscribed
-	 * runlist) than we break the runlist execution.
-	 * In order to bypass it we should publish new runlist.
-	 */
-	if ((dqm->processes_count >= VMID_PER_DEVICE) ||
-		dqm->queue_count >= PIPE_PER_ME_CP_SCHEDULING * QUEUES_PER_PIPE)
-			execute_queues_cpsch(dqm, false);
+	execute_queues_cpsch(dqm, false);
 
 	mqd->uninit_mqd(mqd, q->mqd, q->mqd_mem_obj);
 
