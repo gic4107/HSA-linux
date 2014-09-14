@@ -905,6 +905,69 @@ static int kfd_ioctl_destroy_vidmem(struct file *filep, struct kfd_process *p,
 	return 0;
 }
 
+static int kfd_ioctl_open_graphic_handle(struct file *filep,
+					struct kfd_process *p,
+					void __user *arg)
+{
+	struct kfd_ioctl_open_graphic_handle_args args;
+	struct kfd_dev *dev;
+	struct kfd_process_device *pdd;
+	void *mem;
+	int idr_handle;
+	long err;
+
+	if (copy_from_user(&args, arg, sizeof(args)))
+		return -EFAULT;
+
+	dev = kfd_device_by_id(args.gpu_id);
+	if (dev == NULL)
+		return -EINVAL;
+
+	mutex_lock(&p->mutex);
+
+	pdd = kfd_bind_process_to_device(dev, p);
+	if (IS_ERR(pdd) < 0) {
+		err = PTR_ERR(pdd);
+		goto bind_process_to_device_failed;
+	}
+
+	err = kfd2kgd->open_graphic_handle(dev->kgd,
+			args.va_addr,
+			(struct kgd_vm *) pdd->vm,
+			args.graphic_device_fd,
+			args.graphic_handle,
+			(struct kgd_mem **) &mem);
+
+	if (err != 0)
+		goto gpuvm_alloc_failed;
+
+	idr_handle = kfd_process_device_create_obj_handle(pdd, mem);
+	if (idr_handle < 0)
+		goto handle_creation_failed;
+
+	args.handle = MAKE_HANDLE(args.gpu_id, idr_handle);
+
+	if (copy_to_user(arg, &args, sizeof(args))) {
+		err = -EFAULT;
+		goto copy_to_usr_failed;
+	}
+
+	mutex_unlock(&p->mutex);
+
+	return 0;
+
+copy_to_usr_failed:
+	kfd_process_device_remove_obj_handle(pdd, idr_handle);
+handle_creation_failed:
+	kfd2kgd->destroy_process_gpumem(dev->kgd, mem);
+gpuvm_alloc_failed:
+bind_process_to_device_failed:
+	mutex_unlock(&p->mutex);
+
+	return err;
+}
+
+
 static long
 kfd_ioctl_create_event(struct file *filp, struct kfd_process *p, void __user *arg)
 {
@@ -1073,6 +1136,9 @@ static long kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_WAIT_EVENTS:
 		err = kfd_ioctl_wait_events(filep, process, (void __user *) arg);
+		break;
+	case KFD_IOC_OPEN_GRAPHIC_HANDLE:
+		err = kfd_ioctl_open_graphic_handle(filep, process, (void __user *)arg);
 		break;
 
 	default:
