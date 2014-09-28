@@ -166,6 +166,8 @@
 #define TCP_WATCH2_CNTL					(0x32A8*4)
 #define TCP_WATCH3_CNTL					(0x32AB*4)
 
+#define CPC_INT_CNTL					0xC2D0
+
 #define CP_HQD_IQ_RPTR					0xC970u
 #define AQL_ENABLE					(1U << 0)
 #define SDMA0_RLC0_RB_CNTL				0xD400u
