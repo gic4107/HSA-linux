@@ -180,7 +180,8 @@ static void kfd_process_wq_release(struct work_struct *work)
 		}
 
 		/* Destroy the GPUVM VM context */
-		kfd2kgd->destroy_process_vm(pdd->dev->kgd, pdd->vm);
+		if (pdd->vm)
+			kfd2kgd->destroy_process_vm(pdd->dev->kgd, pdd->vm);
 
 		kfree(pdd);
 	}
