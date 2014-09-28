@@ -153,6 +153,10 @@
 #define SQ_CMD						0x8DEC
 #define SQ_IND_DATA					0x8DE4
 
+/*
+ * The TCP_WATCHx_xxxx addresses that are shown here are in dwords,
+ * and that's why they are multiplied by 4
+ */
 #define TCP_WATCH0_ADDR_H				(0x32A0*4)
 #define TCP_WATCH1_ADDR_H				(0x32A3*4)
 #define TCP_WATCH2_ADDR_H				(0x32A6*4)
@@ -216,6 +220,40 @@
 #define	SDMA0_CNTL					0xD010
 #define	SDMA1_CNTL					0xD810
 #define	AUTO_CTXSW_ENABLE				(1 << 18)
+
+enum {
+	MAX_TRAPID = 8,		/* 3 bits in the bitfield.  */
+	MAX_WATCH_ADDRESSES = 4
+};
+
+enum {
+	ADDRESS_WATCH_REG_ADDR_HI = 0,
+	ADDRESS_WATCH_REG_ADDR_LO,
+	ADDRESS_WATCH_REG_CNTL,
+	ADDRESS_WATCH_REG_MAX
+};
+
+enum {				/*  not defined in the CI/KV reg file  */
+	ADDRESS_WATCH_REG_CNTL_ATC_BIT = 0x10000000UL,
+	ADDRESS_WATCH_REG_CNTL_DEFAULT_MASK = 0x00FFFFFF,
+	ADDRESS_WATCH_REG_ADDLOW_MASK_EXTENTION = 0x03000000,
+	   /* extend the mask to 26 bits in order to match the low address field. */
+	ADDRESS_WATCH_REG_ADDLOW_SHIFT = 6,
+	ADDRESS_WATCH_REG_ADDHIGH_MASK = 0xFFFF
+};
+
+union TCP_WATCH_CNTL_BITS {
+	struct {
+		uint32_t mask:24;
+		uint32_t vmid:4;
+		uint32_t atc:1;
+		uint32_t mode:2;
+		uint32_t valid:1;
+	} bitfields, bits;
+	uint32_t u32All;
+	signed int i32All;
+	float f32All;
+};
 
 struct cik_mqd {
 	uint32_t header;

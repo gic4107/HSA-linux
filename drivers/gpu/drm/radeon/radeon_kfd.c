@@ -33,6 +33,13 @@
 
 #define CIK_PIPE_PER_MEC	(4)
 
+static const uint32_t watchRegs[MAX_WATCH_ADDRESSES * ADDRESS_WATCH_REG_MAX] = {
+	TCP_WATCH0_ADDR_H, TCP_WATCH0_ADDR_L, TCP_WATCH0_CNTL,
+	TCP_WATCH1_ADDR_H, TCP_WATCH1_ADDR_L, TCP_WATCH1_CNTL,
+	TCP_WATCH2_ADDR_H, TCP_WATCH2_ADDR_L, TCP_WATCH2_CNTL,
+	TCP_WATCH3_ADDR_H, TCP_WATCH3_ADDR_L, TCP_WATCH3_CNTL
+};
+
 struct kgd_mem {
 	struct radeon_sa_bo *sa_bo;
 	uint64_t gpu_addr;
@@ -91,6 +98,18 @@ static bool kgd_hqd_sdma_is_occupies(struct kgd_dev *kgd, void *mqd);
 static int kgd_hqd_sdma_destroy(struct kgd_dev *kgd, void *mqd,
 				unsigned int timeout);
 static int kgd_init_sdma_engines(struct kgd_dev *kgd);
+static int kgd_address_watch_disable(struct kgd_dev *kgd);
+static int kgd_address_watch_execute(struct kgd_dev *kgd,
+					unsigned int watch_point_id,
+					uint32_t cntl_val,
+					uint32_t addr_hi,
+					uint32_t addr_lo);
+static int kgd_wave_control_execute(struct kgd_dev *kgd,
+					uint32_t gfx_index_val,
+					uint32_t sq_cmd);
+static uint32_t kgd_address_watch_get_offset(struct kgd_dev *kgd,
+					unsigned int watch_point_id,
+					unsigned int reg_offset);
 
 static const struct kfd2kgd_calls kfd2kgd = {
 	.init_sa_manager = init_sa_manager,
@@ -118,6 +137,10 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.hqd_sdma_is_occupies = kgd_hqd_sdma_is_occupies,
 	.hqd_destroy = kgd_hqd_destroy,
 	.hqd_sdma_destroy = kgd_hqd_sdma_destroy,
+	.address_watch_disable = kgd_address_watch_disable,
+	.address_watch_execute = kgd_address_watch_execute,
+	.wave_control_execute = kgd_wave_control_execute,
+	.address_watch_get_offset = kgd_address_watch_get_offset
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -969,4 +992,94 @@ static int kgd_hqd_sdma_destroy(struct kgd_dev *kgd, void *mqd,
 	write_register(kgd, sdma_base_addr + SDMA0_RLC0_RB_BASE, 0);
 
 	return 0;
+}
+
+static int kgd_address_watch_disable(struct kgd_dev *kgd)
+{
+	union TCP_WATCH_CNTL_BITS cntl;
+	unsigned int i;
+
+	cntl.u32All = 0;
+
+	cntl.bitfields.valid = 0;
+	cntl.bitfields.mask = ADDRESS_WATCH_REG_CNTL_DEFAULT_MASK;
+	cntl.bitfields.atc = 1;
+
+	/* Turning off this address until we set all the registers */
+	for (i = 0; i < MAX_WATCH_ADDRESSES; i++)
+		write_register(kgd,
+				watchRegs[i * ADDRESS_WATCH_REG_MAX +
+				          ADDRESS_WATCH_REG_CNTL],
+				cntl.u32All);
+
+	return 0;
+}
+
+static int kgd_address_watch_execute(struct kgd_dev *kgd,
+					unsigned int watch_point_id,
+					uint32_t cntl_val,
+					uint32_t addr_hi,
+					uint32_t addr_lo)
+{
+	union TCP_WATCH_CNTL_BITS cntl;
+
+	cntl.u32All = cntl_val;
+
+	/* Turning off this watch point until we set all the registers */
+	cntl.bitfields.valid = 0;
+	write_register(kgd,
+			watchRegs[watch_point_id * ADDRESS_WATCH_REG_MAX +
+			          ADDRESS_WATCH_REG_CNTL],
+			cntl.u32All);
+
+	write_register(kgd,
+			watchRegs[watch_point_id * ADDRESS_WATCH_REG_MAX +
+			          ADDRESS_WATCH_REG_ADDR_HI],
+			addr_hi);
+
+	write_register(kgd,
+			watchRegs[watch_point_id * ADDRESS_WATCH_REG_MAX +
+			          ADDRESS_WATCH_REG_ADDR_LO],
+			addr_lo);
+
+	/* Enable the watch point */
+	cntl.bitfields.valid = 1;
+
+	write_register(kgd,
+			watchRegs[watch_point_id * ADDRESS_WATCH_REG_MAX +
+			          ADDRESS_WATCH_REG_CNTL],
+			cntl.u32All);
+
+	return 0;
+}
+
+static int kgd_wave_control_execute(struct kgd_dev *kgd,
+					uint32_t gfx_index_val,
+					uint32_t sq_cmd)
+{
+	struct radeon_device *rdev = get_radeon_device(kgd);
+	uint32_t data;
+
+	mutex_lock(&rdev->grbm_idx_mutex);
+
+	write_register(kgd, GRBM_GFX_INDEX, gfx_index_val);
+	write_register(kgd, SQ_CMD, sq_cmd);
+
+	/*  Restore the GRBM_GFX_INDEX register  */
+
+	data = INSTANCE_BROADCAST_WRITES | SH_BROADCAST_WRITES |
+		SE_BROADCAST_WRITES;
+
+	write_register(kgd, GRBM_GFX_INDEX, data);
+
+	mutex_unlock(&rdev->grbm_idx_mutex);
+
+	return 0;
+}
+
+static uint32_t kgd_address_watch_get_offset(struct kgd_dev *kgd,
+					unsigned int watch_point_id,
+					unsigned int reg_offset)
+{
+	return watchRegs[watch_point_id * ADDRESS_WATCH_REG_MAX + reg_offset];
 }

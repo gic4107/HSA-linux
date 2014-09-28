@@ -190,6 +190,18 @@ struct kfd2kgd_calls {
 	bool (*hqd_sdma_is_occupies)(struct kgd_dev *kgd, void *mqd);
 	int (*hqd_sdma_destroy)(struct kgd_dev *kgd, void *mqd,
 				unsigned int timeout);
+	int (*address_watch_disable)(struct kgd_dev *kgd);
+	int (*address_watch_execute)(struct kgd_dev *kgd,
+					unsigned int watch_point_id,
+					uint32_t cntl_val,
+					uint32_t addr_hi,
+					uint32_t addr_lo);
+	int (*wave_control_execute)(struct kgd_dev *kgd,
+					uint32_t gfx_index_val,
+					uint32_t sq_cmd);
+	uint32_t (*address_watch_get_offset)(struct kgd_dev *kgd,
+					unsigned int watch_point_id,
+					unsigned int reg_offset);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
