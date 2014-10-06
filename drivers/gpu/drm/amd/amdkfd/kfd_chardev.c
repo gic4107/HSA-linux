@@ -592,7 +592,7 @@ kfd_ioctl_dbg_address_watch(struct file *filep, struct kfd_process *p, void __us
 			args_idx += sizeof(aw_info.watch_mask);
 		}
 
-		if (args_idx >= args.buf_size_in_bytes) {
+		if (args_idx > args.buf_size_in_bytes) {
 			status = -EINVAL;
 			break;
 		}
