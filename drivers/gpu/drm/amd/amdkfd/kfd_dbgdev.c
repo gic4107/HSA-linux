@@ -266,6 +266,9 @@ static void dbgdev_address_watch_set_registers(
 	cntl->bitfields.mode = adw_info->watch_mode[index];
 	cntl->bitfields.vmid = (uint32_t) vmid;
 	cntl->u32All |= ADDRESS_WATCH_REG_CNTL_ATC_BIT;	/*  for now assume it is an ATC address.  */
+	pr_debug("\t\t\%20s %08x\n", "set reg mask :", cntl->bitfields.mask);
+	pr_debug("\t\t\%20s %08x\n", "set reg add high :", addrHi->bitfields.addr);
+	pr_debug("\t\t\%20s %08x\n", "set reg add low :", addrLo->bitfields.addr);
 
 }
 
@@ -357,9 +360,8 @@ static int dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev,
 	uint32_t *packet_buff_uint = NULL;
 
 	struct pm4__set_config_reg *packets_vec = NULL;
-	struct pm4__wait_reg_mem *pPacket = NULL;
 
-	size_t ib_size = sizeof(struct pm4__set_config_reg) * 4 + sizeof(struct pm4__wait_reg_mem);
+	size_t ib_size = sizeof(struct pm4__set_config_reg) * 4;
 
 	unsigned int aw_reg_add_dword;
 
@@ -409,13 +411,19 @@ static int dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev,
 
 		for (i = 0; i < adw_info->num_watch_points; i++) {
 
-			dbgdev_address_watch_set_registers(adw_info, &addrHi, &addrLo, &cntl, i, vmid);
+			dbgdev_address_watch_set_registers(adw_info,
+											&addrHi,
+											&addrLo,
+											&cntl,
+											i,
+											vmid);
 
 			pr_debug("\t\t\%30s\n", "* * * * * * * * * * * * * * * * * *");
 			pr_debug("\t\t\%20s %08x\n", "register index :", i);
 			pr_debug("\t\t\%20s %08x\n", "vmid is :", vmid);
+			pr_debug("\t\t\%20s %p\n", "Add ptr is :", adw_info->watch_address);
+			pr_debug("\t\t\%20s %08llx\n", "Add     is :", adw_info->watch_address[i]);
 			pr_debug("\t\t\%20s %08x\n", "Address Low is :", addrLo.bitfields.addr);
-			pr_debug("\t\t\%20s %08x\n", "Address high is :", addrHi.bitfields.addr);
 			pr_debug("\t\t\%20s %08x\n", "Address high is :", addrHi.bitfields.addr);
 			pr_debug("\t\t\%20s %08x\n", "Control Mask is :", cntl.bitfields.mask);
 			pr_debug("\t\t\%20s %08x\n", "Control Mode is :", cntl.bitfields.mode);
@@ -450,9 +458,11 @@ static int dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev,
 			packets_vec[2].bitfields2.reg_offset = aw_reg_add_dword - CONFIG_REG_BASE;
 			packets_vec[2].reg_data[0] = addrLo.u32All;
 
-			/* enable watch flag */
-			cntl.bitfields.valid = 1;
-
+			/* enable watch flag if address is not zero*/
+			if (adw_info->watch_address[i] > 0)
+				cntl.bitfields.valid = 1;
+			else
+				cntl.bitfields.valid = 0;
 			aw_reg_add_dword = kfd2kgd->address_watch_get_offset(
 						dbgdev->dev->kgd,
 						i,
@@ -461,36 +471,6 @@ static int dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev,
 
 			packets_vec[3].bitfields2.reg_offset = aw_reg_add_dword - CONFIG_REG_BASE;
 			packets_vec[3].reg_data[0] = cntl.u32All;
-
-			pPacket = (struct pm4__wait_reg_mem *) (packet_buff_uint + (sizeof(struct pm4__set_config_reg)
-										    * 4 / sizeof(uint32_t)));
-
-			pPacket->header.opcode = IT_WAIT_REG_MEM;
-			pPacket->header.type = PM4_TYPE_3;
-			pPacket->header.count = sizeof(struct pm4__wait_reg_mem) / sizeof(unsigned int) - 2;
-
-			pPacket->bitfields2.function = function___wait_reg_mem__equal_to_the_reference_value;
-			pPacket->bitfields2.mem_space = mem_space___wait_reg_mem__register_space;
-			pPacket->bitfields2.operation = operation___wait_reg_mem__wait_reg_mem;
-
-			aw_reg_add_dword = kfd2kgd->address_watch_get_offset(
-						dbgdev->dev->kgd,
-						i,
-						ADDRESS_WATCH_REG_CNTL);
-			aw_reg_add_dword /= sizeof(uint32_t);
-
-			pPacket->reference = cntl.u32All;
-
-			/* setting the mask for waitregmem:
-			 * we should test all the fields except the VMID which we do not control.
-			 */
-
-			cntl_mask.u32All = ~0;
-			cntl_mask.bitfields.vmid = 0;
-
-			pPacket->mask = cntl_mask.u32All;
-
-			pPacket->bitfields8.poll_interval = 10;
 
 			status = dbgdev_diq_submit_ib(
 						dbgdev,
@@ -720,8 +700,8 @@ static int dbgdev_wave_control_nodiq(struct kfd_dbgdev *dbgdev,
 	union GRBM_GFX_INDEX_BITS reg_gfx_index;
 
 	struct kfd_process_device *pdd = NULL;
-	reg_sq_cmd.u32All = 0;
 
+	reg_sq_cmd.u32All = 0;
 	status = 0;
 
 	/* taking the VMID for that process on the safe way using PDD */
