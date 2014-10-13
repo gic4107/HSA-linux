@@ -116,6 +116,7 @@ struct kfd_device_info {
 	const struct kfd_event_interrupt_class *event_interrupt_class;
 	unsigned int max_pasid_bits;
 	size_t ih_ring_entry_size;
+	uint8_t num_of_watch_points;
 	uint16_t mqd_size_aligned;
 };
 

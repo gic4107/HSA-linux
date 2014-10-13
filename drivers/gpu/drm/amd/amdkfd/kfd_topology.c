@@ -27,6 +27,7 @@
 #include <linux/acpi.h>
 #include <linux/hash.h>
 #include <linux/cpufreq.h>
+#include <linux/log2.h>
 
 #include "kfd_priv.h"
 #include "kfd_crat.h"
@@ -634,6 +635,7 @@ static ssize_t node_show(struct kobject *kobj, struct attribute *attr,
 	struct kfd_topology_device *dev;
 	char public_name[KFD_TOPOLOGY_PUBLIC_NAME_SIZE];
 	uint32_t i;
+	uint32_t log_max_watch_addr;
 
 	/* Making sure that the buffer is an empty string */
 	buffer[0] = 0;
@@ -680,6 +682,14 @@ static ssize_t node_show(struct kobject *kobj, struct attribute *attr,
 				dev->node_props.cpu_core_id_base);
 		sysfs_show_32bit_prop(buffer, "simd_id_base",
 				dev->node_props.simd_id_base);
+
+		log_max_watch_addr = __ilog2_u32(dev->gpu->device_info->num_of_watch_points);
+		if (log_max_watch_addr) {
+			dev->node_props.capability |= HSA_CAP_WATCH_POINTS_SUPPORTED;
+			dev->node_props.capability |= (log_max_watch_addr << HSA_CAP_WATCH_POINTS_TOTALBITS_SHIFT) &
+					HSA_CAP_WATCH_POINTS_TOTALBITS_MASK;
+		}
+
 		sysfs_show_32bit_prop(buffer, "capability",
 				dev->node_props.capability);
 		sysfs_show_32bit_prop(buffer, "max_waves_per_simd",
