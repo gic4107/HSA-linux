@@ -351,7 +351,6 @@ static int dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev,
 	union TCP_WATCH_ADDR_H_BITS addrHi;
 	union TCP_WATCH_ADDR_L_BITS addrLo;
 	union TCP_WATCH_CNTL_BITS cntl;
-	union TCP_WATCH_CNTL_BITS cntl_mask;
 
 	/* we do not control the vmid in DIQ mode, just a place holder */
 	unsigned int vmid = 0;
