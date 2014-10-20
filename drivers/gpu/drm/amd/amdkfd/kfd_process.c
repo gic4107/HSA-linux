@@ -176,7 +176,6 @@ static void kfd_process_wq_release(struct work_struct *work)
 		/*Remove all handles from idr and release appropriate local memory object*/
 		idr_for_each_entry(&pdd->alloc_idr, mem, id) {
 			idr_remove(&pdd->alloc_idr, id);
-			kfd2kgd->destroy_process_gpumem(pdd->dev->kgd, mem);
 		}
 
 		/* Destroy the GPUVM VM context */
