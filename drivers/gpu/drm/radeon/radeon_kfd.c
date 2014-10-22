@@ -57,7 +57,6 @@ static int add_bo_to_vm(struct radeon_device *rdev, uint64_t va, struct radeon_v
 static int map_bo_to_gpuvm(struct radeon_device *rdev, struct radeon_bo *bo,
 		struct radeon_bo_va *bo_va, struct radeon_vm *vm);
 static void remove_bo_from_vm(struct radeon_device *rdev, struct radeon_bo *bo, struct radeon_bo_va *bo_va);
-static int map_bo(struct radeon_device *rdev, uint64_t va, void *vm, struct radeon_bo *bo, struct radeon_bo_va **bo_va);
 
 static int alloc_gtt_mem(struct kgd_dev *kgd, size_t size,
 			void **mem_obj, uint64_t *gpu_addr,
@@ -72,9 +71,6 @@ static uint32_t get_max_engine_clock_in_mhz(struct kgd_dev *kgd);
 
 static int create_process_vm(struct kgd_dev *kgd, void **vm);
 static void destroy_process_vm(struct kgd_dev *kgd, void *vm);
-
-static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem);
-static void destroy_process_gpumem(struct kgd_dev *kgd, struct kgd_mem *mem);
 
 static uint32_t get_process_page_dir(void *vm);
 
@@ -136,8 +132,6 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.get_max_engine_clock_in_mhz = get_max_engine_clock_in_mhz,
 	.create_process_vm = create_process_vm,
 	.destroy_process_vm = destroy_process_vm,
-	.create_process_gpumem = create_process_gpumem,
-	.destroy_process_gpumem = destroy_process_gpumem,
 	.get_process_page_dir = get_process_page_dir,
 	.open_graphic_handle = open_graphic_handle,
 	.program_sh_mem_settings = kgd_program_sh_mem_settings,
@@ -392,70 +386,6 @@ static void destroy_process_vm(struct kgd_dev *kgd, void *vm)
 	/* Release the VM context */
 	radeon_vm_fini(rdev, rvm);
 	kfree(vm);
-}
-
-static int create_process_gpumem(struct kgd_dev *kgd, uint64_t va, size_t size,
-				void *vm, struct kgd_mem **mem)
-{
-	struct radeon_device *rdev = (struct radeon_device *) kgd;
-	int ret;
-	struct radeon_bo_va *bo_va;
-	struct radeon_bo *bo;
-
-	BUG_ON(kgd == NULL);
-	BUG_ON(size == 0);
-	BUG_ON(mem == NULL);
-
-	*mem = kzalloc(sizeof(struct kgd_mem), GFP_KERNEL);
-	if (*mem == NULL) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	/* Allocate buffer object on VRAM */
-	ret = radeon_bo_create(rdev, size, PAGE_SIZE, false,
-				RADEON_GEM_DOMAIN_VRAM,
-				RADEON_GEM_NO_BACKING_STORE, NULL, &bo);
-	if (ret != 0)
-		goto err_bo_create;
-
-	ret = map_bo(rdev, va, vm, bo, &bo_va);
-	if (ret != 0)
-		goto err_map;
-
-	(*mem)->data2.bo = bo;
-	(*mem)->data2.bo_va = bo_va;
-	return 0;
-
-err_map:
-	radeon_bo_unref(&bo);
-err_bo_create:
-	kfree(*mem);
-err:
-	return ret;
-}
-
-/* Destroys the GPU allocation and frees the kgd_mem structure */
-static void destroy_process_gpumem(struct kgd_dev *kgd, struct kgd_mem *mem)
-{
-	struct radeon_vm *rvm;
-	struct radeon_device *rdev = (struct radeon_device *) kgd;
-
-	BUG_ON(kgd == NULL);
-	BUG_ON(mem == NULL);
-	rvm = mem->data2.bo_va->vm;
-
-	radeon_bo_reserve(mem->data2.bo, true);
-	radeon_vm_bo_rmv(rdev, mem->data2.bo_va);
-
-	mutex_lock(&rvm->mutex);
-	radeon_vm_clear_freed(rdev, rvm);
-	mutex_unlock(&rvm->mutex);
-
-	radeon_bo_unpin(mem->data2.bo);
-	radeon_bo_unreserve(mem->data2.bo);
-	radeon_bo_unref(&mem->data2.bo);
-	kfree(mem);
 }
 
 static uint32_t get_process_page_dir(void *vm)
@@ -1030,73 +960,6 @@ static void write_vmid_invalidate_request(struct kgd_dev *kgd, uint8_t vmid)
 {
 	struct radeon_device *rdev = (struct radeon_device *) kgd;
 	return WREG32(VM_INVALIDATE_REQUEST, 1 << vmid);
-}
-
-static int map_bo(struct radeon_device *rdev, uint64_t va, void *vm, struct radeon_bo *bo, struct radeon_bo_va **bo_va)
-{
-	struct radeon_vm *rvm = (struct radeon_vm *) vm;
-	int ret;
-
-	BUG_ON(va == 0);
-	BUG_ON(vm == NULL);
-
-	/* Pin bo */
-	radeon_bo_reserve(bo, true);
-	ret = radeon_bo_pin(bo, RADEON_GEM_DOMAIN_VRAM, NULL);
-	if (ret != 0) {
-		ret = -EINVAL;
-		goto err;
-	}
-
-	/* Add the allocation to the VM context */
-	*bo_va = radeon_vm_bo_add(rdev, rvm, bo);
-	if (bo_va == NULL) {
-		ret = -EINVAL;
-		goto err_vmadd;
-	}
-
-	/* Set virtual address for the allocation, allocate PTs, if needed, and zero them */
-	ret = radeon_vm_bo_set_addr(rdev, *bo_va, va, RADEON_VM_PAGE_READABLE | RADEON_VM_PAGE_WRITEABLE);
-	if (ret != 0)
-		goto err_vmsetaddr;
-
-	mutex_lock(&rvm->mutex);
-
-	/* Update the page tables  */
-	ret = radeon_vm_bo_update(rdev, *bo_va, &bo->tbo.mem);
-	if (ret != 0)
-		goto err_update_pt;
-
-	/* Update the page directory */
-	ret = radeon_vm_update_page_directory(rdev, rvm);
-	if (ret != 0)
-		goto err_update_pd;
-
-	mutex_unlock(&rvm->mutex);
-
-	/* Wait for the page table update to complete. */
-	ret = radeon_fence_wait(rvm->fence, true);
-	if (ret != 0)
-		goto err_wait_fence;
-
-	radeon_bo_unreserve(bo);
-
-	return 0;
-
-err_wait_fence:
-err_update_pt:
-err_update_pd:
-	mutex_unlock(&rvm->mutex);
-err_vmsetaddr:
-	radeon_vm_bo_rmv(rdev, *bo_va);
-	mutex_lock(&rvm->mutex);
-	radeon_vm_clear_freed(rdev, rvm);
-	mutex_unlock(&rvm->mutex);
-err_vmadd:
-	radeon_bo_unpin(bo);
-	radeon_bo_unreserve(bo);
-err:
-	return ret;
 }
 
 static int add_bo_to_vm(struct radeon_device *rdev, uint64_t va, struct radeon_vm *rvm,
