@@ -373,13 +373,6 @@ static int create_process_vm(struct kgd_dev *kgd, void **vm)
 		new_vm = NULL;
 	}
 
-	/* Pin the PD directory*/
-	radeon_bo_reserve(new_vm->page_directory, true);
-	radeon_bo_pin(new_vm->page_directory, RADEON_GEM_DOMAIN_VRAM, NULL);
-	radeon_bo_unreserve(new_vm->page_directory);
-
-	new_vm->pd_gpu_addr = radeon_bo_gpu_offset(new_vm->page_directory);
-
 	*vm = (void *) new_vm;
 
 	return ret;
@@ -395,11 +388,6 @@ static void destroy_process_vm(struct kgd_dev *kgd, void *vm)
 
 	BUG_ON(kgd == NULL);
 	BUG_ON(vm == NULL);
-
-	/* Unpin the PD directory*/
-	radeon_bo_reserve(rvm->page_directory, true);
-	radeon_bo_unpin(rvm->page_directory);
-	radeon_bo_unreserve(rvm->page_directory);
 
 	/* Release the VM context */
 	radeon_vm_fini(rdev, rvm);
@@ -492,6 +480,7 @@ static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm,
 	BUG_ON(kgd == NULL);
 	BUG_ON(kgd == NULL);
 	BUG_ON(mem == NULL);
+	BUG_ON(vm == NULL);
 
 	*mem = kzalloc(sizeof(struct kgd_mem), GFP_KERNEL);
 	if (!*mem) {
@@ -518,14 +507,21 @@ static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm,
 	/* Inc TTM refcount*/
 	ttm_bo_reference(&bo->tbo);
 
-	ret = map_bo(rdev, va, vm, bo, &bo_va);
+	ret = add_bo_to_vm(rdev, va, vm, bo, &bo_va);
 	if (ret != 0)
 		goto err_map;
+
+	/* The allocated BO, PD and appropriate PTs are pinned, virtual to MC address mapping created */
+	ret = map_bo_to_gpuvm(rdev, bo, bo_va, vm);
+	if (ret != 0)
+		goto err_failed_to_pin_bo;
 
 	(*mem)->data2.bo = bo;
 	(*mem)->data2.bo_va = bo_va;
 	return 0;
 
+err_failed_to_pin_bo:
+	remove_bo_from_vm(rdev, bo, bo_va);
 err_map:
 	radeon_bo_unref(&bo);
 	kfree(*mem);
