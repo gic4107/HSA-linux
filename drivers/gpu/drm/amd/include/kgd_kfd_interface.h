@@ -130,6 +130,10 @@ struct kgd2kfd_calls {
  *
  * @hqd_destroy: Destructs and preempts the queue assigned to that hqd slot.
  *
+ * @map_memory_to_gpu: Allocates and pins BO, PD and all related PTs
+ *
+ * @unmap_memory_to_gpu: Releases and unpins BO, PD and all related PTs
+ *
  * This structure contains function pointers to services that the kgd driver
  * provides to amdkfd driver.
  *
@@ -201,7 +205,8 @@ struct kfd2kgd_calls {
 					uint8_t vmid);
 	void (*write_vmid_invalidate_request)(struct kgd_dev *kgd,
 					uint8_t vmid);
-
+	int (*map_memory_to_gpu)(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem);
+	int (*unmap_memory_to_gpu)(struct kgd_dev *kgd, struct kgd_mem *mem);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
