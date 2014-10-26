@@ -527,11 +527,8 @@ static int init_pipelines(struct device_queue_manager *dqm,
 	 * because it contains no data when there are no active queues.
 	 */
 
-	err = kfd2kgd->allocate_mem(dqm->dev->kgd,
-				CIK_HPD_EOP_BYTES * pipes_num,
-				PAGE_SIZE,
-				KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-				(struct kgd_mem **) &dqm->pipeline_mem);
+	err = kfd_gtt_sa_allocate(dqm->dev, CIK_HPD_EOP_BYTES * pipes_num,
+					&dqm->pipeline_mem);
 
 	if (err) {
 		pr_err("kfd: error allocate vidmem num pipes: %d\n",
@@ -546,8 +543,7 @@ static int init_pipelines(struct device_queue_manager *dqm,
 
 	mqd = dqm->get_mqd_manager(dqm, KFD_MQD_TYPE_CIK_COMPUTE);
 	if (mqd == NULL) {
-		kfd2kgd->free_mem(dqm->dev->kgd,
-				(struct kgd_mem *) dqm->pipeline_mem);
+		kfd_gtt_sa_free(dqm->dev, dqm->pipeline_mem);
 		return -ENOMEM;
 	}
 
@@ -636,8 +632,7 @@ static void uninitialize_nocpsch(struct device_queue_manager *dqm)
 
 	kfree(dqm->allocated_queues);
 	mutex_destroy(&dqm->lock);
-	kfd2kgd->free_mem(dqm->dev->kgd,
-			(struct kgd_mem *) dqm->pipeline_mem);
+	kfd_gtt_sa_free(dqm->dev, dqm->pipeline_mem);
 }
 
 static int start_nocpsch(struct device_queue_manager *dqm)
@@ -788,11 +783,8 @@ static int start_cpsch(struct device_queue_manager *dqm)
 	pr_debug("kfd: allocating fence memory\n");
 
 	/* allocate fence memory on the gart */
-	retval = kfd2kgd->allocate_mem(dqm->dev->kgd,
-					sizeof(*dqm->fence_addr),
-					32,
-					KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-					(struct kgd_mem **) &dqm->fence_mem);
+	retval = kfd_gtt_sa_allocate(dqm->dev, sizeof(*dqm->fence_addr),
+					&dqm->fence_mem);
 
 	if (retval != 0)
 		goto fail_allocate_vidmem;
@@ -833,8 +825,7 @@ static int stop_cpsch(struct device_queue_manager *dqm)
 						node->qpd->pqm->process, 1);
 		pdd->bound = false;
 	}
-	kfd2kgd->free_mem(dqm->dev->kgd,
-			(struct kgd_mem *) dqm->fence_mem);
+	kfd_gtt_sa_free(dqm->dev, dqm->fence_mem);
 	pm_uninit(&dqm->packets);
 
 	return 0;

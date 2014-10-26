@@ -109,11 +109,8 @@ static int dbgdev_diq_submit_ib(struct kfd_dbgdev *dbgdev,
 		rm_packet = (struct pm4__release_mem *) (ib_packet_buff +
 				(sizeof(struct pm4__indirect_buffer_pasid) / sizeof(unsigned int)));
 
-		status = kfd2kgd->allocate_mem(dbgdev->dev->kgd,
-						sizeof(uint64_t),
-						PAGE_SIZE,
-						KFD_MEMPOOL_SYSTEM_CACHEABLE,
-						(struct kgd_mem **) &mem_obj);
+		status = kfd_gtt_sa_allocate(dbgdev->dev, sizeof(uint64_t),
+						&mem_obj);
 
 		if (status == 0) {
 
@@ -156,7 +153,7 @@ static int dbgdev_diq_submit_ib(struct kfd_dbgdev *dbgdev,
 	} while (false);
 
 	if (rm_state != NULL)
-		kfd2kgd->free_mem(dbgdev->dev->kgd, (struct kgd_mem *) mem_obj);
+		kfd_gtt_sa_free(dbgdev->dev, mem_obj);
 
 	return status;
 }
@@ -380,11 +377,7 @@ static int dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev,
 			break;
 		}
 
-		status = kfd2kgd->allocate_mem(dbgdev->dev->kgd,
-				ib_size,
-				PAGE_SIZE,
-				KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-				(struct kgd_mem **) &mem_obj);
+		status = kfd_gtt_sa_allocate(dbgdev->dev, ib_size, &mem_obj);
 
 		if (status != 0)
 			break;
@@ -487,7 +480,7 @@ static int dbgdev_address_watch_diq(struct kfd_dbgdev *dbgdev,
 
 	} while (false);
 	if (packet_buff_uint != NULL)
-		kfd2kgd->free_mem(dbgdev->dev->kgd, (struct kgd_mem *) mem_obj);
+		kfd_gtt_sa_free(dbgdev->dev, mem_obj);
 
 	return status;
 
@@ -630,11 +623,7 @@ static int dbgdev_wave_control_diq(struct kfd_dbgdev *dbgdev,
 
 		pr_debug("\t\t %30s\n", "* * * * * * * * * * * * * * * * * *");
 
-		status = kfd2kgd->allocate_mem(dbgdev->dev->kgd,
-				ib_size,
-				PAGE_SIZE,
-				KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-				(struct kgd_mem **) &mem_obj);
+		status = kfd_gtt_sa_allocate(dbgdev->dev, ib_size, &mem_obj);
 
 		if (status != 0)
 			break;
@@ -685,7 +674,7 @@ static int dbgdev_wave_control_diq(struct kfd_dbgdev *dbgdev,
 	} while (false);
 
 	if (packet_buff_uint != NULL)
-		kfd2kgd->free_mem(dbgdev->dev->kgd, (struct kgd_mem *) mem_obj);
+		kfd_gtt_sa_free(dbgdev->dev, mem_obj);
 
 	return status;
 }
