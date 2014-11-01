@@ -152,6 +152,7 @@ struct kfd_dev {
 
 	/* QCM Device instance */
 	struct device_queue_manager *dqm;
+	struct kfd_dbgmgr           *dbgmgr;
 
 	bool init_complete;
 	/*
@@ -585,6 +586,8 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 int pqm_destroy_queue(struct process_queue_manager *pqm, unsigned int qid);
 int pqm_update_queue(struct process_queue_manager *pqm, unsigned int qid,
 			struct queue_properties *p);
+struct kernel_queue *pqm_get_kernel_queue(struct process_queue_manager *pqm,
+						unsigned int qid);
 
 /* Packet Manager */
 
@@ -620,6 +623,8 @@ void pm_release_ib(struct packet_manager *pm);
 uint64_t kfd_get_number_elems(struct kfd_dev *kfd);
 phys_addr_t kfd_get_process_doorbells(struct kfd_dev *dev,
 					struct kfd_process *process);
+int fence_wait_timeout(unsigned int *fence_addr, unsigned int fence_value,
+			unsigned long timeout);
 
 /* Events */
 extern const struct kfd_event_interrupt_class event_interrupt_class_cik;
