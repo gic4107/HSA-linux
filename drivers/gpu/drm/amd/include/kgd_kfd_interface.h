@@ -134,6 +134,8 @@ struct kgd2kfd_calls {
  *
  * @unmap_memory_to_gpu: Releases and unpins BO, PD and all related PTs
  *
+ * @get_fw_version: Returns FW versions from the header
+ *
  * This structure contains function pointers to services that the kgd driver
  * provides to amdkfd driver.
  *
@@ -207,6 +209,7 @@ struct kfd2kgd_calls {
 					uint8_t vmid);
 	int (*map_memory_to_gpu)(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem);
 	int (*unmap_memory_to_gpu)(struct kgd_dev *kgd, struct kgd_mem *mem);
+	uint16_t (*get_fw_version)(struct kgd_dev *kgd);
 };
 
 bool kgd2kfd_init(unsigned interface_version,
