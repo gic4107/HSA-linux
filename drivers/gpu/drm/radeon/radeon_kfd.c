@@ -28,6 +28,8 @@
 #include "cikd.h"
 #include "cik_reg.h"
 #include "radeon_kfd.h"
+#include "radeon_ucode.h"
+#include <linux/firmware.h>
 
 #define CIK_PIPE_PER_MEC	(4)
 
@@ -77,6 +79,7 @@ static uint32_t get_process_page_dir(void *vm);
 static int open_graphic_handle(struct kgd_dev *kgd, uint64_t va, void *vm, int fd, uint32_t handle, struct kgd_mem **mem);
 static int map_memory_to_gpu(struct kgd_dev *kgd, uint64_t va, size_t size, void *vm, struct kgd_mem **mem);
 static int unmap_memory_from_gpu(struct kgd_dev *kgd, struct kgd_mem *mem);
+static uint16_t get_fw_version(struct kgd_dev *kgd);
 
 /*
  * Register access functions
@@ -155,6 +158,7 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.write_vmid_invalidate_request = write_vmid_invalidate_request,
 	.map_memory_to_gpu = map_memory_to_gpu,
 	.unmap_memory_to_gpu = unmap_memory_from_gpu,
+	.get_fw_version = get_fw_version
 
 };
 
@@ -1239,4 +1243,23 @@ err_bo_create:
 err:
 	return ret;
 
+}
+
+static uint16_t get_fw_version(struct kgd_dev *kgd)
+{
+	struct radeon_device *rdev;
+	const struct gfx_firmware_header_v1_0 *hdr;
+
+	BUG_ON(kgd == NULL);
+
+	rdev = (struct radeon_device *) kgd;
+
+	BUG_ON(rdev->mec_fw == NULL);
+
+	hdr = (const struct gfx_firmware_header_v1_0 *)rdev->mec_fw->data;
+
+	BUG_ON(hdr == NULL);
+
+	/* Only 12 bit in use*/
+	return hdr->header.ucode_version;
 }
