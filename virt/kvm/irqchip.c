@@ -102,6 +102,7 @@ int kvm_send_userspace_msi(struct kvm *kvm, struct kvm_msi *msi)
 	route.msi.address_hi = msi->address_hi;
 	route.msi.data = msi->data;
 
+    printk("%d %d %d\n", msi->address_lo, msi->address_hi, msi->data);
 	return kvm_set_msi(&route, kvm, KVM_USERSPACE_IRQ_SOURCE_ID, 1, false);
 }
 

@@ -417,7 +417,7 @@ static struct kfd_topology_device *kfd_create_topology_device(void)
 	sys_props.num_devices++;
 
 	return dev;
-	}
+}
 
 static int kfd_parse_crat_table(void *crat_image)
 {

@@ -1,0 +1,7 @@
+Front-end driver virtio-kfd prototype done. 
+(Send get sysfs request and get response from back-end successfully)
+
+Request will be store inside virtkfd_req data sturcture, 
+and busy-waiting on signal field to block to virtkfd_add_request function.
+
+virtkfd_done will set the signal when back-end send response back.

@@ -1,0 +1,12 @@
+#
+# Makefile for Heterogenous System Architecture support for AMD Radeon devices
+#
+
+virtkfd-y                := virtio_kfd.o virtio_kfd_topology.o
+obj-m := virtkfd.o
+
+KVERSION = $(shell uname -r)
+all:
+	make -C /lib/modules/$(KVERSION)/build M=$(PWD) modules
+clean:
+	make -C /lib/modules/$(KVERSION)/build M=$(PWD) clean

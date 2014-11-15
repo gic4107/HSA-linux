@@ -12,3 +12,4 @@ radeon_kfd-y	:= kfd_module.o kfd_device.o kfd_chardev.o \
 		kfd_events.o cik_event_interrupt.o kfd_flat_memory.o
 
 obj-$(CONFIG_HSA_RADEON)	+= radeon_kfd.o
+obj-$(CONFIG_VIRTIO_KFD)    += virtio_kfd/

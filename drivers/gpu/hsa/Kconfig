@@ -17,4 +17,14 @@ config HSA_RADEON
 	help
 	  Enable this if you want to support HSA on AMD Radeon devices.
 
+config PR_DEBUG
+	bool "Enable pr_debug()"
+
+config VIRTIO_KFD
+	tristate "VirtIO-KFD driver that support HSA virtualization"
+	depends on VIRTIO
+    default m
+	help
+	  Enable this if you want to suoorty HSA virtualization. 
+
 endif # HSA

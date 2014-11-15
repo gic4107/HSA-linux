@@ -133,6 +133,7 @@ int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 
 	kvm_set_msi_irq(e, &irq);
 
+    printk("irq->dest_id=%d irq->vector=%d\n", irq.dest_id, irq.vector);
 	return kvm_irq_delivery_to_apic(kvm, NULL, &irq, NULL);
 }
 

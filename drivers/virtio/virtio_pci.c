@@ -530,6 +530,8 @@ static int vp_try_to_find_vqs(struct virtio_device *vdev, unsigned nvqs,
 	u16 msix_vec;
 	int i, err, nvectors, allocated_vectors;
 
+    printk("vp_try_to_find_vqs, name=%s, use_msix=%d, per_vq_vectors=%d\n", 
+                names[0], use_msix, per_vq_vectors); 
 	if (!use_msix) {
 		/* Old style: one normal interrupt for change and all vqs. */
 		err = vp_request_intx(vdev);
@@ -564,6 +566,7 @@ static int vp_try_to_find_vqs(struct virtio_device *vdev, unsigned nvqs,
 			msix_vec = allocated_vectors++;
 		else
 			msix_vec = VP_MSIX_VQ_VECTOR;
+        printk("call setup_vq, msix_vec=%d\n", msix_vec);
 		vqs[i] = setup_vq(vdev, i, callbacks[i], names[i], msix_vec);
 		if (IS_ERR(vqs[i])) {
 			err = PTR_ERR(vqs[i]);
