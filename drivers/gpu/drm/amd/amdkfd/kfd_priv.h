@@ -466,6 +466,8 @@ struct kfd_process_device {
 	struct idr alloc_idr;
 };
 
+#define qpd_to_pdd(x) container_of(x, struct kfd_process_device, qpd)
+
 /* Process data */
 struct kfd_process {
 	/*

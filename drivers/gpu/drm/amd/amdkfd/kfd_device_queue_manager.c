@@ -83,26 +83,20 @@ static inline unsigned int get_pipes_num_cpsch(void)
 	return PIPE_PER_ME_CP_SCHEDULING;
 }
 
-static unsigned int get_sh_mem_bases_nybble_64(struct kfd_process *process,
-						struct kfd_dev *dev)
+static inline unsigned int get_sh_mem_bases_nybble_64(struct kfd_process_device *pdd)
 {
-	struct kfd_process_device *pdd;
 	uint32_t nybble;
 
-	pdd = kfd_get_process_device_data(dev, process, 1);
 	nybble = (pdd->lds_base >> 60) & 0x0E;
 
 	return nybble;
 
 }
 
-static unsigned int get_sh_mem_bases_32(struct kfd_process *process,
-					struct kfd_dev *dev)
+static inline unsigned int get_sh_mem_bases_32(struct kfd_process_device *pdd)
 {
-	struct kfd_process_device *pdd;
 	unsigned int shared_base;
 
-	pdd = kfd_get_process_device_data(dev, process, 1);
 	shared_base = (pdd->lds_base >> 16) & 0xFF;
 
 	return shared_base;
@@ -117,8 +111,7 @@ static void init_process_memory(struct device_queue_manager *dqm,
 
 	BUG_ON(!dqm || !qpd);
 
-	pdd = kfd_get_process_device_data(dqm->dev, qpd->pqm->process, 0);
-	BUG_ON(!pdd);
+	pdd = qpd_to_pdd(qpd);
 
 	/* check if sh_mem_config register already configured */
 	if (qpd->sh_mem_config == 0) {
@@ -132,11 +125,11 @@ static void init_process_memory(struct device_queue_manager *dqm,
 	qpd->page_table_base = kfd2kgd->get_process_page_dir(pdd->vm);
 
 	if (qpd->pqm->process->is_32bit_user_mode) {
-		temp = get_sh_mem_bases_32(qpd->pqm->process, dqm->dev);
+		temp = get_sh_mem_bases_32(pdd);
 		qpd->sh_mem_bases = SHARED_BASE(temp);
 		qpd->sh_mem_config |= PTR32;
 	} else {
-		temp = get_sh_mem_bases_nybble_64(qpd->pqm->process, dqm->dev);
+		temp = get_sh_mem_bases_nybble_64(pdd);
 		qpd->sh_mem_bases = compute_sh_mem_bases_64bit(temp);
 	}
 
@@ -672,9 +665,11 @@ static void init_sdma_vm(struct device_queue_manager *dqm, struct queue *q, stru
 {
 	uint32_t value = ATC;
 	if (q->process->is_32bit_user_mode)
-		value |= VA_PTR32 | get_sh_mem_bases_32(q->process, dqm->dev);
+		value |= VA_PTR32 | get_sh_mem_bases_32(
+				qpd_to_pdd(qpd));
 	else
-		value |= VA_SHARED_BASE(get_sh_mem_bases_nybble_64(q->process, dqm->dev));
+		value |= VA_SHARED_BASE(get_sh_mem_bases_nybble_64(
+				qpd_to_pdd(qpd)));
 	q->properties.sdma_vm_addr = value;
 }
 
@@ -821,8 +816,7 @@ static int stop_cpsch(struct device_queue_manager *dqm)
 	destroy_queues_cpsch(dqm, true, true);
 
 	list_for_each_entry(node, &dqm->queues, list) {
-		pdd = kfd_get_process_device_data(dqm->dev,
-						node->qpd->pqm->process, 1);
+		pdd = qpd_to_pdd(node->qpd);
 		pdd->bound = false;
 	}
 	kfd_gtt_sa_free(dqm->dev, dqm->fence_mem);
