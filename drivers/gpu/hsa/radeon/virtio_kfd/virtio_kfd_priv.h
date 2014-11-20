@@ -6,6 +6,7 @@
 #define PROPERTIES_NODE_MAX 5
 
 // The command store inside virtqueue
+#define VIRTKFD_OPEN        0
 #define VIRTKFD_GET_SYSINFO 1
 
 struct virtio_kfd
@@ -36,7 +37,7 @@ struct virtkfd_req
 };
 
 struct virtkfd_system_properties {
-    uint32_t    num_devices;
+    uint32_t    num_devices;            // not fill
     uint32_t    generation_count;
     uint64_t    platform_oem;
     uint64_t    platform_id;
@@ -109,8 +110,7 @@ struct virtkfd_iolink_properties {
 struct virtkfd_topology_device {
     uint32_t                         gpu_id;
     char                             name[100];
-    uint32_t                         node_count;
-    struct virtkfd_node_properties   node_properties[PROPERTIES_NODE_MAX];          // for node_show
+    struct virtkfd_node_properties   node_properties;          // for node_show
 	uint32_t			             mem_bank_count;
     struct virtkfd_mem_properties    mem_properties[PROPERTIES_NODE_MAX];          // for mem_show
 	uint32_t			             cache_count;
@@ -121,8 +121,9 @@ struct virtkfd_topology_device {
 
 // Data structure to store host sysfs information
 struct virtkfd_sysfs_info {
-    struct virtkfd_system_properties system_properties;                             // for sysprops_show
-    struct virtkfd_topology_device   topology_device;                               // for node_show
+    uint32_t node_count;
+    struct virtkfd_topology_device   topology_device[PROPERTIES_NODE_MAX]; 
+    struct virtkfd_system_properties system_properties;  
 };
 
 int virtio_kfd_topology_init(struct virtio_kfd *vkfd);

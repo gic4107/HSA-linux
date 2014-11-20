@@ -211,7 +211,6 @@ static ssize_t node_show(struct kobject *kobj, struct attribute *attr,
 		public_name[KFD_TOPOLOGY_PUBLIC_NAME_SIZE-1] = 0x0;
 		ret = sysfs_show_str_val(buffer, public_name);
 	} else {
-/*
 		dev = container_of(attr, struct kfd_topology_device,
 				attr_props);
 		sysfs_show_32bit_prop(buffer, "cpu_cores_count",
@@ -256,14 +255,19 @@ static ssize_t node_show(struct kobject *kobj, struct attribute *attr,
 				dev->node_props.device_id);
 		sysfs_show_32bit_prop(buffer, "location_id",
 				dev->node_props.location_id);
+//		sysfs_show_32bit_prop(buffer, "max_engine_clk_fcompute",
+//				kfd2kgd->get_max_engine_clock_in_mhz(
+//					dev->gpu->kgd));
 		sysfs_show_32bit_prop(buffer, "max_engine_clk_fcompute",
-				kfd2kgd->get_max_engine_clock_in_mhz(
-					dev->gpu->kgd));
+				dev->node_props.max_engine_clk_fcompute);
+//		sysfs_show_64bit_prop(buffer, "local_mem_size",
+//				kfd2kgd->get_vmem_size(dev->gpu->kgd));
 		sysfs_show_64bit_prop(buffer, "local_mem_size",
-				kfd2kgd->get_vmem_size(dev->gpu->kgd));
+				sys_info.topology_device[0].node_properties.local_mem_size);    // FIXME: constant 0
+//		ret = sysfs_show_32bit_prop(buffer, "max_engine_clk_ccompute",
+//				cpufreq_quick_get_max(0)/1000);
 		ret = sysfs_show_32bit_prop(buffer, "max_engine_clk_ccompute",
-				cpufreq_quick_get_max(0)/1000);
-*/
+				dev->node_props.max_engine_clk_ccompute);
 	}
 
 	return ret;
@@ -276,6 +280,145 @@ static const struct sysfs_ops node_ops = {
 static struct kobj_type node_type = {
 	.sysfs_ops = &node_ops,
 };
+
+static void virtio_kfd_set_sysfs_system_properties(void)
+{
+    sys_props.num_devices      = sys_info.node_count;
+    sys_props.generation_count = sys_info.system_properties.generation_count;
+    sys_props.platform_oem     = sys_info.system_properties.platform_oem;
+    sys_props.platform_id      = sys_info.system_properties.platform_id;
+    sys_props.platform_rev     = sys_info.system_properties.platform_rev;
+}
+
+static void virtio_kfd_set_node_properties(struct kfd_topology_device *dev, 
+                                                                  int node)
+{
+    struct virtkfd_node_properties *node_props;
+    node_props = &(sys_info.topology_device[node].node_properties);
+
+    dev->gpu_id = sys_info.topology_device[node].gpu_id;
+    dev->node_props.cpu_cores_count = node_props->cpu_cores_count;
+    dev->node_props.simd_count = node_props->simd_count;
+    dev->node_props.mem_banks_count = node_props->mem_banks_count;
+    dev->node_props.caches_count = node_props->caches_count;
+    dev->node_props.io_links_count = node_props->io_links_count;
+    dev->node_props.cpu_core_id_base = node_props->cpu_core_id_base;
+    dev->node_props.simd_id_base = node_props->simd_id_base;
+    dev->node_props.capability = node_props->capability;
+    dev->node_props.max_waves_per_simd = node_props->max_waves_per_simd;
+    dev->node_props.lds_size_in_kb = node_props->lds_size_in_kb;
+    dev->node_props.gds_size_in_kb = node_props->gds_size_in_kb;
+    dev->node_props.wave_front_size = node_props->wave_front_size;
+    dev->node_props.array_count = node_props->array_count;
+    dev->node_props.simd_arrays_per_engine = node_props->simd_arrays_per_engine;
+    dev->node_props.cu_per_simd_array = node_props->cu_per_simd_array;
+    dev->node_props.simd_per_cu = node_props->simd_per_cu;
+    dev->node_props.max_slots_scratch_cu = node_props->max_slots_scratch_cu;
+    dev->node_props.engine_id = node_props->engine_id;
+    dev->node_props.vendor_id = node_props->vendor_id;
+    dev->node_props.device_id = node_props->device_id;
+    dev->node_props.location_id = node_props->location_id;
+    dev->node_props.max_engine_clk_fcompute = node_props->max_engine_clk_fcompute;
+    dev->node_props.max_engine_clk_ccompute = node_props->max_engine_clk_ccompute;
+//    dev->node_props.marketing_name = node_props->marketing_name;
+}
+
+static struct kfd_mem_properties* virtio_kfd_set_membank_properties
+                        (struct kfd_topology_device *dev, int node, int membank)
+{
+	struct kfd_mem_properties *props;
+    struct virtkfd_mem_properties *mem_props;
+    mem_props = &(sys_info.topology_device[node].mem_properties[membank]);
+	props = kfd_alloc_struct(props);
+
+    props->heap_type = mem_props->heap_type;
+    props->size_in_bytes = mem_props->size_in_bytes;
+    props->flags = mem_props->flags;
+    props->width = mem_props->width;
+    props->mem_clk_max = mem_props->mem_clk_max;
+    return props;
+}
+
+static struct kfd_cache_properties* virtio_kfd_set_cache_properties
+                        (struct kfd_topology_device *dev, int node, int cache)
+{
+	struct kfd_cache_properties *props;
+    struct virtkfd_cache_properties *cache_props;
+    cache_props = &(sys_info.topology_device[node].cache_properties[cache]);
+	props = kfd_alloc_struct(props);
+
+    props->processor_id_low = cache_props->processor_id_low;
+    props->cache_level = cache_props->cache_level;
+    props->cache_size = cache_props->cache_size;
+    props->cacheline_size = cache_props->cacheline_size;
+    props->cachelines_per_tag = cache_props->cachelines_per_tag;
+    props->cache_assoc = cache_props->cache_assoc;
+    props->cache_latency = cache_props->cache_latency;
+    props->cache_type = cache_props->cache_type;
+    memcpy(props->sibling_map, cache_props->sibling_map, sizeof(cache_props->sibling_map));
+    printk("%d\n", sizeof(cache_props->sibling_map));
+    return props;
+}
+
+static struct kfd_iolink_properties* virtio_kfd_set_iolink_properties
+                        (struct kfd_topology_device *dev, int node, int iolink)
+{
+	struct kfd_iolink_properties *props;
+    struct virtkfd_iolink_properties *iolink_props;
+    iolink_props = &(sys_info.topology_device[node].iolink_properties[iolink]);
+	props = kfd_alloc_struct(props);
+
+    props->iolink_type = iolink_props->iolink_type;
+    props->ver_maj = iolink_props->ver_maj;
+    props->ver_min = iolink_props->ver_min;
+    props->node_from = iolink_props->node_from;
+    props->node_to = iolink_props->node_to;
+    props->weight = iolink_props->weight;
+    props->min_latency = iolink_props->min_latency;
+    props->max_latency = iolink_props->max_latency;
+    props->min_bandwidth = iolink_props->min_bandwidth;
+    props->max_bandwidth = iolink_props->max_bandwidth;
+    props->rec_transfer_size = iolink_props->rec_transfer_size;
+    props->flags = iolink_props->flags;
+    return props;
+}
+
+static struct kfd_topology_device *kfd_create_topology_device(int node)
+{
+	struct kfd_topology_device   *dev;
+    struct kfd_mem_properties    *mem_props;
+    struct kfd_cache_properties  *cache_props;
+    struct kfd_iolink_properties *iolink_props;
+    int i;
+
+	dev = kfd_alloc_struct(dev);
+	if (dev == 0) {
+		pr_err("No memory to allocate a topology device");
+		return 0;
+	}
+
+	INIT_LIST_HEAD(&dev->mem_props);
+	INIT_LIST_HEAD(&dev->cache_props);
+	INIT_LIST_HEAD(&dev->io_link_props);
+
+    virtio_kfd_set_node_properties(dev, node);
+    for(i=0; i<dev->node_props.mem_banks_count; i++) {
+        mem_props = virtio_kfd_set_membank_properties(dev, node, i);
+        list_add_tail(&mem_props->list, &dev->mem_props);
+    }
+    for(i=0; i<dev->node_props.caches_count; i++) {
+        cache_props = virtio_kfd_set_cache_properties(dev, node, i);
+        list_add_tail(&cache_props->list, &dev->cache_props);
+    }
+    for(i=0; i<dev->node_props.io_links_count; i++) {
+        mem_props = virtio_kfd_set_iolink_properties(dev, node, i);
+        list_add_tail(&iolink_props->list, &dev->io_link_props);
+    }
+
+	list_add_tail(&dev->list, &topology_device_list);
+
+	return dev;
+}
 
 static int virtio_kfd_build_sysfs_node_entry(struct kfd_topology_device *dev,
 		uint32_t id)
@@ -391,7 +534,7 @@ static int virtio_kfd_build_sysfs_node_entry(struct kfd_topology_device *dev,
 		if (ret < 0)
 			return ret;
 		i++;
-}
+    }
 
 	return 0;
 }
@@ -400,15 +543,15 @@ static int virtio_kfd_build_sysfs_node_tree(void)
 {
 	struct kfd_topology_device *dev;
 	int ret;
-	uint32_t i = 0;
+	uint32_t i;
 
     printk("virtio_kfd_build_sysfs_node_tree");
-    // Get host topology information here
-	list_for_each_entry(dev, &topology_device_list, list) {
+
+    for(i=0; i<sys_props.num_devices; i++) {
+        dev = kfd_create_topology_device(i);
 		ret = virtio_kfd_build_sysfs_node_entry(dev, 0);
 		if (ret < 0)
 			return ret;
-		i++;
 	}
     printk("\n");
 
@@ -418,7 +561,7 @@ static int virtio_kfd_build_sysfs_node_tree(void)
 static int virtio_kfd_topology_update_sysfs(void)
 {
 	int ret;
-	pr_debug("Creating topology SYSFS entries\n");
+
 	if (sys_props.kobj_topology == 0) {
 		sys_props.kobj_topology = kfd_alloc_struct(sys_props.kobj_topology);
 		if (!sys_props.kobj_topology)
@@ -452,10 +595,9 @@ static int virtio_kfd_topology_update_sysfs(void)
 			return ret;
 	}
 
-//	kfd_remove_sysfs_node_tree();
-
 	return virtio_kfd_build_sysfs_node_tree();
 }
+
 
 int virtio_kfd_topology_init(struct virtio_kfd *vkfd)
 {
@@ -468,16 +610,18 @@ int virtio_kfd_topology_init(struct virtio_kfd *vkfd)
 	init_rwsem(&topology_lock);
 
 	memset(&sys_props, 0, sizeof(sys_props));
+
+    // Get sysfs info from back-end 
+    int cmd = VIRTKFD_GET_SYSINFO;
+    printk("call virtkfd_add_req\n");
+    virtkfd_add_req(vkfd, &cmd, &sys_info, sizeof(sys_info));       // a blocking call
+    printk("virtkfd_add_req done\n");
+
+    virtio_kfd_set_sysfs_system_properties();    
+
 	ret = virtio_kfd_topology_update_sysfs();
     if(ret < 0)
         goto err_topology;
-
-    int cmd = VIRTKFD_GET_SYSINFO;
-    printk("call virtkfd_add_req\n");
-    
-//    sys_info.system_properties.generation_count = 80;
-    virtkfd_add_req(vkfd, &cmd, &sys_info, sizeof(sys_info));       // a blocking call
-    printk("virtkfd_add_req done\n");
 
 err_topology:
 	return ret;

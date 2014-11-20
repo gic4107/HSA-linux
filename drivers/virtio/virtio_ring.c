@@ -734,8 +734,6 @@ irqreturn_t vring_interrupt(int irq, void *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
 
-//    if(irq<=43 && irq>=40)          // all 41
-    printk("vring_interrupt irq=%d\n", irq);
 	if (!more_used(vq)) {
 		pr_debug("virtqueue interrupt with no work for %p\n", vq);
 		return IRQ_NONE;

@@ -76,14 +76,16 @@ int virtkfd_add_req(struct virtio_kfd *vkfd, int *cmd, void *param, int param_le
         return -1;
     }
     printk("virtqueue_kick done, wait %p\n", &req->signal);
-    while(req->signal == 0);
+    while(req->signal == 0);        // signal by virtqueue's callback function
+
+    kfree(req); 
 
     return 0;
 }
 
 static void virtkfd_done(struct virtqueue *vq)
 {
-	struct virtio_kfd *vkfd = vq->vdev->priv;
+    struct virtio_kfd *vkfd = vq->vdev->priv;
     struct virtkfd_req *req;
     int len;
 	unsigned long flags;
@@ -93,15 +95,12 @@ static void virtkfd_done(struct virtqueue *vq)
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-//			virtkfd_complete_request(req);
             printk("req->signal=%p, true\n", &req->signal);
             req->signal = true;
 		}
 		if (unlikely(virtqueue_is_broken(vq)))
 			break;
 	} while (!virtqueue_enable_cb(vq));
-
-    // gic4107: need to free virtkfd_req
 
 	spin_unlock_irqrestore(&vkfd->vq_lock, flags);
 }
@@ -172,7 +171,7 @@ static int init_vq(struct virtio_kfd *vkfd)
 
 static int virtkfd_probe(struct virtio_device *vdev)
 {
-	struct virtio_kfd *vkfd;
+    struct virtio_kfd *vkfd;
 	int err, index;
 printk("virtiokfd_probe\n");
 
@@ -345,7 +344,7 @@ static struct virtio_driver virtio_kfd = {
 static int
 virtkfd_open(struct inode *inode, struct file *filep)
 {
-	printk("kfd_open\n");
+	printk("kfd_open file=%p\n", filep);
 	return 0;
 }
 
@@ -385,7 +384,7 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 
 	case KFD_IOC_GET_PROCESS_APERTURES:
-		printk("KFD_IOC_GET_PROCESS_AERTURES\n");
+		printk("KFD_IOC_GET_PROCESS_APERTURES\n");
 //		err = kfd_ioctl_get_process_apertures(filep, process, (void __user *)arg);
 		break;
 
