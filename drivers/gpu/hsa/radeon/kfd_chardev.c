@@ -693,6 +693,7 @@ static int kfd_ioctl_get_process_apertures(struct file *filp, struct kfd_process
 	struct kfd_process_device *pdd;
 
 	dev_dbg(kfd_device, "get apertures for PASID %d", p->pasid);
+    printk("args=%p, arg=%p, sizeof(args)=%d\n", args, arg, sizeof(args));
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
