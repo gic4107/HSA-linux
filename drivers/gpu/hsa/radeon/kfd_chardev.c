@@ -20,6 +20,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#define DEBUG
+
 #include <linux/device.h>
 #include <linux/export.h>
 #include <linux/err.h>
@@ -110,6 +112,7 @@ kfd_open(struct inode *inode, struct file *filep)
 	if (iminor(inode) != 0)
 		return -ENODEV;
 
+    printk("host kfd open\n");
 	process = radeon_kfd_create_process(current);
 	if (IS_ERR(process))
 		return PTR_ERR(process);
@@ -223,6 +226,19 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 
 	mutex_unlock(&p->mutex);
 
+	printk("kfd: gpu id %d was created successfully.\n"
+		 "     ring size         == 0x%X\n"
+		 "     ring size         == %d\n"
+		 "     queue type        == 0x%X\n"
+		 "     queue percentage  == 0x%X\n"
+		 "     queue priority    == 0x%X\n",
+			args.gpu_id,
+			args.ring_size,
+			args.ring_size,
+			args.queue_type,
+			args.queue_percentage,
+			args.queue_priority);
+
 	pr_debug("kfd: queue id %d was created successfully.\n"
 		 "     ring buffer address == 0x%016llX\n"
 		 "     read ptr address    == 0x%016llX\n"
@@ -324,6 +340,11 @@ kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __us
 		err = PTR_ERR(pdd);
 		goto out;
 	}
+
+    printk("alternate_paerture_base=%llx\n", args.alternate_aperture_base);
+    printk("alternate_paerture_size=%llx\n", args.alternate_aperture_size);                             
+    printk("default_policy=%d\n", args.default_policy);                                               
+    printk("alternate_policy=%d\n", args.alternate_policy); 
 
 	default_policy = (args.default_policy == KFD_IOC_CACHE_POLICY_COHERENT)
 			 ? cache_policy_coherent : cache_policy_noncoherent;
@@ -818,7 +839,7 @@ kfd_ioctl_create_vidmem(struct file *filep, struct kfd_process *p, void __user *
 
 	radeon_flush_tlb(dev, p->pasid);
 
-	idr_handle = radeon_kfd_process_device_create_obj_handle(pdd, mem);
+	idr_handle = radeon_kfd_process_device_create_obj_handle(pdd, mem);		// idr is an integer ID map onto arbitary pointer
 	if (idr_handle < 0)
 		goto handle_creation_failed;
 
@@ -872,7 +893,6 @@ kfd_ioctl_destroy_vidmem(struct file *filep, struct kfd_process *p, void __user 
 	radeon_kfd_process_gpuvm_free(dev, mem);
 
 	radeon_flush_tlb(dev, p->pasid);
-
 	mutex_unlock(&p->mutex);
 	return 0;
 }
@@ -1030,81 +1050,102 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 	case KFD_IOC_CREATE_QUEUE:
+		printk("KFD_IOC_CREATE_QUEUE\n");
 		err = kfd_ioctl_create_queue(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_DESTROY_QUEUE:
+		printk("KFD_IOC_DESTROY_QUEUE\n");
 		err = kfd_ioctl_destroy_queue(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_SET_MEMORY_POLICY:
+		printk("KFD_IOC_SET_MEMORY_POLICY\n");
 		err = kfd_ioctl_set_memory_policy(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_GET_CLOCK_COUNTERS:
+		printk("KFD_IOC_GET_CLOCK_COUNTERS\n");
 		err = kfd_ioctl_get_clock_counters(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_GET_PROCESS_APERTURES:
+		printk("KFD_IOC_GET_PROCESS_AERTURES\n");
 		err = kfd_ioctl_get_process_apertures(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_UPDATE_QUEUE:
+		printk("KFD_IOC_UPDATE_QUEUE\n");
 		err = kfd_ioctl_update_queue(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_DBG_REGISTER:
+		printk("KFD_IOC_DBG_REGISTER\n");
 		err = kfd_ioctl_dbg_register(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_DBG_UNREGISTER:
+		printk("KFD_IOC_DBG_UNREGISTER\n");
 		err = kfd_ioctl_dbg_unrgesiter(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_DBG_ADDRESS_WATCH:
+		printk("KFD_IOC_DBG_ADDRESS_WATCH\n");
 		err = kfd_ioctl_dbg_address_watch(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_DBG_WAVE_CONTROL:
+		printk("KFD_IOC_DBG_WAVE_CONTROL\n");
 		err = kfd_ioctl_dbg_wave_control(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_PMC_ACQUIRE_ACCESS:
+		printk("KFD_IOC_PMC_ACQUIRE_ACCESS\n");
 		err = kfd_ioctl_pmc_acquire_access(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_PMC_RELEASE_ACCESS:
+		printk("KFD_IOC_PMC_RELEASE_ACCESS\n");
 		err = kfd_ioctl_pmc_release_access(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_CREATE_VIDMEM:
+		printk("KFD_IOC_CREATE_VIDMEM\n");
 		err = kfd_ioctl_create_vidmem(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_DESTROY_VIDMEM:
+		printk("KFD_IOC_DESTROY_VIDMEM\n");
 		err = kfd_ioctl_destroy_vidmem(filep, process, (void __user *)arg);
 		break;
 
 	case KFD_IOC_CREATE_EVENT:
+		printk("KFD_IOC_CREATE_EVENT\n");
 		err = kfd_ioctl_create_event(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_DESTROY_EVENT:
+		printk("KFD_IOC_DESTROY_EVENT\n");
 		err = kfd_ioctl_destroy_event(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_SET_EVENT:
+		printk("KFD_IOC_SET_EVENT\n");
 		err = kfd_ioctl_set_event(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_RESET_EVENT:
+		printk("KFD_IOC_RESET_EVENT\n");
 		err = kfd_ioctl_reset_event(filep, process, (void __user *) arg);
 		break;
 
 	case KFD_IOC_WAIT_EVENTS:
+		printk("KFD_IOC_WAIT_EVENTS\n");
 		err = kfd_ioctl_wait_events(filep, process, (void __user *) arg);
 		break;
+
 	case KFD_IOC_OPEN_GRAPHIC_HANDLE:
+		printk("KFD_IOC_OPEN_GRAPHIC_HANDLE\n");
 		err = kfd_ioctl_open_graphic_handle(filep, process, (void __user *)arg);
 		break;
 
