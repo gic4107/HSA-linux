@@ -6,8 +6,32 @@
 #define PROPERTIES_NODE_MAX 5
 
 // The command store inside virtqueue
-#define VIRTKFD_OPEN        0
-#define VIRTKFD_GET_SYSINFO 1
+#define VIRTKFD_OPEN                    0
+#define VIRTKFD_CLOSE                   1
+#define VIRTKFD_GET_SYSINFO             2
+#define VIRTKFD_GET_VERSION             3
+#define VIRTKFD_CREATE_QUEUE            4
+#define VIRTKFD_DESTROY_QUEUE           5
+#define VIRTKFD_SET_MEMORY_POLICY       6
+#define VIRTKFD_GET_CLOCK_COUNTERS      7
+#define VIRTKFD_GET_PROCESS_APERTURES   8
+#define VIRTKFD_UPDATE_QUEUE            9
+#define VIRTKFD_DBG_REGISTER            10
+#define VIRTKFD_DBG_UNREGISTER          11
+#define VIRTKFD_DBG_ADDRESS_WATCH       12
+#define VIRTKFD_DBG_WAVE_CONTROL        13
+#define VIRTKFD_PMC_ACQUIRE_ACCESS      14
+#define VIRTKFD_PMC_RELEASE_ACCESS      15
+#define VIRTKFD_CREATE_VIDMEM           16
+#define VIRTKFD_DESTROY_VIDMEM          17
+#define VIRTKFD_CREATE_EVENT            18
+#define VIRTKFD_DESTROY_EVENT           19
+#define VIRTKFD_SET_EVENT               20
+#define VIRTKFD_RESET_EVENT             21
+#define VIRTKFD_WAIT_EVENTS             22
+#define VIRTKFD_OPEN_GRAPHIC_HANDLE     23
+
+#define NO_MATCH                        0 
 
 struct virtio_kfd
 {
@@ -31,6 +55,7 @@ struct virtio_kfd
 struct virtkfd_req 
 {
     int command;                        // command out to back-end
+    uint64_t match;                     // match to find kfd_process for guest process
     void *param;                        // parameter
     u8 status;                          // status of back-end finishing req
     int signal;                         // request thread wait for this signale
@@ -126,8 +151,8 @@ struct virtkfd_sysfs_info {
     struct virtkfd_system_properties system_properties;  
 };
 
-int virtio_kfd_topology_init(struct virtio_kfd *vkfd);
-int virtkfd_add_req(struct virtio_kfd *vkfd, int *cmd, void *param, int param_len);
+int virtio_kfd_topology_init(void);
+int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t match);
 extern struct device* virtkfd_device;
 
 #endif

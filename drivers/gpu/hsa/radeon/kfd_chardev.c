@@ -110,6 +110,7 @@ kfd_open(struct inode *inode, struct file *filep)
 	if (iminor(inode) != 0)
 		return -ENODEV;
 
+    printk("non virt-kfd open\n");
 	process = radeon_kfd_create_process(current);
 	if (IS_ERR(process))
 		return PTR_ERR(process);

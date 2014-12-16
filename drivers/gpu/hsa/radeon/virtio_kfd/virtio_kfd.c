@@ -26,10 +26,11 @@
 
 static int virtkfd_major;
 static struct cdev virtkfd_cdev;
-static const char virtkfd_name[] = "virtio-kfd";
+static const char virtkfd_name[] = "kfd";
 static struct class *virtkfd_class;
 struct device *virtkfd_device;
 static DEFINE_IDA(virtkfd_index_ida);
+struct virtio_kfd *vkfd;
 
 #define to_vvq(_vq) container_of(_vq, struct vring_virtqueue, vq)
 
@@ -38,11 +39,11 @@ static int minor_to_index(int minor)
 	return minor >> PART_BITS;
 }
 
-int virtkfd_add_req(struct virtio_kfd *vkfd, int *cmd, void *param, int param_len)
+int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t match)
 {
-    printk("virtkfd_add_req, command=%d, param=%p\n", *cmd, param);
+    printk("virtkfd_add_req, command=%d, param=%p\n", cmd, param);
     struct virtkfd_req *req;
-    struct scatterlist sg_cmd, sg_param, sg_status, *sgs[3];
+    struct scatterlist sg_cmd, sg_param, sg_match, sg_status, *sgs[4];
     int num_in=0, num_out=0; 
     struct virtqueue *vq = vkfd->vq;
     int ret;
@@ -54,13 +55,16 @@ int virtkfd_add_req(struct virtio_kfd *vkfd, int *cmd, void *param, int param_le
 	}
     req->signal  = 0;
     req->command = cmd;
+    req->match   = match;
     req->param   = param;
 
-    printk("cmd=%p param=%p status=%p\n", req->command, req->param, &req->status);
-    sg_init_one(&sg_cmd, cmd, sizeof(int));
+    printk("cmd=%p param=%p match=0x%x status=%p\n", req->command, req->param, match, &req->status);
+    sg_init_one(&sg_cmd, &cmd, sizeof(cmd));
+    sg_init_one(&sg_match, &match, sizeof(match));
     sg_init_one(&sg_param, param, param_len);
     sg_init_one(&sg_status, &req->status, sizeof(req->status));
     sgs[num_out++] = &sg_cmd;
+    sgs[num_out++] = &sg_match;
     sgs[num_out+num_in++] = &sg_param;
     sgs[num_out+num_in++] = &sg_status;
 
@@ -85,7 +89,6 @@ int virtkfd_add_req(struct virtio_kfd *vkfd, int *cmd, void *param, int param_le
 
 static void virtkfd_done(struct virtqueue *vq)
 {
-    struct virtio_kfd *vkfd = vq->vdev->priv;
     struct virtkfd_req *req;
     int len;
 	unsigned long flags;
@@ -157,7 +160,7 @@ static void virtblk_config_changed(struct virtio_device *vdev)
 }
 */
 
-static int init_vq(struct virtio_kfd *vkfd)
+static int init_vq(void)
 {
 	int err = 0;
 
@@ -171,7 +174,10 @@ static int init_vq(struct virtio_kfd *vkfd)
 
 static int virtkfd_probe(struct virtio_device *vdev)
 {
-    struct virtio_kfd *vkfd;
+    if(vkfd != NULL) {
+        printk("virtkfd_probe vkfd != NULL\n");
+        return -1;
+    }
 	int err, index;
 printk("virtiokfd_probe\n");
 
@@ -199,7 +205,7 @@ printk("virtiokfd_probe\n");
 //	INIT_WORK(&vblk->config_work, virtblk_config_changed_work);
 	vkfd->config_enable = true;
 
-	err = init_vq(vkfd);
+	err = init_vq();
 	if (err)
 		goto out_free_vkfd;
 	spin_lock_init(&vkfd->vq_lock);
@@ -229,7 +235,7 @@ printk("virtiokfd_probe\n");
 //	err = device_create_file(disk_to_dev(vblk->disk), &dev_attr_serial);
 //	if (err)
 //		goto out_del_disk;
-    err = virtio_kfd_topology_init(vkfd);
+    err = virtio_kfd_topology_init();
     if(err < 0)
         goto out_free_vq;
 
@@ -344,30 +350,51 @@ static struct virtio_driver virtio_kfd = {
 static int
 virtkfd_open(struct inode *inode, struct file *filep)
 {
+    printk("kfd_open current=%p, mm=%p\n", current, current->mm);
 	printk("kfd_open file=%p\n", filep);
+    uint64_t match;
+
+    match = (uint64_t)current->mm;
+    printk("match=0x%x\n", match);
+    virtkfd_add_req(VIRTKFD_OPEN, &match, sizeof(match), NO_MATCH);     // match used for finding forwarder in back-end, kfd_open will create forwarder and no need to find one
+    printk("VIRTKFD_OPEN done\n"); 
+
 	return 0;
 }
 
 static long
 virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
-//	struct kfd_process *process;
 	long err = -EINVAL;
+    uint64_t match = (uint64_t)current->mm; 
+    void *args;
 
 	dev_dbg(virtkfd_device,
 		"ioctl cmd 0x%x (#%d), arg 0x%lx\n",
 		cmd, _IOC_NR(cmd), arg);
 
-//	process = radeon_kfd_get_process(current);
-//	if (IS_ERR(process))
-//		return PTR_ERR(process);
-
 	switch (cmd) {
 	case KFD_IOC_CREATE_QUEUE:
 		printk("KFD_IOC_CREATE_QUEUE\n");
-//		err = kfd_ioctl_create_queue(filep, process, (void __user *)arg);
+        args = (struct kfd_ioctl_create_queue_args*)kmalloc(sizeof(struct kfd_ioctl_create_queue_args), GFP_KERNEL);
+        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_create_queue_args)))
+            return -EFAULT;
+        printk("ring_base_address=0x%llx\n", ((struct kfd_ioctl_create_queue_args*)args)->ring_base_address);
+        printk("write_pointer_address=0x%llx\n", ((struct kfd_ioctl_create_queue_args*)args)->write_pointer_address);
+        printk("read_pointer_address=0x%llx\n", ((struct kfd_ioctl_create_queue_args*)args)->read_pointer_address);
+        printk("ring_size=%d\n",((struct kfd_ioctl_create_queue_args*)args)->ring_size);
+        printk("gpu_id=%d\n",((struct kfd_ioctl_create_queue_args*)args)->gpu_id);
+        printk("queue_type=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_type);
+        printk("queue_percentage=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_percentage);
+        printk("queue_priority=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_priority);
+		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, (struct kfd_ioctl_create_queue_args*)args,
+                                sizeof(struct kfd_ioctl_create_queue_args), match);       // back-end will fill args
+        printk("queue_id=%d\n", ((struct kfd_ioctl_create_queue_args*)args)->queue_id);
+        printk("doorbell_address=0x%llx\n",((struct kfd_ioctl_create_queue_args*)args)->doorbell_address);
+        if (copy_to_user((void __user*)arg, args, sizeof(struct kfd_ioctl_create_queue_args))) 
+            return -EFAULT;
+        kfree(args);
 		break;
-
 	case KFD_IOC_DESTROY_QUEUE:
 		printk("KFD_IOC_DESTROY_QUEUE\n"); 
 //		err = kfd_ioctl_destroy_queue(filep, process, (void __user *)arg);
@@ -375,19 +402,49 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_SET_MEMORY_POLICY:
 		printk("KFD_IOC_SET_MEMORY_POLICY\n");
-//		err = kfd_ioctl_set_memory_policy(filep, process, (void __user *)arg);
+        args = (struct kfd_ioctl_set_memory_policy_args*)kmalloc(sizeof(struct kfd_ioctl_set_memory_policy_args), GFP_KERNEL);
+        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_set_memory_policy_args)))
+            return -EFAULT;
+        printk("gpu_id=%d\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->gpu_id);
+        printk("alternate_aperture_base=0x%llx\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->alternate_aperture_base);
+        printk("alternate_aperture_size=%llu\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->alternate_aperture_size);
+        printk("default_policy=%u\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->default_policy);
+        printk("alternate_policy=%u\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->alternate_policy);
+		err = virtkfd_add_req(VIRTKFD_SET_MEMORY_POLICY, (struct kfd_ioctl_set_memory_policy_args*)args,
+                                sizeof(struct kfd_ioctl_set_memory_policy_args), match);       // back-end will fill args
+        kfree(args);
 		break;
-
 	case KFD_IOC_GET_CLOCK_COUNTERS:
 		printk("KFD_IOC_GET_CLOCK_COUNTERS\n");
-//		err = kfd_ioctl_get_clock_counters(filep, process, (void __user *)arg);
+        args = (struct kfd_ioctl_get_clock_counters_args*)kmalloc(sizeof(struct kfd_ioctl_get_clock_counters_args), GFP_KERNEL);
+        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_get_clock_counters_args)))
+            return -EFAULT;
+        printk("gpu_id=%d\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->gpu_id);
+		err = virtkfd_add_req(VIRTKFD_GET_CLOCK_COUNTERS, (struct kfd_ioctl_get_clock_counters_args*)args,
+                                sizeof(struct kfd_ioctl_get_clock_counters_args), match);       // back-end will fill args
+        printk("gpu_clock_counter=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->gpu_clock_counter);
+        printk("cpu_clock_counter=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->cpu_clock_counter);
+        printk("system_clock_counter=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->system_clock_counter);
+        printk("system_clock_freq=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->system_clock_freq);
+        if (copy_to_user((void __user*)arg, args, sizeof(((struct kfd_ioctl_get_clock_counters_args*)args)))) 
+            return -EFAULT;
+        kfree(args);
 		break;
-
 	case KFD_IOC_GET_PROCESS_APERTURES:
 		printk("KFD_IOC_GET_PROCESS_APERTURES\n");
-//		err = kfd_ioctl_get_process_apertures(filep, process, (void __user *)arg);
+        args = (struct kfd_ioctl_get_process_apertures_args*)kmalloc(sizeof(struct kfd_ioctl_get_process_apertures_args), GFP_KERNEL);
+        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_get_process_apertures_args)))
+            return -EFAULT;
+		err = virtkfd_add_req(VIRTKFD_GET_PROCESS_APERTURES, (struct kfd_ioctl_get_process_apertures_args*)args,
+                                sizeof(struct kfd_ioctl_get_process_apertures_args), match);       // back-end will fill args
+        printk("num_of_nodes=%d\n", ((struct kfd_ioctl_get_process_apertures_args*)args)->num_of_nodes);
+        printk("lds_base=0x%llx\n", ((struct kfd_ioctl_get_process_apertures_args*)args)->process_apertures[0].lds_base);
+        printk("lds_limit=0x%llx\n",((struct kfd_ioctl_get_process_apertures_args*)args)->process_apertures[0].lds_limit);
+        printk("gpu_id=%d\n",((struct kfd_ioctl_get_process_apertures_args*)args)->process_apertures[0].gpu_id);
+        if (copy_to_user((void __user*)arg, args, sizeof(struct kfd_ioctl_get_process_apertures_args))) 
+            return -EFAULT;
+        kfree(args);
 		break;
-
 	case KFD_IOC_UPDATE_QUEUE:
 		printk("KFD_IOC_UPDATE_QUEUE\n");
 //		err = kfd_ioctl_update_queue(filep, process, (void __user *)arg);
@@ -435,9 +492,21 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_CREATE_EVENT:
 		printk("KFD_IOC_CREATE_EVENT\n");
-//		err = kfd_ioctl_create_event(filep, process, (void __user *) arg);
+        args = (struct kfd_ioctl_create_event_args*)kmalloc(sizeof(struct kfd_ioctl_create_event_args), GFP_KERNEL);
+        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_create_event_args)))
+            return -EFAULT;
+        printk("event_type=%u\n", ((struct kfd_ioctl_create_event_args*)args)->event_type);
+        printk("auto_reset=%u\n", ((struct kfd_ioctl_create_event_args*)args)->auto_reset);
+        printk("node_id=%u\n", ((struct kfd_ioctl_create_event_args*)args)->node_id);
+		err = virtkfd_add_req(VIRTKFD_CREATE_EVENT, (struct kfd_ioctl_create_event_args*)args,
+                                sizeof(struct kfd_ioctl_create_event_args), match);       // back-end will fill args
+        printk("event_trigger_address=0x%llx\n", ((struct kfd_ioctl_create_event_args*)args)->event_trigger_address);
+        printk("event_trigger_data=%u\n", ((struct kfd_ioctl_create_event_args*)args)->event_trigger_data);
+        printk("event_id=%u\n", ((struct kfd_ioctl_create_event_args*)args)->event_id);
+        if (copy_to_user((void __user*)arg, args, sizeof(((struct kfd_ioctl_create_event_args*)args)))) 
+            return -EFAULT;
+        kfree(args);
 		break;
-
 	case KFD_IOC_DESTROY_EVENT:
 		printk("KFD_IOC_DESTROY_EVENT\n");
 //		err = kfd_ioctl_destroy_event(filep, process, (void __user *) arg);

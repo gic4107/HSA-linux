@@ -43,8 +43,8 @@ struct kfd_ioctl_get_version_args {
 
 struct kfd_ioctl_create_queue_args {
 	uint64_t ring_base_address;	/* to KFD */
-	uint64_t write_pointer_address;	/* from KFD */
-	uint64_t read_pointer_address;	/* from KFD */
+	uint64_t write_pointer_address;	/* from KFD */  // to KFD
+	uint64_t read_pointer_address;	/* from KFD */  // to KFD
 	uint64_t doorbell_address;	/* from KFD */
 
 	uint32_t ring_size;		/* to KFD */

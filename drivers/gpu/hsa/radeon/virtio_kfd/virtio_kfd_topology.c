@@ -599,7 +599,7 @@ static int virtio_kfd_topology_update_sysfs(void)
 }
 
 
-int virtio_kfd_topology_init(struct virtio_kfd *vkfd)
+int virtio_kfd_topology_init(void)
 {
 	int ret;
     printk("virtio_kfd_topology_init\n");
@@ -612,9 +612,8 @@ int virtio_kfd_topology_init(struct virtio_kfd *vkfd)
 	memset(&sys_props, 0, sizeof(sys_props));
 
     // Get sysfs info from back-end 
-    int cmd = VIRTKFD_GET_SYSINFO;
     printk("call virtkfd_add_req\n");
-    virtkfd_add_req(vkfd, &cmd, &sys_info, sizeof(sys_info));       // a blocking call
+    virtkfd_add_req(VIRTKFD_GET_SYSINFO, &sys_info, sizeof(sys_info), NO_MATCH);       // a blocking call
     printk("virtkfd_add_req done\n");
 
     virtio_kfd_set_sysfs_system_properties();    
