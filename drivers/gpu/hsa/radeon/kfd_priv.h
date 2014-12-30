@@ -406,8 +406,24 @@ struct kfd_process {
 	struct list_head signal_event_pages;	/* struct slot_page_header.event_pages */
 	kfd_event_id next_nonsignal_event_id;
 	size_t signal_event_count;
+#ifdef CONFIG_HSA_VIRTUALIZATION 
+    bool virtio_be;     
+    bool vm_process;    
+    struct kfd_process *bind_vm_process;
+#endif
 };
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct kfd_process* radeon_kfd_vm_create_process(const void *);
+long                radeon_kfd_vm_close_process(const void *);
+struct kfd_process* find_vm_process(const void *);
+int radeon_kfd_vm_doorbell_mmap(struct kfd_process*, struct vm_area_struct*);
+#define KFD_MMAP_VM_PROCESS_DOORBELL_START	0
+#define KFD_MMAP_VM_PROCESS_DOORBELL_END	sizeof(doorbell_t) * MAX_PROCESS_QUEUES
+#define KFD_MMAP_VM_PROCESS_EVENTS_START	KFD_MMAP_DOORBELL_END
+#define KFD_MMAP_VM_PROCESS_EVENTS_END      KFD_MMAP_EVENTS_START + 1ULL << PAGE_SHIFT 	
+#define VM_PROCESS_GPUID                    40810
+#endif
 struct kfd_process *radeon_kfd_create_process(const struct task_struct *);
 struct kfd_process *radeon_kfd_get_process(const struct task_struct *);
 struct kfd_process *kfd_lookup_process_by_pasid(pasid_t pasid);

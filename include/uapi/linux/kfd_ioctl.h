@@ -196,40 +196,173 @@ struct kfd_ioctl_wait_events_args {
 	uint32_t wait_for_all;		/* to KFD */
 	uint32_t timeout;		/* to KFD */
 
-	uint32_t wait_result;		/* from KFD */
+    uint32_t wait_result;       /* from KFD */
 };
 
 struct kfd_ioctl_open_graphic_handle_args {
-	uint64_t va_addr;		/* to KFD */
-	uint64_t handle;		/* from KFD */
-	uint32_t gpu_id;		/* to KFD */
-	int graphic_device_fd;		/* to KFD */
-	uint32_t graphic_handle;	/* to KFD */
+    uint64_t va_addr;       /* to KFD */                                            
+    uint64_t handle;        /* from KFD */                                          
+    uint32_t gpu_id;        /* to KFD */                                            
+    int graphic_device_fd;      /* to KFD */                                        
+    uint32_t graphic_handle;    /* to KFD */                                        
+};                                                                                  
+                                                                                    
+#define KFD_IOC_MAGIC 'K'                                                           
+                                                                                    
+#define KFD_IOC_GET_VERSION     _IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
+#define KFD_IOC_CREATE_QUEUE        _IOWR(KFD_IOC_MAGIC, 2, struct kfd_ioctl_create_queue_args)
+#define KFD_IOC_DESTROY_QUEUE       _IOWR(KFD_IOC_MAGIC, 3, struct kfd_ioctl_destroy_queue_args)
+#define KFD_IOC_SET_MEMORY_POLICY   _IOW(KFD_IOC_MAGIC, 4, struct kfd_ioctl_set_memory_policy_args)
+#define KFD_IOC_GET_CLOCK_COUNTERS  _IOWR(KFD_IOC_MAGIC, 5, struct kfd_ioctl_get_clock_counters_args)
+#define KFD_IOC_GET_PROCESS_APERTURES   _IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
+#define KFD_IOC_UPDATE_QUEUE        _IOW(KFD_IOC_MAGIC, 7, struct kfd_ioctl_update_queue_args)
+#define KFD_IOC_DBG_REGISTER        _IOW(KFD_IOC_MAGIC, 8, struct kfd_ioctl_dbg_register_args)
+#define KFD_IOC_DBG_UNREGISTER      _IOW(KFD_IOC_MAGIC, 9, struct kfd_ioctl_dbg_unregister_args)
+#define KFD_IOC_DBG_ADDRESS_WATCH   _IOW(KFD_IOC_MAGIC, 10, struct kfd_ioctl_dbg_address_watch_args)
+#define KFD_IOC_DBG_WAVE_CONTROL    _IOW(KFD_IOC_MAGIC, 11, struct kfd_ioctl_dbg_wave_control_args)
+#define KFD_IOC_PMC_ACQUIRE_ACCESS  _IOW(KFD_IOC_MAGIC, 12, struct kfd_ioctl_pmc_acquire_access_args)
+#define KFD_IOC_PMC_RELEASE_ACCESS  _IOW(KFD_IOC_MAGIC, 13, struct kfd_ioctl_pmc_release_access_args)
+#define KFD_IOC_CREATE_VIDMEM       _IOWR(KFD_IOC_MAGIC, 14, struct kfd_ioctl_create_vidmem_args)
+#define KFD_IOC_DESTROY_VIDMEM      _IOW(KFD_IOC_MAGIC, 15, struct kfd_ioctl_destroy_vidmem_args)
+#define KFD_IOC_CREATE_EVENT        _IOWR(KFD_IOC_MAGIC, 16, struct kfd_ioctl_create_event_args)
+#define KFD_IOC_DESTROY_EVENT       _IOW(KFD_IOC_MAGIC, 17, struct kfd_ioctl_destroy_event_args)
+#define KFD_IOC_SET_EVENT       _IOW(KFD_IOC_MAGIC, 18, struct kfd_ioctl_set_event_args)
+#define KFD_IOC_RESET_EVENT     _IOW(KFD_IOC_MAGIC, 19, struct kfd_ioctl_reset_event_args)
+#define KFD_IOC_WAIT_EVENTS     _IOWR(KFD_IOC_MAGIC, 20, struct kfd_ioctl_wait_events_args)
+#define KFD_IOC_OPEN_GRAPHIC_HANDLE _IOWR(KFD_IOC_MAGIC, 21, struct kfd_ioctl_open_graphic_handle_args)
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+// Data structure for vm_process
+
+struct kfd_ioctl_vm_create_queue_args {
+    struct kfd_ioctl_create_queue_args args;
+    uint64_t match;
 };
 
-#define KFD_IOC_MAGIC 'K'
+struct kfd_ioctl_vm_destroy_queue_args {
+    struct kfd_ioctl_destroy_queue_args args;
+    uint64_t match;
+};
 
-#define KFD_IOC_GET_VERSION		_IOR(KFD_IOC_MAGIC, 1, struct kfd_ioctl_get_version_args)
-#define KFD_IOC_CREATE_QUEUE		_IOWR(KFD_IOC_MAGIC, 2, struct kfd_ioctl_create_queue_args)
-#define KFD_IOC_DESTROY_QUEUE		_IOWR(KFD_IOC_MAGIC, 3, struct kfd_ioctl_destroy_queue_args)
-#define KFD_IOC_SET_MEMORY_POLICY	_IOW(KFD_IOC_MAGIC, 4, struct kfd_ioctl_set_memory_policy_args)
-#define KFD_IOC_GET_CLOCK_COUNTERS	_IOWR(KFD_IOC_MAGIC, 5, struct kfd_ioctl_get_clock_counters_args)
-#define KFD_IOC_GET_PROCESS_APERTURES	_IOR(KFD_IOC_MAGIC, 6, struct kfd_ioctl_get_process_apertures_args)
-#define KFD_IOC_UPDATE_QUEUE		_IOW(KFD_IOC_MAGIC, 7, struct kfd_ioctl_update_queue_args)
-#define KFD_IOC_DBG_REGISTER		_IOW(KFD_IOC_MAGIC, 8, struct kfd_ioctl_dbg_register_args)
-#define KFD_IOC_DBG_UNREGISTER		_IOW(KFD_IOC_MAGIC, 9, struct kfd_ioctl_dbg_unregister_args)
-#define KFD_IOC_DBG_ADDRESS_WATCH	_IOW(KFD_IOC_MAGIC, 10, struct kfd_ioctl_dbg_address_watch_args)
-#define KFD_IOC_DBG_WAVE_CONTROL	_IOW(KFD_IOC_MAGIC, 11, struct kfd_ioctl_dbg_wave_control_args)
-#define KFD_IOC_PMC_ACQUIRE_ACCESS	_IOW(KFD_IOC_MAGIC, 12, struct kfd_ioctl_pmc_acquire_access_args)
-#define KFD_IOC_PMC_RELEASE_ACCESS	_IOW(KFD_IOC_MAGIC, 13, struct kfd_ioctl_pmc_release_access_args)
-#define KFD_IOC_CREATE_VIDMEM		_IOWR(KFD_IOC_MAGIC, 14, struct kfd_ioctl_create_vidmem_args)
-#define KFD_IOC_DESTROY_VIDMEM		_IOW(KFD_IOC_MAGIC, 15, struct kfd_ioctl_destroy_vidmem_args)
-#define KFD_IOC_CREATE_EVENT		_IOWR(KFD_IOC_MAGIC, 16, struct kfd_ioctl_create_event_args)
-#define KFD_IOC_DESTROY_EVENT		_IOW(KFD_IOC_MAGIC, 17, struct kfd_ioctl_destroy_event_args)
-#define KFD_IOC_SET_EVENT		_IOW(KFD_IOC_MAGIC, 18, struct kfd_ioctl_set_event_args)
-#define KFD_IOC_RESET_EVENT		_IOW(KFD_IOC_MAGIC, 19, struct kfd_ioctl_reset_event_args)
-#define KFD_IOC_WAIT_EVENTS		_IOWR(KFD_IOC_MAGIC, 20, struct kfd_ioctl_wait_events_args)
-#define KFD_IOC_OPEN_GRAPHIC_HANDLE	_IOWR(KFD_IOC_MAGIC, 21, struct kfd_ioctl_open_graphic_handle_args)
+struct kfd_ioctl_vm_update_queue_args {
+    struct kfd_ioctl_update_queue_args args;
+    uint64_t match;
+};
+
+struct kfd_ioctl_vm_set_memory_policy_args {
+    struct kfd_ioctl_set_memory_policy_args args;
+    uint64_t match;
+};
+
+struct kfd_ioctl_vm_get_clock_counters_args {
+    struct kfd_ioctl_get_clock_counters_args args;
+    uint64_t match;
+};
+
+struct kfd_ioctl_vm_get_process_apertures_args {
+    struct kfd_ioctl_get_process_apertures_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_create_vidmem_args {
+    struct kfd_ioctl_create_vidmem_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_destroy_vidmem_args {
+    struct kfd_ioctl_destroy_vidmem_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_dbg_register_args {
+    struct kfd_ioctl_dbg_register_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_dbg_unregister_args {
+    struct kfd_ioctl_dbg_unregister_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_dbg_address_watch_args {
+    struct kfd_ioctl_dbg_address_watch_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_dbg_wave_control_args {
+    struct kfd_ioctl_dbg_wave_control_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_pmc_acquire_access_args {
+    struct kfd_ioctl_pmc_acquire_access_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_pmc_release_access_args {
+    struct kfd_ioctl_pmc_release_access_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_create_event_args {
+    struct kfd_ioctl_create_event_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_destroy_event_args {
+    struct kfd_ioctl_destroy_event_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_set_event_args {
+    struct kfd_ioctl_set_event_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_reset_event_args {
+    struct kfd_ioctl_reset_event_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_wait_events_args {
+    struct kfd_ioctl_wait_events_args args;
+    uint64_t match; 
+};
+
+struct kfd_ioctl_vm_open_graphic_handle_args {
+    struct kfd_ioctl_open_graphic_handle_args args;
+    uint64_t match; 
+};
+
+// IOCTL cmds for virtualization
+#define KFD_IOC_VM_GET_VERSION		_IOR(KFD_IOC_MAGIC, 65, struct kfd_ioctl_vm_get_version_args)
+#define KFD_IOC_VM_CREATE_QUEUE		_IOWR(KFD_IOC_MAGIC, 66, struct kfd_ioctl_vm_create_queue_args)
+#define KFD_IOC_VM_DESTROY_QUEUE		_IOWR(KFD_IOC_MAGIC, 67, struct kfd_ioctl_vm_destroy_queue_args)
+#define KFD_IOC_VM_SET_MEMORY_POLICY	_IOW(KFD_IOC_MAGIC, 68, struct kfd_ioctl_vm_set_memory_policy_args)
+#define KFD_IOC_VM_GET_CLOCK_COUNTERS	_IOWR(KFD_IOC_MAGIC, 69, struct kfd_ioctl_vm_get_clock_counters_args)
+#define KFD_IOC_VM_GET_PROCESS_APERTURES	_IOR(KFD_IOC_MAGIC, 70, struct kfd_ioctl_vm_get_process_apertures_args)
+#define KFD_IOC_VM_UPDATE_QUEUE		_IOW(KFD_IOC_MAGIC, 71, struct kfd_ioctl_vm_update_queue_args)
+#define KFD_IOC_VM_DBG_REGISTER		_IOW(KFD_IOC_MAGIC, 72, struct kfd_ioctl_vm_dbg_register_args)
+#define KFD_IOC_VM_DBG_UNREGISTER		_IOW(KFD_IOC_MAGIC, 73, struct kfd_ioctl_vm_dbg_unregister_args)
+#define KFD_IOC_VM_DBG_ADDRESS_WATCH	_IOW(KFD_IOC_MAGIC, 74, struct kfd_ioctl_vm_dbg_address_watch_args)
+#define KFD_IOC_VM_DBG_WAVE_CONTROL	_IOW(KFD_IOC_MAGIC, 75, struct kfd_ioctl_vm_dbg_wave_control_args)
+#define KFD_IOC_VM_PMC_ACQUIRE_ACCESS	_IOW(KFD_IOC_MAGIC, 76, struct kfd_ioctl_vm_pmc_acquire_access_args)
+#define KFD_IOC_VM_PMC_RELEASE_ACCESS	_IOW(KFD_IOC_MAGIC, 77, struct kfd_ioctl_vm_pmc_release_access_args)
+#define KFD_IOC_VM_CREATE_VIDMEM		_IOWR(KFD_IOC_MAGIC, 78, struct kfd_ioctl_vm_create_vidmem_args)
+#define KFD_IOC_VM_DESTROY_VIDMEM		_IOW(KFD_IOC_MAGIC, 79, struct kfd_ioctl_vm_destroy_vidmem_args)
+#define KFD_IOC_VM_CREATE_EVENT		_IOWR(KFD_IOC_MAGIC, 80, struct kfd_ioctl_vm_create_event_args)
+#define KFD_IOC_VM_DESTROY_EVENT		_IOW(KFD_IOC_MAGIC, 81, struct kfd_ioctl_vm_destroy_event_args)
+#define KFD_IOC_VM_SET_EVENT		_IOW(KFD_IOC_MAGIC, 82, struct kfd_ioctl_vm_set_event_args)
+#define KFD_IOC_VM_RESET_EVENT		_IOW(KFD_IOC_MAGIC, 83, struct kfd_ioctl_vm_reset_event_args)
+#define KFD_IOC_VM_WAIT_EVENTS		_IOWR(KFD_IOC_MAGIC, 84, struct kfd_ioctl_vm_wait_events_args)
+#define KFD_IOC_VM_OPEN_GRAPHIC_HANDLE	_IOWR(KFD_IOC_MAGIC, 85, struct kfd_ioctl_vm_open_graphic_handle_args)
+#define KFD_IOC_VM_SET_VIRTIO_BE    _IO(KFD_IOC_MAGIC, 86)
+#define KFD_IOC_VM_CREATE_PROCESS   _IOW(KFD_IOC_MAGIC, 87, uint64_t)
+#define KFD_IOC_VM_CLOSE_PROCESS  	_IOW(KFD_IOC_MAGIC, 88, uint64_t)
+#define KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS      _IOW(KFD_IOC_MAGIC, 89, uint64_t)
+#define KFD_IOC_VM_VIRTIO_BE_UNBIND_VM_PROCESS    _IO(KFD_IOC_MAGIC, 90)
+
+#endif
 
 #pragma pack(pop)
 

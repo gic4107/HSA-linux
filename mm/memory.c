@@ -744,6 +744,17 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 				pte_t pte)
 {
 	unsigned long pfn = pte_pfn(pte);
+    int debug_flag = 0;
+    if(pfn == 0xD0003) { 
+        debug_flag = 1;
+        printk("===== vm_normal_page =====\n");
+        printk("vma=%p, addr=0x%llx, pte=0x%lx\n", vma, addr, pte);
+        printk("start=0x%llx, end=0x%llx, offset=0x%llx\n", vma->vm_start, vma->vm_end, vma->vm_pgoff);
+        printk("SPECIAL:%d, pte_special=%d, vma->vm_flags=0x%llx, is_zero_pfn=%d\n", 
+            HAVE_PTE_SPECIAL, pte_special(pte), vma->vm_flags, is_zero_pfn(pfn));
+        printk("pfn_valid=%d\n", pfn_valid(pfn)); 
+    }
+                
 
 	if (HAVE_PTE_SPECIAL) {
 		if (likely(!pte_special(pte)))
@@ -765,6 +776,10 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 		} else {
 			unsigned long off;
 			off = (addr - vma->vm_start) >> PAGE_SHIFT;
+            if(debug_flag) {
+                printk("off=0x%lx, 0x%lx\n", off, vma->vm_pgoff + off);
+                printk("is_cow_mapping=%d\n", is_cow_mapping(vma->vm_flags));
+            }
 			if (pfn == vma->vm_pgoff + off)
 				return NULL;
 			if (!is_cow_mapping(vma->vm_flags))
@@ -775,6 +790,10 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 	if (is_zero_pfn(pfn))
 		return NULL;
 check_pfn:
+    if(debug_flag) {
+        printk("highest_memmap_pfn=%d\n", highest_memmap_pfn);
+        printk("pfn_to_page=%p\n", pfn_to_page(pfn));
+    }
 	if (unlikely(pfn > highest_memmap_pfn)) {
 		print_bad_pte(vma, addr, pte, NULL);
 		return NULL;
@@ -1740,8 +1759,10 @@ long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 			pte_t *pte;
 
 			/* user gate pages are read-only */
-			if (gup_flags & FOLL_WRITE)
+			if (gup_flags & FOLL_WRITE) {
+                printk("__get_user_pages start=0x%llx\n", start);
 				return i ? : -EFAULT;
+            }
 			if (pg > TASK_SIZE)
 				pgd = pgd_offset_k(pg);
 			else
@@ -1781,9 +1802,15 @@ long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 		}
 
 		if (!vma ||
-		    (vma->vm_flags & (VM_IO | VM_PFNMAP)) ||
-		    !(vm_flags & vma->vm_flags))
+		    (vma->vm_flags & (VM_IO | VM_PFNMAP)) ||        // this
+		    !(vm_flags & vma->vm_flags)) {
+            if(!vma)
+                printk("===== __get_user_page ======\nvma=%p\n", vma);
+            else    
+                printk("===== __get_user_page ======\ncurrent=%p, mm=%p, start=0x%llx, vma=%p, vma->vm_flags=0x%lx, vm_flags=0x%lx, i=%d\n", 
+                                tsk, mm, start, vma, vma->vm_flags, vm_flags, i);
 			return i ? : -EFAULT;
+        }
 
 		if (is_vm_hugetlb_page(vma)) {
 			i = follow_hugetlb_page(mm, vma, pages, vmas,
@@ -1825,19 +1852,25 @@ long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 							fault_flags);
 
 				if (ret & VM_FAULT_ERROR) {
-					if (ret & VM_FAULT_OOM)
+					if (ret & VM_FAULT_OOM) {
+                        printk("===== __get_user_page ===== VM_FAULT_OOM %d\n", i);
 						return i ? i : -ENOMEM;
+                    }
 					if (ret & (VM_FAULT_HWPOISON |
 						   VM_FAULT_HWPOISON_LARGE)) {
 						if (i)
 							return i;
 						else if (gup_flags & FOLL_HWPOISON)
 							return -EHWPOISON;
-						else
+						else {
+                            printk("===== __get_user_page ===== VM_FAULT_HWPOISON\n");
 							return -EFAULT;
+                        }
 					}
-					if (ret & VM_FAULT_SIGBUS)
+					if (ret & VM_FAULT_SIGBUS) {
+                        printk("===== __get_user_page ===== VM_FAULT_SIGBUS\n");
 						return i ? i : -EFAULT;
+                    }
 					BUG();
 				}
 
@@ -2266,8 +2299,17 @@ static int remap_pte_range(struct mm_struct *mm, pmd_t *pmd,
 {
 	pte_t *pte;
 	spinlock_t *ptl;
+    int debug_flag = 0;
+    if(pfn == 0xD0003) {
+        debug_flag = 1;
+        printk("===== remap_pte_range =====\n");
+    }
 
 	pte = pte_alloc_map_lock(mm, pmd, addr, &ptl);
+    if(debug_flag) {
+        printk("pte=%p, prot=0x%lx, pfn_pte0x%llx, pte_mkspecial=0x%llx\n", 
+            pte, prot, pfn_pte(pfn, prot), pte_mkspecial(pfn_pte(pfn, prot)));
+    }
 	if (!pte)
 		return -ENOMEM;
 	arch_enter_lazy_mmu_mode();
@@ -2340,6 +2382,13 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	unsigned long end = addr + PAGE_ALIGN(size);
 	struct mm_struct *mm = vma->vm_mm;
 	int err;
+    int debug_flag = 0;
+
+    if(pfn == 0xD0003) {
+        printk("===== remap_pfn_range =====\n");
+        printk("pfn=0x%lx, addr=0x%llx\n", pfn, addr);
+        debug_flag = 1;
+    }
 
 	/*
 	 * Physically remapped pages are special. Tell the
@@ -2386,6 +2435,8 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	if (err)
 		untrack_pfn(vma, pfn, PAGE_ALIGN(size));
 
+    if(debug_flag)
+        printk("pfn=0x%lx, 0x%llx, err=%d\n", pfn, pfn + (addr >> PAGE_SHIFT), err);
 	return err;
 }
 EXPORT_SYMBOL(remap_pfn_range);

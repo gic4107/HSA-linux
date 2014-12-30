@@ -20,4 +20,8 @@ config HSA_RADEON
 config PR_DEBUG
 	bool "Enable pr_debug()"
 
+config HSA_VIRTUALIZATION
+    bool "Modify HSA kernel driver to support virtualization"
+    depends on HSA_RADEON
+
 endif # HSA

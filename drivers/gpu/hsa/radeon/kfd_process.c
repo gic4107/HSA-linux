@@ -166,6 +166,7 @@ kfd_process_notifier_release(struct mmu_notifier *mn, struct mm_struct *mm)
 	struct kfd_process *p = container_of(mn, struct kfd_process, mmu_notifier);
 	BUG_ON(p->mm != mm);
 
+    printk("kfd_process_notifier_release, call shutdown_process\n");
 	shutdown_process(p);
 }
 
@@ -173,6 +174,8 @@ static void
 kfd_process_notifier_destroy(struct mmu_notifier *mn)
 {
 	struct kfd_process *p = container_of(mn, struct kfd_process, mmu_notifier);
+
+    printk("kfd_process_notifier_destroy, call free_process\n");
 	free_process(p);
 }
 
@@ -313,11 +316,13 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
 	if (err != 0)
 		return ERR_PTR(err);
 
-	err = amd_iommu_bind_pasid(dev->pdev, p->pasid, p->lead_thread);
-	if (err < 0) {
-		radeon_kfd_process_destroy_vm(dev, pdd->vm);
-		return ERR_PTR(err);
-	}
+    if(!p->vm_process) {
+    	err = amd_iommu_bind_pasid(dev->pdev, p->pasid, p->lead_thread);
+    	if (err < 0) {
+    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
+    		return ERR_PTR(err);
+    	}
+    }
 
 	pdd->bound = true;
 
@@ -562,3 +567,116 @@ struct kfd_process *kfd_lookup_process_by_pasid(pasid_t pasid)
 
 	return p;
 }
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct kfd_process*
+find_vm_process(const void *vm_mm)
+{
+    struct kfd_process *p;
+    
+    printk("find_vm_process %p\n");
+	int idx = srcu_read_lock(&kfd_processes_srcu);
+	p = find_process_by_mm(vm_mm);
+	srcu_read_unlock(&kfd_processes_srcu, idx);
+
+    return p;
+}
+
+static struct kfd_process*
+create_vm_process(const void *vm_mm)
+{
+	struct kfd_process *process;
+	int err = -ENOMEM;
+
+    printk("create_vm_process %p\n", vm_mm);
+	process = kzalloc(sizeof(*process), GFP_KERNEL);
+
+	if (!process)
+		goto err_alloc;
+
+	process->queues = kmalloc_array(INITIAL_QUEUE_ARRAY_SIZE, sizeof(process->queues[0]), GFP_KERNEL);
+	if (!process->queues)
+		goto err_alloc_queues;
+
+	process->pasid = radeon_kfd_pasid_alloc();
+	if (process->pasid == 0)
+		goto err_alloc_queues;
+
+	mutex_init(&process->mutex);
+
+	process->mm = vm_mm;
+
+    process->vm_process = true;
+
+//	process->mmu_notifier.ops = &kfd_process_mmu_notifier_ops;
+//	err = mmu_notifier_register(&process->mmu_notifier, process->mm);
+//	if (err)
+//		goto err_mmu_notifier;
+
+//	process->lead_thread = thread->group_leader;
+
+	process->queue_array_size = INITIAL_QUEUE_ARRAY_SIZE;
+
+	INIT_LIST_HEAD(&process->per_device_data);
+
+	kfd_event_init_process(process);
+
+	err = pqm_init(&process->pqm, process);
+	if (err != 0)
+		goto err_process_pqm_init;
+
+	return process;
+
+err_process_pqm_init:
+err_mmu_notifier:
+	radeon_kfd_pasid_free(process->pasid);
+err_alloc_queues:
+	kfree(process->queues);
+err_alloc:
+	kfree(process);
+	return ERR_PTR(err);
+}
+
+struct kfd_process*
+radeon_kfd_vm_create_process(const void *vm_mm)
+{
+	struct kfd_process *process;
+
+	if (vm_mm == NULL)
+		return ERR_PTR(-EINVAL);
+
+	/* A prior open of /dev/kfd could have already created the process. */
+	process = find_vm_process(vm_mm);
+	if (process)
+		pr_debug("kfd: vm process already found\n");
+
+	if (!process) {
+		process = create_vm_process(vm_mm);
+		if (IS_ERR(process))
+			return process;
+
+		process = insert_process(process);
+	}
+
+	return process;
+}
+
+long radeon_kfd_vm_close_process(const void *vm_mm)
+{
+    struct kfd_process *process;
+
+    if(vm_mm == NULL)
+        return ERR_PTR(-EINVAL);
+
+    process = find_vm_process(vm_mm);
+    if(process == NULL) {
+        pr_debug("kfd: vm close process not found\n");
+        return -EFAULT;
+    }
+
+    shutdown_process(process);
+    free_process(process); 
+
+    return 0;
+}
+#endif // endif CONFIG_HSA_VIRTUALIZATION

@@ -969,6 +969,9 @@ kfd_ioctl_create_event(struct file *filp, struct kfd_process *p, void __user *ar
 			       &event_trigger_address, &args.event_trigger_data);
 
 	args.event_trigger_address = (uint64_t)(uintptr_t)event_trigger_address;
+    printk("kfd_ioctl_create_event:%p\n", event_trigger_address);
+    printk("kfd_ioctl_create_even, type=%d\n", args.event_type);
+    printk("kfd_ioctl_create_even, data=%p\n", args.event_trigger_data);
 
 	if (err)
 		return err;
@@ -1033,6 +1036,221 @@ kfd_ioctl_wait_events(struct file *filp, struct kfd_process *p, void __user *arg
 	return err;
 }
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+static long 
+kfd_ioctl_vm_create_process(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+    uint64_t match;
+    struct kfd_process *process;
+    
+    BUG_ON(!p->virtio_be);
+
+    if(copy_from_user(&match, arg, sizeof(match))) {
+        printk("copy_from_user fail\n");
+        return -EFAULT;
+    }
+    printk("match=0x%llx\n", match);
+
+    process = radeon_kfd_vm_create_process((const void*)match);
+    if (IS_ERR(process)) {
+        printk("vm create kfd_process fail\n");
+        return PTR_ERR(process);
+    }
+
+    process->is_32bit_user_mode = is_compat_task();
+
+	dev_dbg(kfd_device, "process %d opened, compat mode (32 bit) - %d\n",
+		process->pasid, process->is_32bit_user_mode);
+
+    kfd_init_apertures(process);
+
+    return 0;
+}
+
+static long 
+kfd_ioctl_vm_close_process(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+    uint64_t match;
+    struct kfd_process *process;
+    
+    BUG_ON(!p->virtio_be);
+
+    if(copy_from_user(&match, arg, sizeof(match))) {
+        printk("copy_from_user fail\n");
+        return -EFAULT;
+    }
+    printk("match=0x%llx\n", match);
+    radeon_kfd_vm_close_process((const void*)match);
+
+    return 0;
+}
+
+static long
+kfd_ioctl_vm_create_queue(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_vm_create_queue_args args;
+    struct kfd_process *vm_process;
+
+    BUG_ON(!p->virtio_be);
+
+	if (copy_from_user(&args, arg, sizeof(args))) {
+        printk("copy_from_user fail\n");
+        return -EFAULT;
+    }
+
+    vm_process = find_vm_process((void*)args.match);
+    if(!vm_process) {
+        printk("find_vm_process 0x%llx fail\n", (long long)args.match);
+        return -EFAULT;
+    }
+
+    return 0;
+//    return kfd_ioctl_create_queue(filep, vm_process, arg);
+}
+
+static int
+kfd_ioctl_vm_destroy_queue(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_vm_destroy_queue_args args;
+    struct kfd_process *vm_process;
+
+    BUG_ON(!p->virtio_be);
+
+	if (copy_from_user(&args, arg, sizeof(args))) {
+        printk("copy_from_user fail\n");
+		return -EFAULT;
+    }
+
+    vm_process = find_vm_process((void*)args.match);
+    if(!vm_process) {
+        printk("find_vm_process 0x%llx fail\n", (long long)args.match);
+        return -EFAULT;
+    }
+
+    return kfd_ioctl_destroy_queue(filep, vm_process, arg);
+}
+
+static long
+kfd_ioctl_vm_set_memory_policy(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_vm_set_memory_policy_args args;
+    struct kfd_process *vm_process;
+
+    BUG_ON(!p->virtio_be);
+
+	if (copy_from_user(&args, arg, sizeof(args))) {
+        printk("copy_from_user fail\n");
+		return -EFAULT;
+    }
+
+    vm_process = find_vm_process((void*)args.match);
+    if(!vm_process) {
+        printk("find_vm_process 0x%llx fail\n", (long long)args.match);
+        return -EFAULT;
+    }
+
+    return kfd_ioctl_set_memory_policy(filep, vm_process, arg);
+}
+
+static long
+kfd_ioctl_vm_get_clock_counters(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_vm_get_clock_counters_args args;
+    struct kfd_process *vm_process;
+
+    BUG_ON(!p->virtio_be);
+
+	if (copy_from_user(&args, arg, sizeof(args))) {
+        printk("copy_from_user fail\n");
+		return -EFAULT;
+    }
+
+    vm_process = find_vm_process((void*)args.match);
+    if(!vm_process) {
+        printk("find_vm_process 0x%llx fail\n", (long long)args.match);
+        return -EFAULT;
+    }
+
+    return kfd_ioctl_get_clock_counters(filep, vm_process, arg);
+}
+
+static int 
+kfd_ioctl_vm_get_process_apertures(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_vm_get_process_apertures_args args;
+    struct kfd_process *vm_process;
+
+    BUG_ON(!p->virtio_be);
+
+	if (copy_from_user(&args, arg, sizeof(args))) {
+        printk("copy_from_user fail\n");
+		return -EFAULT;
+    }
+
+    vm_process = find_vm_process((void*)args.match);
+    if(!vm_process) {
+        printk("find_vm_process 0x%llx fail\n", (long long)args.match);
+        return -EFAULT;
+    }
+
+    return kfd_ioctl_get_process_apertures(filep, vm_process, arg);
+}
+
+static long
+kfd_ioctl_vm_create_event(struct file *filep, struct kfd_process *p, void __user *arg)
+{
+	struct kfd_ioctl_vm_create_event_args args;
+    struct kfd_process *vm_process;
+
+    BUG_ON(!p->virtio_be);
+
+	if (copy_from_user(&args, arg, sizeof(args))) {
+        printk("copy_from_user fail\n");
+		return -EFAULT;
+    }
+
+    vm_process = find_vm_process((void*)args.match);
+    if(!vm_process) {
+        printk("find_vm_process 0x%llx fail\n", (long long)args.match);
+        return -EFAULT;
+    }
+
+    return kfd_ioctl_create_event(filep, vm_process, arg);
+}
+
+static DEFINE_MUTEX(virtio_be_bind_vm_processes_mutex);
+
+static int kfd_ioctl_vm_virtio_be_bind_vm_process(struct file *filep, 
+                struct kfd_process *p, void __user *arg)
+{
+    uint64_t match;
+    struct kfd_process *vm_process;
+
+    BUG_ON(!p->virtio_be);
+
+	if (copy_from_user(&match, arg, sizeof(match))) {
+        printk("copy_from_user fail\n");
+		return -EFAULT;
+    }
+
+    vm_process = find_vm_process((const void*)match);
+    if(!vm_process) {
+        printk("find_vm_process 0x%llx fail\n", (long long)match);
+        return -EFAULT;
+    }
+
+    mutex_lock(&virtio_be_bind_vm_processes_mutex);
+    if(p->bind_vm_process != NULL) {
+        printk("p->bind_vm_process not null\n");
+        return -EFAULT;
+    }
+    p->bind_vm_process = vm_process;
+    mutex_unlock(&virtio_be_bind_vm_processes_mutex);
+
+    return 0;
+}
+
+#endif
 
 static long
 kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -1148,7 +1366,135 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		printk("KFD_IOC_OPEN_GRAPHIC_HANDLE\n");
 		err = kfd_ioctl_open_graphic_handle(filep, process, (void __user *)arg);
 		break;
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    case KFD_IOC_VM_SET_VIRTIO_BE:
+        printk("KFD_IOC_VM_SET_VIRTIO_BE\n");
+        process->virtio_be = true; 
+        err = 0;
+        break;
 
+    case KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS:  // used for mmap
+        printk("KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS\n");
+        err = kfd_ioctl_vm_virtio_be_bind_vm_process(filep, process, (void __user *)arg);
+        break;
+
+    case KFD_IOC_VM_VIRTIO_BE_UNBIND_VM_PROCESS:
+        printk("KFD_IOC_VM_VIRTIO_BE_UNBIND_VM_PROCESS\n");
+        BUG_ON(!process->virtio_be);
+        process->bind_vm_process = NULL;
+        err = 0;
+        break;
+
+    case KFD_IOC_VM_CREATE_PROCESS:
+        printk("KFD_IOC_VM_CREATE_PROCESS\n");
+        err = kfd_ioctl_vm_create_process(filep, process, (void __user *)arg);
+        break;
+
+    case KFD_IOC_VM_CLOSE_PROCESS:
+        printk("KFD_IOC_VM_CLOSE_PROCESS\n");
+        err = kfd_ioctl_vm_close_process(filep, process, (void __user *)arg);
+        break;
+
+	case KFD_IOC_VM_CREATE_QUEUE:
+		printk("KFD_IOC_VM_CREATE_QUEUE\n");
+		err = kfd_ioctl_vm_create_queue(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_DESTROY_QUEUE:
+		printk("KFD_IOC_VM_DESTROY_QUEUE\n");
+		err = kfd_ioctl_vm_destroy_queue(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_SET_MEMORY_POLICY:
+		printk("KFD_IOC_VM_SET_MEMORY_POLICY\n");
+		err = kfd_ioctl_vm_set_memory_policy(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_GET_CLOCK_COUNTERS:
+		printk("KFD_IOC_VM_GET_CLOCK_COUNTERS\n");
+		err = kfd_ioctl_vm_get_clock_counters(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_GET_PROCESS_APERTURES:
+		printk("KFD_IOC_VM_GET_PROCESS_AERTURES\n");
+		err = kfd_ioctl_vm_get_process_apertures(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_UPDATE_QUEUE:
+		printk("KFD_IOC_VM_UPDATE_QUEUE\n");
+		err = kfd_ioctl_update_queue(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_DBG_REGISTER:
+		printk("KFD_IOC_VM_DBG_REGISTER\n");
+		err = kfd_ioctl_dbg_register(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_DBG_UNREGISTER:
+		printk("KFD_IOC_VM_DBG_UNREGISTER\n");
+		err = kfd_ioctl_dbg_unrgesiter(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_DBG_ADDRESS_WATCH:
+		printk("KFD_IOC_VM_DBG_ADDRESS_WATCH\n");
+		err = kfd_ioctl_dbg_address_watch(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_DBG_WAVE_CONTROL:
+		printk("KFD_IOC_VM_DBG_WAVE_CONTROL\n");
+		err = kfd_ioctl_dbg_wave_control(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_PMC_ACQUIRE_ACCESS:
+		printk("KFD_IOC_VM_PMC_ACQUIRE_ACCESS\n");
+		err = kfd_ioctl_pmc_acquire_access(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_PMC_RELEASE_ACCESS:
+		printk("KFD_IOC_VM_PMC_RELEASE_ACCESS\n");
+		err = kfd_ioctl_pmc_release_access(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_CREATE_VIDMEM:
+		printk("KFD_IOC_VM_CREATE_VIDMEM\n");
+		err = kfd_ioctl_create_vidmem(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_DESTROY_VIDMEM:
+		printk("KFD_IOC_VM_DESTROY_VIDMEM\n");
+		err = kfd_ioctl_destroy_vidmem(filep, process, (void __user *)arg);
+		break;
+
+	case KFD_IOC_VM_CREATE_EVENT:
+		printk("KFD_IOC_VM_CREATE_EVENT\n");
+		err = kfd_ioctl_vm_create_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_DESTROY_EVENT:
+		printk("KFD_IOC_VM_DESTROY_EVENT\n");
+		err = kfd_ioctl_destroy_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_SET_EVENT:
+		printk("KFD_IOC_VM_SET_EVENT\n");
+		err = kfd_ioctl_set_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_RESET_EVENT:
+		printk("KFD_IOC_VM_RESET_EVENT\n");
+		err = kfd_ioctl_reset_event(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_WAIT_EVENTS:
+		printk("KFD_IOC_VM_WAIT_EVENTS\n");
+		err = kfd_ioctl_wait_events(filep, process, (void __user *) arg);
+		break;
+
+	case KFD_IOC_VM_OPEN_GRAPHIC_HANDLE:
+		printk("KFD_IOC_VM_OPEN_GRAPHIC_HANDLE\n");
+		err = kfd_ioctl_open_graphic_handle(filep, process, (void __user *)arg);
+		break;
+#endif
 	default:
 		dev_err(kfd_device,
 			"unknown ioctl cmd 0x%x, arg 0x%lx)\n",
@@ -1168,15 +1514,34 @@ kfd_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	unsigned long pgoff = vma->vm_pgoff;
 	struct kfd_process *process;
+    struct kfd_process *vm_process;
+
+    printk("kfd_mmap, pgoff=0x%llx\n", pgoff);
 
 	process = radeon_kfd_get_process(current);
 	if (IS_ERR(process))
 		return PTR_ERR(process);
 
-	if (pgoff >= KFD_MMAP_DOORBELL_START && pgoff < KFD_MMAP_DOORBELL_END)
-		return radeon_kfd_doorbell_mmap(process, vma);
-	else if (pgoff >= KFD_MMAP_EVENTS_START && pgoff < KFD_MMAP_EVENTS_END)
-		return radeon_kfd_event_mmap(process, vma);
-
+    if (process->virtio_be) {
+        vm_process = process->bind_vm_process;
+        printk("vm_process=%p\n", vm_process);
+        if (vm_process != NULL) {   // will be NULL when create_queue call
+            if (pgoff >= KFD_MMAP_VM_PROCESS_DOORBELL_START && 
+                                        pgoff < KFD_MMAP_VM_PROCESS_DOORBELL_END)
+                return radeon_kfd_vm_doorbell_mmap(vm_process, vma);
+            else if (pgoff >= KFD_MMAP_VM_PROCESS_EVENTS_START &&
+                                        pgoff < KFD_MMAP_VM_PROCESS_EVENTS_END)
+                printk("not mmap for event now\n");
+//              return radeon_kfd_vm_event_mmap(vm_process, vma); 
+        }
+        else 
+            return 0;
+    }
+    else {
+    	if (pgoff >= KFD_MMAP_DOORBELL_START && pgoff < KFD_MMAP_DOORBELL_END)
+    		return radeon_kfd_doorbell_mmap(process, vma);
+    	else if (pgoff >= KFD_MMAP_EVENTS_START && pgoff < KFD_MMAP_EVENTS_END)
+    		return radeon_kfd_event_mmap(process, vma);
+    }
 	return -EINVAL;
 }
