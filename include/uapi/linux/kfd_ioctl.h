@@ -230,6 +230,7 @@ struct kfd_ioctl_open_graphic_handle_args {
 #define KFD_IOC_RESET_EVENT		_IOW(KFD_IOC_MAGIC, 19, struct kfd_ioctl_reset_event_args)
 #define KFD_IOC_WAIT_EVENTS		_IOWR(KFD_IOC_MAGIC, 20, struct kfd_ioctl_wait_events_args)
 #define KFD_IOC_OPEN_GRAPHIC_HANDLE	_IOWR(KFD_IOC_MAGIC, 21, struct kfd_ioctl_open_graphic_handle_args)
+#define KFD_IOC_TEST_VMA_PAGE_PROT  _IOW(KFD_IOC_MAGIC, 22, int)
 
 #pragma pack(pop)
 

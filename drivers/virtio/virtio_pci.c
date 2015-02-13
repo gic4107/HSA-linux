@@ -581,6 +581,7 @@ static int vp_try_to_find_vqs(struct virtio_device *vdev, unsigned nvqs,
 			 sizeof *vp_dev->msix_names,
 			 "%s-%s",
 			 dev_name(&vp_dev->vdev.dev), names[i]);
+        printk("vp_dev->msix_entries[msix_vec].vector=%d\n", vp_dev->msix_entries[msix_vec].vector);
 		err = request_irq(vp_dev->msix_entries[msix_vec].vector,
 				  vring_interrupt, 0,
 				  vp_dev->msix_names[msix_vec],

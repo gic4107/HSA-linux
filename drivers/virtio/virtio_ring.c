@@ -734,7 +734,10 @@ irqreturn_t vring_interrupt(int irq, void *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
 
-	if (!more_used(vq)) {
+    if (!strcmp(vq->vq.name, "virtio_iommu-requests"))
+        printk("irq=%d, %s, vring_interrupt\n", irq, vq->vq.name);
+	else if (!more_used(vq)) {
+//	if (!more_used(vq)) {
 		pr_debug("virtqueue interrupt with no work for %p\n", vq);
 		return IRQ_NONE;
 	}

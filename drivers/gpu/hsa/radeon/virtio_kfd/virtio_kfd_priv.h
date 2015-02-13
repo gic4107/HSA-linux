@@ -4,6 +4,15 @@
 #include "../kfd_topology.h"
 
 #define PROPERTIES_NODE_MAX 5
+#define MAX_PROCESS_QUEUES 1024
+
+typedef u32 doorbell_t;
+#define PROCESS_DOORBELL_REGION_SIZE sizeof(doorbell_t)*MAX_PROCESS_QUEUES
+#define VIRTKFD_MMAP_DOORBELL_START	0
+#define VIRTKFD_MMAP_DOORBELL_END	(((1ULL << 32)*1) >> PAGE_SHIFT)
+#define VIRTKFD_MMAP_EVENTS_START	KFD_MMAP_DOORBELL_END
+#define VIRTKFD_MMAP_EVENTS_END	(KFD_MMAP_EVENTS_START + (1ULL << (32 - PAGE_SHIFT)))
+
 
 // The command store inside virtqueue
 #define VIRTKFD_OPEN                    0
@@ -30,8 +39,19 @@
 #define VIRTKFD_RESET_EVENT             21
 #define VIRTKFD_WAIT_EVENTS             22
 #define VIRTKFD_OPEN_GRAPHIC_HANDLE     23
+#define VIRTKFD_MMAP_DOORBELL_REGION    24
 
 #define NO_MATCH                        0 
+
+struct virtkfd_process {
+    struct hlist_node node;
+    struct mm_struct *mm;
+    struct mmu_notifier mmu_notifier;
+    struct mmu_notifier virtio_iommu_notifier;
+    int virtio_iommu_bind;
+    doorbell_t *doorbell_region;
+    doorbell_t __user *doorbell_user_mapping;
+};
 
 struct virtio_kfd
 {
@@ -55,7 +75,7 @@ struct virtio_kfd
 struct virtkfd_req 
 {
     int command;                        // command out to back-end
-    uint64_t match;                     // match to find kfd_process for guest process
+    uint64_t vm_mm;                     // vm_mm to find kfd_process for guest process
     void *param;                        // parameter
     u8 status;                          // status of back-end finishing req
     int signal;                         // request thread wait for this signale
@@ -151,8 +171,17 @@ struct virtkfd_sysfs_info {
     struct virtkfd_system_properties system_properties;  
 };
 
+// Use when VIRTKFD_OPEN
+struct vm_process_info {
+    uint64_t vm_task;
+    uint64_t vm_mm;
+    uint64_t vm_pgd_gpa;
+};
+
 int virtio_kfd_topology_init(void);
 int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t match);
+int radeon_virtkfd_doorbell_mmap(struct virtkfd_process *process, struct vm_area_struct *vma);
+size_t doorbell_process_allocation(void);
 extern struct device* virtkfd_device;
 
 #endif

@@ -23,7 +23,7 @@ config PR_DEBUG
 config VIRTIO_KFD
 	tristate "VirtIO-KFD driver that support HSA virtualization"
 	depends on VIRTIO
-    default m
+    default n
 	help
 	  Enable this if you want to suoorty HSA virtualization. 
 

@@ -40,5 +40,6 @@
 #define VIRTIO_ID_RPROC_SERIAL 11 /* virtio remoteproc serial link */
 #define VIRTIO_ID_CAIF	       12 /* Virtio caif */
 #define VIRTIO_ID_KFD	       13 /* virtio kfd  */ 
+#define VIRTIO_ID_IOMMU        14 /* virtio iommu */ 
 
 #endif /* _LINUX_VIRTIO_IDS_H */

@@ -293,4 +293,11 @@ config ARM_SMMU
 	  Say Y here if your SoC includes an IOMMU device implementing
 	  the ARM SMMU architecture.
 
+config VIRTIO_IOMMU
+	tristate "VirtIO-IOMMU driver that support HSA virtualization"
+	depends on VIRTIO
+    default n
+	help
+	  Enable this if you want to suoorty HSA virtualization. 
+
 endif # IOMMU_SUPPORT
