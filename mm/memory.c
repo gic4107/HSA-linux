@@ -759,7 +759,7 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 	if (HAVE_PTE_SPECIAL) {
 		if (likely(!pte_special(pte)))
 			goto check_pfn;
-		if (vma->vm_flags & (VM_PFNMAP | VM_MIXEDMAP))
+		if (vma->vm_flags & (VM_PFNMAP | VM_MIXEDMAP))      // here when userspace kick
 			return NULL;
 		if (!is_zero_pfn(pfn))
 			print_bad_pte(vma, addr, pte, NULL);
@@ -1805,7 +1805,7 @@ long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 		    (vma->vm_flags & (VM_IO | VM_PFNMAP)) ||        // this
 		    !(vm_flags & vma->vm_flags)) {
             if(!vma)
-                printk("===== __get_user_page ======\nvma=%p\n", vma);
+                printk("===== __get_user_page ======\nstart=0x%llx, vma=%p\n", start, vma);
             else    
                 printk("===== __get_user_page ======\ncurrent=%p, mm=%p, start=0x%llx, vma=%p, vma->vm_flags=0x%lx, vm_flags=0x%lx, i=%d\n", 
                                 tsk, mm, start, vma, vma->vm_flags, vm_flags, i);

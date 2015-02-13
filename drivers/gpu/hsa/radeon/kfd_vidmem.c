@@ -127,6 +127,7 @@ int radeon_kfd_vidmem_alloc_map(struct kfd_dev *kfd, kfd_mem_obj *mem_obj, void 
 	if (retval != 0)
 		goto fail_vidmem_gpumap;
 
+    printk("radeon_kfd_vidmem_alloc_map, mem_obj=%p, kern=%p, gpu=%llx\n", mem_obj, *ptr, *vmid0_address);
 	return 0;
 
 fail_vidmem_gpumap:

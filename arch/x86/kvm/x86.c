@@ -27,6 +27,7 @@
 #include "kvm_cache_regs.h"
 #include "x86.h"
 #include "cpuid.h"
+#include "hsa.h"
 
 #include <linux/clocksource.h>
 #include <linux/interrupt.h>
@@ -562,7 +563,7 @@ int kvm_set_cr0(struct kvm_vcpu *vcpu, unsigned long cr0)
 		kvm_async_pf_hash_reset(vcpu);
 	}
 
-	if ((cr0 ^ old_cr0) & update_bits)
+	if ((cr0 ^ old_cr0) & update_bits) 
 		kvm_mmu_reset_context(vcpu);
 	return 0;
 }
@@ -671,7 +672,7 @@ int kvm_set_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
 		return 1;
 
 	if (((cr4 ^ old_cr4) & pdptr_bits) ||
-	    (!(cr4 & X86_CR4_PCIDE) && (old_cr4 & X86_CR4_PCIDE)))
+	    (!(cr4 & X86_CR4_PCIDE) && (old_cr4 & X86_CR4_PCIDE))) 
 		kvm_mmu_reset_context(vcpu);
 
 	if ((cr4 ^ old_cr4) & X86_CR4_OSXSAVE)
@@ -934,7 +935,7 @@ static int set_efer(struct kvm_vcpu *vcpu, u64 efer)
 	kvm_x86_ops->set_efer(vcpu, efer);
 
 	/* Update reserved bits */
-	if ((efer ^ old_efer) & EFER_NX)
+	if ((efer ^ old_efer) & EFER_NX) 
 		kvm_mmu_reset_context(vcpu);
 
 	return 0;
@@ -3880,7 +3881,31 @@ long kvm_arch_vm_ioctl(struct file *filp,
 		r = 0;
 		break;
 	}
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    case KVM_HSA_SET_IOMMU_NESTED_CR3: {
+        int device_id;
 
+		r = -EFAULT;
+ 		if (copy_from_user(&device_id, argp, sizeof(device_id)))
+   			goto out;
+            
+        printk("KVM_HSA_SET_IOMMU_NESTED_CR3, device_id=%d\n", device_id);
+ 		r = kvm_hsa_set_iommu_nested_cr3(kvm, device_id);
+   		if (r)
+   			goto out;
+   
+        break;
+    }
+    case KVM_HSA_BIND_KFD_VIRTIO_BE: {
+
+        printk("KVM_HSA_BIND_KFD_VIRTIO_BE\n");
+ 		r = kvm_hsa_bind_kfd_virtio_be(kvm, current);
+   		if (r)
+   			goto out;
+    
+        break;
+    }
+#endif /* CONFIG_HSA_VIRTUALIZATION */
 	default:
 		;
 	}
@@ -5867,7 +5892,7 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 	bool req_immediate_exit = false;
 
 	if (vcpu->requests) {
-		if (kvm_check_request(KVM_REQ_MMU_RELOAD, vcpu))
+		if (kvm_check_request(KVM_REQ_MMU_RELOAD, vcpu)) 
 			kvm_mmu_unload(vcpu);
 		if (kvm_check_request(KVM_REQ_MIGRATE_TIMER, vcpu))
 			__kvm_migrate_timers(vcpu);
@@ -6470,7 +6495,7 @@ int kvm_arch_vcpu_ioctl_set_sregs(struct kvm_vcpu *vcpu,
 	}
 	srcu_read_unlock(&vcpu->kvm->srcu, idx);
 
-	if (mmu_reset_needed)
+	if (mmu_reset_needed) 
 		kvm_mmu_reset_context(vcpu);
 
 	max_bits = KVM_NR_INTERRUPTS;

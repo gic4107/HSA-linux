@@ -612,6 +612,7 @@ int radeon_vm_alloc_pt(struct radeon_device *rdev, struct radeon_vm *vm)
 	struct radeon_ib ib;
 	int r;
 
+    printk("=== radeon_vm_alloc_pt ===");
 	if (vm == NULL) {
 		return -EINVAL;
 	}
@@ -638,6 +639,7 @@ retry:
 	}
 
 	vm->pd_gpu_addr = radeon_sa_bo_gpu_addr(vm->page_directory);
+    printk("pd_gpu_addr=%llx ", vm->pd_gpu_addr);
 
 	/* Initially clear the page directory */
 	r = radeon_ib_get(rdev, R600_RING_TYPE_DMA_INDEX, &ib,
@@ -649,8 +651,10 @@ retry:
 
 	ib.length_dw = 0;
 
+    printk("radeon_asic_vm_set_page ...");
 	radeon_asic_vm_set_page(rdev, &ib, vm->pd_gpu_addr,
 				0, pd_entries, 0, 0);
+    printk("radeon_asic_vm_set_page done\n");
 
 	radeon_semaphore_sync_to(ib.semaphore, vm->fence);
 	r = radeon_ib_schedule(rdev, &ib, NULL);
@@ -667,6 +671,7 @@ retry:
 	/* allocate page table array */
 	pts_size = radeon_vm_num_pdes(rdev) * sizeof(struct radeon_sa_bo *);
 	vm->page_tables = kzalloc(pts_size, GFP_KERNEL);
+    printk("vm->page_tables=%llx\n", vm->page_tables);
 
 	if (vm->page_tables == NULL) {
 		DRM_ERROR("Cannot allocate memory for page table array\n");
@@ -674,6 +679,7 @@ retry:
 		return -ENOMEM;
 	}
 
+    printk("radeon_vm_alloc_pt done\n");
 	return 0;
 }
 

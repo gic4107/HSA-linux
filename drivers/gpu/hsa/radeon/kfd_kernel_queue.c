@@ -81,6 +81,12 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 	if (retval != 0)
 		goto err_wptr_allocate_vidmem;
 
+    printk("kernel-queue initialize: pq_kernel=%p, pq_gpu=%llx, \
+            rptr_kernel=%p, rptr_gpu=%llx, wptr_kernel=%p, wptr_gpu=%llx\n", 
+            kq->pq_kernel_addr, kq->pq_gpu_addr,
+            kq->rptr_kernel, kq->rptr_gpu_addr,
+            kq->wptr_kernel, kq->wptr_gpu_addr);
+
 	memset(kq->pq_kernel_addr, 0, queue_size);
 	memset(kq->rptr_kernel, 0, sizeof(*kq->rptr_kernel));
 	memset(kq->wptr_kernel, 0, sizeof(*kq->wptr_kernel));
@@ -107,7 +113,7 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 		goto err_init_mqd;
 
 	/* assign HIQ to HQD */
-	if (type == KFD_QUEUE_TYPE_HIQ) {
+	if (type == KFD_QUEUE_TYPE_HIQ) {       // yes
 		pr_debug("assigning hiq to hqd\n");
 		kq->queue->pipe = KFD_CIK_HIQ_PIPE;
 		kq->queue->queue = KFD_CIK_HIQ_QUEUE;
@@ -204,12 +210,17 @@ static void submit_packet(struct kernel_queue *kq)
 #ifdef DEBUG
 	for (i = *kq->wptr_kernel; i < kq->pending_wptr; i++) {
 		pr_debug("0x%2X ", kq->pq_kernel_addr[i]);
-		if (i % 15 == 0)
+		printk("0x%2X ", kq->pq_kernel_addr[i]);
+		if (i % 15 == 0) {
 			pr_debug("\n");
+			printk("\n");
+        }
 	}
 	pr_debug("\n");
+	printk("\n");
 #endif
 
+    printk("submit_packet, wptr=%d, pending_wptr=%d\n", *kq->wptr_kernel, kq->pending_wptr); 
 	*kq->wptr_kernel = kq->pending_wptr;
 	write_kernel_doorbell((u32 *)kq->queue->properties.doorbell_ptr, kq->pending_wptr);
 }
@@ -222,6 +233,7 @@ static int sync_with_hw(struct kernel_queue *kq, unsigned long timeout_ms)
 
 	org_timeout_ms = timeout_ms;
 	timeout_ms += jiffies * 1000 / HZ;
+    printk("sync_with_hw, kfd: wptr: %d rptr: %d\n", *kq->wptr_kernel, *kq->rptr_kernel);
 	while (*kq->wptr_kernel != *kq->rptr_kernel) {
 		if (time_after(jiffies * 1000 / HZ, timeout_ms)) {
 			pr_err("kfd: kernel_queue %s timeout expired %lu\n",
@@ -232,6 +244,7 @@ static int sync_with_hw(struct kernel_queue *kq, unsigned long timeout_ms)
 		}
 		cpu_relax();
 	}
+    printk("sync_with_hw, kfd: wptr: %d rptr: %d\n", *kq->wptr_kernel, *kq->rptr_kernel);
 
 	return 0;
 }

@@ -222,12 +222,20 @@ irqfd_wakeup(wait_queue_t *wait, unsigned mode, int sync, void *key)
 	struct kvm_kernel_irq_routing_entry *irq;
 	struct kvm *kvm = irqfd->kvm;
 
+    printk("irqfd_wakeup, wait=%p, mode=%d, sync=%d, key=%p, flags=%lx\n", 
+                                                    wait, mode, sync, key, flags);
 	if (flags & POLLIN) {
 		rcu_read_lock();
 		irq = rcu_dereference(irqfd->irq_entry);
+        printk("irq=%p, eventfd=%p\n", irq, irqfd->eventfd);
+        if (irq) {
+            printk("gsi=%d, type=%d, addr_lo=0x%x, addr_hi=0x%x, data=%d\n", irq->gsi,
+                     irq->type, irq->msi.address_lo, irq->msi.address_hi, irq->msi.data);
+            printk("call kvm_set_msi\n");
+        }
 		/* An event has been signaled, inject an interrupt */
 		if (irq)
-			kvm_set_msi(irq, kvm, KVM_USERSPACE_IRQ_SOURCE_ID, 1,
+			kvm_set_msi(irq, kvm, KVM_USERSPACE_IRQ_SOURCE_ID, 1, // also call from KVM_SIGNAL_MSI
 					false);
 		else
 			schedule_work(&irqfd->inject);
@@ -249,8 +257,10 @@ irqfd_wakeup(wait_queue_t *wait, unsigned mode, int sync, void *key)
 		 * We cannot race against the irqfd going away since the
 		 * other side is required to acquire wqh->lock, which we hold
 		 */
-		if (irqfd_is_active(irqfd))
+		if (irqfd_is_active(irqfd)) {
+            printk("irq_is_active\n");
 			irqfd_deactivate(irqfd);
+        }
 
 		spin_unlock_irqrestore(&kvm->irqfds.lock, flags);
 	}
@@ -307,12 +317,14 @@ kvm_irqfd_assign(struct kvm *kvm, struct kvm_irqfd *args)
 	INIT_WORK(&irqfd->shutdown, irqfd_shutdown);
 
 	f = fdget(args->fd);
+    printk("kvm_irqfd_assign eventfp=%p\n", &f);
 	if (!f.file) {
 		ret = -EBADF;
 		goto out;
 	}
 
 	eventfd = eventfd_ctx_fileget(f.file);
+    printk("kvm_irqfd_assign eventfd=%p\n", eventfd);
 	if (IS_ERR(eventfd)) {
 		ret = PTR_ERR(eventfd);
 		goto fail;

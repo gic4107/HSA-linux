@@ -343,6 +343,7 @@ static void iommu_set_inv_tlb_timeout(struct amd_iommu *iommu, int timeout)
 	ctrl = readl(iommu->mmio_base + MMIO_CONTROL_OFFSET);
 	ctrl &= ~CTRL_INV_TO_MASK;
 	ctrl |= (timeout << CONTROL_INV_TIMEOUT) & CTRL_INV_TO_MASK;
+    printk("CONTROL_INV_TIMEOUT, timeout=%d\n", timeout);
 	writel(ctrl, iommu->mmio_base + MMIO_CONTROL_OFFSET);
 }
 
@@ -593,6 +594,7 @@ static void iommu_enable_event_buffer(struct amd_iommu *iommu)
 	writel(0x00, iommu->mmio_base + MMIO_EVT_HEAD_OFFSET);
 	writel(0x00, iommu->mmio_base + MMIO_EVT_TAIL_OFFSET);
 
+    printk("CONTROL_EVT_LOG_EN\n");
 	iommu_feature_enable(iommu, CONTROL_EVT_LOG_EN);
 }
 
@@ -629,6 +631,7 @@ static void iommu_enable_ppr_log(struct amd_iommu *iommu)
 	writel(0x00, iommu->mmio_base + MMIO_PPR_HEAD_OFFSET);
 	writel(0x00, iommu->mmio_base + MMIO_PPR_TAIL_OFFSET);
 
+    printk("iommu_enable_ppr_log, PPFLOG_EN, PPR_EN\n");
 	iommu_feature_enable(iommu, CONTROL_PPFLOG_EN);
 	iommu_feature_enable(iommu, CONTROL_PPR_EN);
 }
@@ -643,10 +646,21 @@ static void __init free_ppr_log(struct amd_iommu *iommu)
 
 static void iommu_enable_gt(struct amd_iommu *iommu)
 {
+    printk("iommu_feature(iommu, FEATURE_GT)=%d\n", iommu_feature(iommu, FEATURE_GT)); 
 	if (!iommu_feature(iommu, FEATURE_GT))
 		return;
 
 	iommu_feature_enable(iommu, CONTROL_GT_EN);
+}
+
+// gic4107
+static void iommu_enable_ga(struct amd_iommu *iommu)
+{
+    printk("iommu_feature(iommu, FEATURE_GA)=%d\n", iommu_feature(iommu, FEATURE_GA)); 
+	if (!iommu_feature(iommu, FEATURE_GA))
+		return;
+
+	iommu_feature_enable(iommu, CONTROL_GA_EN);
 }
 
 /* sets a specific bit in the device table entry. */
@@ -1179,6 +1193,7 @@ static void init_iommu_perf_ctr(struct amd_iommu *iommu)
 	if (!iommu_feature(iommu, FEATURE_PC))
 		return;
 
+    printk("FEATURE_PC support\n");
 	amd_iommu_pc_present = true;
 
 	/* Check if the performance counters can be written to */
@@ -1223,6 +1238,7 @@ static int iommu_init_pci(struct amd_iommu *iommu)
 	if (!(iommu->cap & (1 << IOMMU_CAP_IOTLB)))
 		amd_iommu_iotlb_sup = false;
 
+    printk("IOMMU_CAP_IOTLB\n");
 	/* read extended feature bits */
 	low  = readl(iommu->mmio_base + MMIO_EXT_FEATURES);
 	high = readl(iommu->mmio_base + MMIO_EXT_FEATURES + 4);
@@ -1231,6 +1247,8 @@ static int iommu_init_pci(struct amd_iommu *iommu)
 
 	if (iommu_feature(iommu, FEATURE_GT)) {
 		int glxval;
+        int hats;
+        int gats;
 		u32 pasids;
 		u64 shift;
 
@@ -1247,6 +1265,14 @@ static int iommu_init_pci(struct amd_iommu *iommu)
 			amd_iommu_max_glx_val = glxval;
 		else
 			amd_iommu_max_glx_val = min(amd_iommu_max_glx_val, glxval);
+
+        hats   = iommu->features & FEATURE_HATS_MASK;
+        hats >>= FEATURE_HATS_SHIFT;
+
+        gats   = iommu->features & FEATURE_GATS_MASK;
+        gats >>= FEATURE_GATS_SHIFT;
+
+        printk("glxval=%d, hats=%d, gats=%d\n", amd_iommu_max_glx_val, hats, gats);
 	}
 
 	if (iommu_feature(iommu, FEATURE_GT) &&
@@ -1261,8 +1287,10 @@ static int iommu_init_pci(struct amd_iommu *iommu)
 			return -ENOMEM;
 	}
 
-	if (iommu->cap & (1UL << IOMMU_CAP_NPCACHE))
+	if (iommu->cap & (1UL << IOMMU_CAP_NPCACHE)) {
 		amd_iommu_np_cache = true;
+        printk("IOMMU_CAP_NPCACHE\n");
+    }
 
 	init_iommu_perf_ctr(iommu);
 
@@ -1360,6 +1388,7 @@ static int iommu_setup_msi(struct amd_iommu *iommu)
 	if (r)
 		return r;
 
+    printk("iommu_setup_msi\n");
 	r = request_threaded_irq(iommu->dev->irq,
 				 amd_iommu_int_handler,
 				 amd_iommu_int_thread,
@@ -1392,10 +1421,13 @@ static int iommu_init_msi(struct amd_iommu *iommu)
 		return ret;
 
 enable_faults:
+    printk("CONTROL_EVT_INT_EN\n");
 	iommu_feature_enable(iommu, CONTROL_EVT_INT_EN);
 
-	if (iommu->ppr_log != NULL)
+	if (iommu->ppr_log != NULL) {
+        printk("CONTROL_PPFINT_EN\n");
 		iommu_feature_enable(iommu, CONTROL_PPFINT_EN);
+    }
 
 	return 0;
 }
@@ -1641,6 +1673,7 @@ static void enable_iommus_v2(void)
 	for_each_iommu(iommu) {
 		iommu_enable_ppr_log(iommu);
 		iommu_enable_gt(iommu);
+        iommu_enable_ga(iommu);
 	}
 }
 

@@ -29,63 +29,16 @@
 
 #include "amd_iommu_types.h"
 #include "amd_iommu_proto.h"
+#include "amd_iommu_v2.h"
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Joerg Roedel <joerg.roedel@amd.com>");
-
-#define MAX_DEVICES		0x10000
-#define PRI_QUEUE_SIZE		512
-
-struct pri_queue {
-	atomic_t inflight;
-	bool finish;
-	int status;
-};
-
-struct pasid_state {
-	struct list_head list;			/* For global state-list */
-	atomic_t count;				/* Reference count */
-	struct task_struct *task;		/* Task bound to this PASID */
-	struct mm_struct *mm;			/* mm_struct for the faults */
-	struct mmu_notifier mn;                 /* mmu_otifier handle */
-	struct pri_queue pri[PRI_QUEUE_SIZE];	/* PRI tag states */
-	struct device_state *device_state;	/* Link to our device_state */
-	int pasid;				/* PASID index */
-	spinlock_t lock;			/* Protect pri_queues */
-	wait_queue_head_t wq;			/* To wait for count == 0 */
-};
-
-struct device_state {
-	atomic_t count;
-	struct pci_dev *pdev;
-	struct pasid_state **states;
-	struct iommu_domain *domain;
-	int pasid_levels;
-	int max_pasids;
-	amd_iommu_invalid_ppr_cb inv_ppr_cb;
-	amd_iommu_invalidate_ctx inv_ctx_cb;
-	spinlock_t lock;
-	wait_queue_head_t wq;
-};
-
-struct fault {
-	struct work_struct work;
-	struct device_state *dev_state;
-	struct pasid_state *state;
-	struct mm_struct *mm;
-	u64 address;
-	u16 devid;
-	u16 pasid;
-	u16 tag;
-	u16 finish;
-	u16 flags;
-};
 
 static struct device_state **state_table;
 static spinlock_t state_lock;
 
 /* List and lock for all pasid_states */
-static LIST_HEAD(pasid_state_list);
+LIST_HEAD(pasid_state_list);
 static DEFINE_SPINLOCK(ps_lock);
 
 static struct workqueue_struct *iommu_wq;
@@ -218,6 +171,7 @@ static int set_pasid_state(struct device_state *dev_state,
 
 	spin_lock_irqsave(&dev_state->lock, flags);
 	ptr = __get_pasid_state_ptr(dev_state, pasid, true);
+    printk("set_pasid_state ptr=%p\n", ptr);
 
 	ret = -ENOMEM;
 	if (ptr == NULL)
@@ -281,7 +235,7 @@ static void free_pasid_state(struct pasid_state *pasid_state)
 	kfree(pasid_state);
 }
 
-static void put_pasid_state(struct pasid_state *pasid_state)
+void put_pasid_state(struct pasid_state *pasid_state)
 {
 	if (atomic_dec_and_test(&pasid_state->count)) {
 		put_device_state(pasid_state->device_state);
@@ -406,6 +360,7 @@ static int mn_clear_flush_young(struct mmu_notifier *mn,
 				struct mm_struct *mm,
 				unsigned long address)
 {
+    printk("mn_clear_flush_young\n");
 	__mn_flush_page(mn, address);
 
 	return 0;
@@ -416,6 +371,7 @@ static void mn_change_pte(struct mmu_notifier *mn,
 			  unsigned long address,
 			  pte_t pte)
 {
+    printk("mn_change_pte\n");
 	__mn_flush_page(mn, address);
 }
 
@@ -423,6 +379,7 @@ static void mn_invalidate_page(struct mmu_notifier *mn,
 			       struct mm_struct *mm,
 			       unsigned long address)
 {
+    printk("mn_invalidate_page\n");
 	__mn_flush_page(mn, address);
 }
 
@@ -433,6 +390,7 @@ static void mn_invalidate_range_start(struct mmu_notifier *mn,
 	struct pasid_state *pasid_state;
 	struct device_state *dev_state;
 
+    printk("mn_invalidate_range_start\n");
 	pasid_state = mn_to_state(mn);
 	dev_state   = pasid_state->device_state;
 
@@ -450,7 +408,7 @@ static struct mmu_notifier_ops iommu_mn = {
 	.invalidate_range_start = mn_invalidate_range_start,
 };
 
-static void set_pri_tag_status(struct pasid_state *pasid_state,
+void set_pri_tag_status(struct pasid_state *pasid_state,
 			       u16 tag, int status)
 {
 	unsigned long flags;
@@ -460,12 +418,32 @@ static void set_pri_tag_status(struct pasid_state *pasid_state,
 	spin_unlock_irqrestore(&pasid_state->lock, flags);
 }
 
-static void finish_pri_tag(struct device_state *dev_state,
+#ifdef CONFIG_HSA_VIRTUALIZATION
+void finish_pri_tag(struct device_state *dev_state,
+			   struct pasid_state *pasid_state,
+			   u16 tag, bool gn)
+{
+	unsigned long flags;
+
+    printk("finish_pri_tag tag=%d\n", tag);
+	spin_lock_irqsave(&pasid_state->lock, flags);
+	if (atomic_dec_and_test(&pasid_state->pri[tag].inflight) &&
+	    pasid_state->pri[tag].finish) {
+		amd_iommu_complete_ppr(dev_state->pdev, pasid_state->pasid,
+				       pasid_state->pri[tag].status, tag, gn);
+		pasid_state->pri[tag].finish = false;
+		pasid_state->pri[tag].status = PPR_SUCCESS;
+	}
+	spin_unlock_irqrestore(&pasid_state->lock, flags);
+}
+#else
+void finish_pri_tag(struct device_state *dev_state,
 			   struct pasid_state *pasid_state,
 			   u16 tag)
 {
 	unsigned long flags;
 
+    printk("finish_pri_tag tag=%d\n", tag);
 	spin_lock_irqsave(&pasid_state->lock, flags);
 	if (atomic_dec_and_test(&pasid_state->pri[tag].inflight) &&
 	    pasid_state->pri[tag].finish) {
@@ -476,14 +454,25 @@ static void finish_pri_tag(struct device_state *dev_state,
 	}
 	spin_unlock_irqrestore(&pasid_state->lock, flags);
 }
+#endif
 
 static void do_fault(struct work_struct *work)
 {
 	struct fault *fault = container_of(work, struct fault, work);
-	int npages, write;
+	int npages, write, gn;
 	struct page *page;
 
 	write = !!(fault->flags & PPR_FAULT_WRITE);
+    gn    = !!(fault->flags & PPR_FAULT_GN);
+
+    printk("do_fault: gn=%d, write=%d, pdev=%p, domain=%p, pasid=%d, task=%p, mm=%p\n", gn, write, fault->dev_state->pdev, fault->dev_state->domain, fault->state->pasid, fault->state->task, fault->state->mm);
+    printk("addr=0x%llx, pasid=%d, fault_tag=%d\n", fault->address, fault->pasid, fault->tag);
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (fault->state->virtio_be_mm && gn) {
+        return amd_iommu_vm_ppr(fault, write);
+    }
+#endif
 
 	down_read(&fault->state->mm->mmap_sem);
 	npages = get_user_pages(fault->state->task, fault->state->mm,
@@ -516,7 +505,11 @@ static void do_fault(struct work_struct *work)
 		set_pri_tag_status(fault->state, fault->tag, PPR_INVALID);
 	}
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+	finish_pri_tag(fault->dev_state, fault->state, fault->tag, 0);
+#else
 	finish_pri_tag(fault->dev_state, fault->state, fault->tag);
+#endif
 
 	put_pasid_state(fault->state);
 
@@ -537,20 +530,31 @@ static int ppr_notifier(struct notifier_block *nb, unsigned long e, void *data)
 	iommu_fault = data;
 	tag         = iommu_fault->tag & 0x1ff;
 	finish      = (iommu_fault->tag >> 9) & 1;
+    printk("ppr_notifier, device_id=%d, pasid=%d tag=%d ... ", iommu_fault->device_id, iommu_fault->pasid, tag);
 
 	ret = NOTIFY_DONE;
 	dev_state = get_device_state(iommu_fault->device_id);
-	if (dev_state == NULL)
+	if (dev_state == NULL) {
+        printk("!!! dev_state NUL\n");
 		goto out;
+    }
+    printk("dev_state=%p ", dev_state);
 
 	pasid_state = get_pasid_state(dev_state, iommu_fault->pasid);
 	if (pasid_state == NULL) {
+        printk("!!! pasid_state NULL\n");
 		/* We know the device but not the PASID -> send INVALID */
+#ifdef CONFIG_HSA_VIRTUALIZATION
+		amd_iommu_complete_ppr(dev_state->pdev, iommu_fault->pasid,
+				       PPR_INVALID, tag, 0);
+#else
 		amd_iommu_complete_ppr(dev_state->pdev, iommu_fault->pasid,
 				       PPR_INVALID, tag);
+#endif
 		goto out_drop_state;
 	}
-
+    printk("pasid_state=%p\n", pasid_state);
+    
 	spin_lock_irqsave(&pasid_state->lock, flags);
 	atomic_inc(&pasid_state->pri[tag].inflight);
 	if (finish)
@@ -559,8 +563,13 @@ static int ppr_notifier(struct notifier_block *nb, unsigned long e, void *data)
 
 	fault = kzalloc(sizeof(*fault), GFP_ATOMIC);
 	if (fault == NULL) {
+        printk("!!! alloc fault faul\n");
 		/* We are OOM - send success and let the device re-fault */
+#ifdef CONFIG_HSA_VIRTUALIZATION
+		finish_pri_tag(dev_state, pasid_state, tag, 0);
+#else
 		finish_pri_tag(dev_state, pasid_state, tag);
+#endif
 		goto out_drop_state;
 	}
 
@@ -635,6 +644,179 @@ again:
 	return NOTIFY_OK;
 }
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+int amd_iommu_enable_nested_translation(struct pci_dev *pdev, int level)
+{
+	struct device_state *dev_state;
+    struct iommu_domain *dom;
+    struct protection_domain *domain;
+	u16 devid;
+
+	might_sleep();
+
+	if (!amd_iommu_v2_supported())
+		return -ENODEV;
+
+	devid     = device_id(pdev);
+	dev_state = get_device_state(devid);
+
+	if (dev_state == NULL)
+		return -EINVAL;
+
+    dom = dev_state->domain;
+    domain = dom->priv;
+    
+    domain->mode = level;
+    printk("=====amd_iommu_enable_nested_translation domain=%p, mode=%d\n", domain, domain->mode);
+
+    domain->updated = true;
+    update_domain(domain);
+    return 0;
+}
+EXPORT_SYMBOL(amd_iommu_enable_nested_translation);
+
+int amd_iommu_disable_nested_translation(struct pci_dev *pdev)
+{
+	struct device_state *dev_state;
+    struct iommu_domain *dom;
+    struct protection_domain *domain;
+	u16 devid;
+
+	might_sleep();
+
+	if (!amd_iommu_v2_supported())
+		return -ENODEV;
+
+	devid     = device_id(pdev);
+	dev_state = get_device_state(devid);
+
+	if (dev_state == NULL)
+		return -EINVAL;
+
+    dom = dev_state->domain;
+    domain = dom->priv;
+    
+    domain->mode = 0;
+    printk("=====amd_iommu_disable_nested_translation domain=%p, mode=%d\n", domain, domain->mode);
+
+    domain->updated = true;
+    update_domain(domain);
+    return 0;
+}
+EXPORT_SYMBOL(amd_iommu_disable_nested_translation);
+
+int amd_iommu_set_nested_cr3(struct pci_dev *pdev, u64 nested_cr3)
+{
+	struct device_state *dev_state;
+    struct iommu_domain *dom;
+    struct protection_domain *domain;
+	u16 devid;
+
+	might_sleep();
+
+	if (!amd_iommu_v2_supported())
+		return -ENODEV;
+
+	devid     = device_id(pdev);
+	dev_state = get_device_state(devid);
+
+	if (dev_state == NULL)
+		return -EINVAL;
+
+    dom = dev_state->domain;
+    domain = dom->priv;
+    printk("=====amd_iommu_set_nested_cr3 domain=%p, pt_root=%llx, __va(nested_cr3)=%llx\n", domain, domain->pt_root, __va(nested_cr3));
+
+    domain->pt_root = __va(nested_cr3);     // set_dte_entry will call virt_to_phys
+    printk("=====amd_iommu_set_nested_cr3 domain=%p, pt_root=%llx\n", domain, domain->pt_root);
+
+    domain->updated = true;
+    update_domain(domain);
+	return 0;
+}
+EXPORT_SYMBOL(amd_iommu_set_nested_cr3);
+
+int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, 
+             struct mm_struct *virtio_be_mm, struct task_struct *vm_task, 
+             struct mm_struct *vm_mm, unsigned long gcr3)
+{
+	struct pasid_state *pasid_state;
+	struct device_state *dev_state;
+	u16 devid;
+	int ret;
+
+	might_sleep();
+
+	if (!amd_iommu_v2_supported())
+		return -ENODEV;
+
+	devid     = device_id(pdev);
+	dev_state = get_device_state(devid);
+    printk("devid=%d, dev_state=%p\n", devid, dev_state);
+    printk("amd_iommu_vm_process_bind_pasid, pdev=%p task=%p, mm=%p, pasid=%d, gcr3=0x%llx\n", pdev, vm_task, vm_mm, pasid, gcr3);
+
+	if (dev_state == NULL)
+		return -EINVAL;
+
+	ret = -EINVAL;
+	if (pasid < 0 || pasid >= dev_state->max_pasids)
+		goto out;
+
+	ret = -ENOMEM;
+	pasid_state = kzalloc(sizeof(*pasid_state), GFP_KERNEL);
+	if (pasid_state == NULL)
+		goto out;
+
+	atomic_set(&pasid_state->count, 1);
+	init_waitqueue_head(&pasid_state->wq);
+	spin_lock_init(&pasid_state->lock);
+
+	pasid_state->task         = vm_task;
+	pasid_state->mm           = vm_mm;
+	pasid_state->device_state = dev_state;
+	pasid_state->pasid        = pasid;
+	pasid_state->mn.ops       = &iommu_mn;  // cpu modify page table cause iommu flust
+    pasid_state->virtio_be_mm = virtio_be_mm;
+
+	if (pasid_state->mm == NULL)
+		goto out_free;
+
+	ret = set_pasid_state(dev_state, pasid_state, pasid);
+	if (ret) {
+        printk("!!! set_pasid_state fail %d\n", ret);
+		goto out_free;
+    }
+
+    int i;
+    for (i=1; i=0; i++);
+	ret = amd_iommu_domain_set_gcr3(dev_state->domain, pasid, gcr3);
+    printk("amd_iommu_vm_process_bind_pasid, pdev=%p, domain=%p, task=%p, mm=%p, pasid=%d, gcr3=0x%llx\n", pdev, dev_state->domain, vm_task, vm_mm, pasid, gcr3);
+	if (ret) {
+        printk("!!! amd_iommu_domain_set_gcr3 fail %d\n", ret);
+		goto out_clear_state;
+    }
+
+	link_pasid_state(pasid_state);
+
+	return 0;
+
+out_clear_state:
+    printk("out_clear_state\n");
+	clear_pasid_state(dev_state, pasid);
+
+out_free:
+    printk("out_free\n");
+	free_pasid_state(pasid_state);
+
+out:
+    printk("out\n");
+	put_device_state(dev_state);
+
+	return ret;
+}
+EXPORT_SYMBOL(amd_iommu_vm_process_bind_pasid);
+#endif
+
 int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
 			 struct task_struct *task)
 {
@@ -650,6 +832,7 @@ int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
 
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
+    printk("devid=%d, dev_state=%p\n", devid, dev_state);
 
 	if (dev_state == NULL)
 		return -EINVAL;
@@ -684,6 +867,8 @@ int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
 
 	ret = amd_iommu_domain_set_gcr3(dev_state->domain, pasid,
 					__pa(pasid_state->mm->pgd));
+    printk("amd_iommu_bind_pasid, __pa=0x%llx, virt_to_phys=0x%llx\n", 
+                __pa(pasid_state->mm->pgd), virt_to_phys(pasid_state->mm->pgd));
 	if (ret)
 		goto out_clear_state;
 
@@ -931,6 +1116,7 @@ static int __init amd_iommu_v2_init(void)
 	if (iommu_wq == NULL)
 		goto out_free;
 
+    printk("amd_iommu_register_ppr_notifier\n");
 	amd_iommu_register_ppr_notifier(&ppr_nb);
 	profile_event_register(PROFILE_TASK_EXIT, &profile_nb);
 

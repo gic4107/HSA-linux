@@ -34,6 +34,9 @@
 #include <linux/spinlock.h>
 #include <linux/idr.h>
 
+// gic4107
+#include <linux/kvm_host.h>
+
 struct kfd_scheduler_class;
 
 #define MAX_KFD_DEVICES 16	/* Global limit - only MAX_KFD_DEVICES will be supported by KFD. */
@@ -369,6 +372,23 @@ struct kfd_process_device {
 	struct idr alloc_idr;
 };
 
+#ifdef CONFIG_HSA_VIRTUALIZATION 
+#define KFD_PROCESS_TYPE_NORMAL     0
+#define KFD_PROCESS_TYPE_VIRTIO_BE  1
+#define KFD_PROCESS_TYPE_VM_PROCESS 2
+struct virtio_be_info {
+    struct kvm *kvm;  
+    struct kfd_process *bind_vm_process;        // for vm process mmap
+};
+
+struct vm_info {
+    struct kfd_process *virtio_be_process;
+    uint64_t vm_task;
+    uint64_t vm_mm;
+    uint64_t vm_pgd_gpa;    
+};
+#endif
+
 /* Process data */
 struct kfd_process {
 	/* kfd_process are stored in an mm_struct*->kfd_process* hash table (kfd_processes in kfd_process.c) */
@@ -407,9 +427,9 @@ struct kfd_process {
 	kfd_event_id next_nonsignal_event_id;
 	size_t signal_event_count;
 #ifdef CONFIG_HSA_VIRTUALIZATION 
-    bool virtio_be;     
-    bool vm_process;    
-    struct kfd_process *bind_vm_process;
+    int process_type;
+    struct vm_info *vm_info;
+    struct virtio_be_info *virtio_be_info;
 #endif
 };
 

@@ -26,6 +26,7 @@
 
 struct task_struct;
 struct pci_dev;
+struct fault;
 
 extern int amd_iommu_detect(void);
 extern int amd_iommu_init_hardware(void);
@@ -168,6 +169,16 @@ typedef void (*amd_iommu_invalidate_ctx)(struct pci_dev *pdev, int pasid);
 
 extern int amd_iommu_set_invalidate_ctx_cb(struct pci_dev *pdev,
 					   amd_iommu_invalidate_ctx cb);
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+extern int amd_iommu_set_nested_cr3(struct pci_dev *pdev, u64 nested_cr3);
+extern int amd_iommu_enable_nested_translation(struct pci_dev *pdev, int level);
+extern int amd_iommu_disable_nested_translation(struct pci_dev *pdev);
+extern int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, 
+                     struct mm_struct *virtio_be_mm, struct task_struct *task,
+                     struct mm_struct *,unsigned long gcr3);
+extern void amd_iommu_vm_ppr(struct fault *fault, int write);
+#endif
 
 #else
 

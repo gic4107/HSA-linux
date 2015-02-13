@@ -198,6 +198,7 @@ bool kgd2kfd_device_init(struct kfd_dev *kfd,
 		 kfd->pdev->device);
 
 	pr_debug("kfd: Starting kfd with the following scheduling policy %d\n", sched_policy);
+	printk("kfd: Starting kfd with the following scheduling policy %d\n", sched_policy);
 
 	return true;
 }
@@ -245,3 +246,14 @@ int kgd2kfd_resume(struct kfd_dev *kfd)
 
 	return 0;
 }
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct pci_dev *kfd_get_pci_dev(int device_id)
+{
+    struct kfd_dev *dev = radeon_kfd_device_by_id(device_id);
+    printk("=====kfd_get_pci_dev, dev_id=%d, dev=%p, pdev=%p\n", device_id, dev, dev->pdev);
+    return dev->pdev;
+}
+EXPORT_SYMBOL(kfd_get_pci_dev);
+#endif
+

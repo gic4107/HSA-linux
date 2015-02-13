@@ -153,6 +153,11 @@ static int pm_create_map_process(struct packet_manager *pm, uint32_t *buffer, st
 	packet->gds_addr_lo = lower_32(qpd->gds_context_area);
 	packet->gds_addr_hi = upper_32(qpd->gds_context_area);
 
+    printk("pm_create_map_process, pasid=%d, page_table_base=%llx, num_queues=%d, sh_mem_bases=%llx, sh_mem_ap1_base=%llx, sm_mem_ape1_limit=%llx, gds_context_area=%llx\n", 
+            packet->bitfields2.pasid, packet->bitfields3.page_table_base, 
+            packet->bitfields10.num_queues, packet->sh_mem_bases, 
+            packet->sh_mem_ape1_base, packet->sh_mem_ape1_limit, qpd->gds_context_area);
+
 	return 0;
 }
 
@@ -195,6 +200,10 @@ static int pm_create_map_queue(struct packet_manager *pm, uint32_t *buffer, stru
 	packet->mes_map_queues_ordinals[0].mqd_addr_hi = upper_32(q->gart_mqd_addr);
 	packet->mes_map_queues_ordinals[0].wptr_addr_lo = lower_32((uint64_t)q->properties.write_ptr);
 	packet->mes_map_queues_ordinals[0].wptr_addr_hi = upper_32((uint64_t)q->properties.write_ptr);
+
+    printk("pm_create_map_queue: doorbell_off=%llx, gart_mqd_addr=%llx, write_ptr=%llx\n", 
+            packet->mes_map_queues_ordinals[0].bitfields3.doorbell_offset, 
+            q->gart_mqd_addr, (uint64_t)q->properties.write_ptr);
 
 	return 0;
 }
@@ -239,7 +248,8 @@ static int pm_create_runlist_ib(struct packet_manager *pm, struct list_head *que
 			return retval;
 		proccesses_mapped++;
 		inc_wptr(&rl_wptr, sizeof(struct pm4_map_process), alloc_size_bytes);
-		list_for_each_entry(kq, &qpd->priv_queue_list, list) {
+
+		list_for_each_entry(kq, &qpd->priv_queue_list, list) {      // DIQ
 			if (kq->queue->properties.is_active != true)
 				continue;
 			pr_debug("kfd: static_queue, mapping kernel q %d, is debug status %d\n", kq->queue->queue, qpd->is_debug);

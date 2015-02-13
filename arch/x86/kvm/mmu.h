@@ -4,6 +4,10 @@
 #include <linux/kvm_host.h>
 #include "kvm_cache_regs.h"
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+#include "iommu.h"
+#endif
+
 #define PT64_PT_BITS 9
 #define PT64_ENT_PER_PAGE (1 << PT64_PT_BITS)
 #define PT32_PT_BITS 10
@@ -88,6 +92,7 @@ static inline int kvm_mmu_reload(struct kvm_vcpu *vcpu)
 	if (likely(vcpu->arch.mmu.root_hpa != INVALID_PAGE))
 		return 0;
 
+//    printk("kvm_mmu_reload call kvm_mmu_load\n"); // keep showing
 	return kvm_mmu_load(vcpu);
 }
 

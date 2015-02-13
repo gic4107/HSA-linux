@@ -272,8 +272,10 @@ static void recalc_intercepts(struct vcpu_svm *svm)
 
 static inline struct vmcb *get_host_vmcb(struct vcpu_svm *svm)
 {
-	if (is_guest_mode(&svm->vcpu))
+	if (is_guest_mode(&svm->vcpu)) {
+        printk("=====get_host_vmcb in guest_mode\n");
 		return svm->nested.hsave;
+    }
 	else
 		return svm->vmcb;
 }

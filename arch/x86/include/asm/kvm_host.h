@@ -1069,4 +1069,12 @@ int kvm_pmu_read_pmc(struct kvm_vcpu *vcpu, unsigned pmc, u64 *data);
 void kvm_handle_pmu_event(struct kvm_vcpu *vcpu);
 void kvm_deliver_pmi(struct kvm_vcpu *vcpu);
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+int kvm_hsa_enable_iommu_nested_translation(struct pci_dev *dev);
+int kvm_hsa_disable_iommu_nested_translation(struct pci_dev *dev);
+int kvm_hsa_set_iommu_nested_cr3(struct kvm *kvm, struct pci_dev *dev);
+hpa_t kvm_hsa_translate_gpa_to_hpa(struct kvm *kvm, gpa_t gpa);
+void kvm_hsa_read_guest_pgd(struct kvm* kvm, gpa_t gpa);
+#endif
+
 #endif /* _ASM_X86_KVM_HOST_H */

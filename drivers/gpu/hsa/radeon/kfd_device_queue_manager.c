@@ -111,7 +111,7 @@ static void init_process_memory(struct device_queue_manager *dqm, struct qcm_pro
 		qpd->sh_mem_ape1_limit = 0;
 		qpd->sh_mem_ape1_base = 0;
 	}
-	qpd->page_table_base = kfd2kgd->get_process_page_dir(pdd->vm);
+//	qpd->page_table_base = kfd2kgd->get_process_page_dir(pdd->vm);
 
 	if (qpd->pqm->process->is_32bit_user_mode) {
 		temp = get_sh_mem_bases_32(qpd->pqm->process, dqm->dev);
@@ -204,6 +204,7 @@ static int allocate_hqd(struct device_queue_manager *dqm, struct queue *q)
 	/* horizontal hqd allocation */
 	dqm->next_pipe_to_allocate = (pipe + 1) % get_pipes_num(dqm);
 
+    printk("allocate_hqd, pipe=%d, queue=%d\n", q->pipe, q->queue);
 	return 0;
 }
 
@@ -223,7 +224,7 @@ static int create_compute_queue_nocpsch(struct device_queue_manager *dqm, struct
 	if (mqd == NULL)
 		return -ENOMEM;
 
-	retval = allocate_hqd(dqm, q);
+	retval = allocate_hqd(dqm, q);  // get pipe, queue
 	if (retval != 0)
 		return retval;
 
@@ -232,6 +233,10 @@ static int create_compute_queue_nocpsch(struct device_queue_manager *dqm, struct
 		deallocate_hqd(dqm, q);
 		return retval;
 	}
+
+    mqd->acquire_hqd(mqd, q->pipe, q->queue, 0);       // v0.6, v1.0 also set vmid=0
+    mqd->load_mqd(mqd, q->mqd);
+    mqd->release_hqd(mqd);
 
 	return 0;
 }
@@ -1006,8 +1011,9 @@ static int execute_queues_cpsch(struct device_queue_manager *dqm, bool lock)
 		goto out;
 	}
 
-	retval = pm_send_runlist(&dqm->packets, &dqm->queues);
+	retval = pm_send_runlist(&dqm->packets, &dqm->queues);      // dqm->queues is after when CREATE_QUEUE
 	if (retval != 0) {
+		printk("!!! kfd: failed to execute runlist");
 		pr_err("kfd: failed to execute runlist");
 		goto out;
 	}
@@ -1107,6 +1113,7 @@ static bool set_cache_memory_policy(struct device_queue_manager *dqm,
 
 	pr_debug("kfd: In func %s\n", __func__);
 
+    printk("=====set_cache_memory_policy, dqm=%p, qpd=%p, apb=%p, aps=0x%llx\n", dqm, qpd, alternate_aperture_base, alternate_aperture_size); 
 	mutex_lock(&dqm->lock);
 
 	if (alternate_aperture_size == 0) {
@@ -1133,6 +1140,10 @@ static bool set_cache_memory_policy(struct device_queue_manager *dqm,
 		if ((limit & APE1_FIXED_BITS_MASK) != APE1_LIMIT_ALIGNMENT)
 			goto out;
 
+        if (!qpd) {
+            printk("!!! set_cache_memory_policy: qpd null\n");
+            goto out;
+        }
 		qpd->sh_mem_ape1_base = base >> 16;
 		qpd->sh_mem_ape1_limit = limit >> 16;
 	}

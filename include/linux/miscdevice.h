@@ -49,6 +49,8 @@
 #define VHOST_NET_MINOR		238
 #define UHID_MINOR		239
 #define MISC_DYNAMIC_MINOR	255
+// gic4107
+#define IOMMU_VM_PPR_MINOR 170
 
 struct device;
 

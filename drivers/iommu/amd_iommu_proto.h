@@ -55,6 +55,7 @@ extern int amd_iommu_domain_set_gcr3(struct iommu_domain *dom, int pasid,
 				     unsigned long cr3);
 extern int amd_iommu_domain_clear_gcr3(struct iommu_domain *dom, int pasid);
 extern struct iommu_domain *amd_iommu_get_v2_domain(struct pci_dev *pdev);
+extern void update_domain(struct protection_domain *domain);
 
 /* IOMMU Performance Counter functions */
 extern bool amd_iommu_pc_supported(void);
@@ -67,8 +68,13 @@ extern int amd_iommu_pc_get_set_reg_val(u16 devid, u8 bank, u8 cntr, u8 fxn,
 #define PPR_INVALID			0x1
 #define PPR_FAILURE			0xf
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+extern int amd_iommu_complete_ppr(struct pci_dev *pdev, int pasid,
+				  int status, int tag, bool gn);
+#else
 extern int amd_iommu_complete_ppr(struct pci_dev *pdev, int pasid,
 				  int status, int tag);
+#endif
 
 #ifndef CONFIG_AMD_IOMMU_STATS
 

@@ -29,6 +29,8 @@
 #define RADEON_KFD_H_INCLUDED
 
 #include <linux/types.h>
+#include <linux/kvm_host.h>
+#include <linux/sched.h>
 struct pci_dev;
 
 #define KFD_INTERFACE_VERSION 1
@@ -111,6 +113,11 @@ struct kfd2kgd_calls {
 bool kgd2kfd_init(unsigned interface_version,
 		  const struct kfd2kgd_calls* f2g,
 		  const struct kgd2kfd_calls** g2f);
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+int kvm_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread);
+void read_guest_pgd(struct mm_struct *mm);
+#endif
 
 #endif
 

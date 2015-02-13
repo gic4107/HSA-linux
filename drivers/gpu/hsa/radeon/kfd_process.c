@@ -129,6 +129,7 @@ static void free_process(struct kfd_process *p)
 {
 	struct kfd_process_device *pdd, *temp;
 
+    printk("free_process: pasid=%d\n", p->pasid);
 	radeon_kfd_pasid_free(p->pasid);
 
 	list_for_each_entry_safe(pdd, temp, &p->per_device_data, per_device_list) {
@@ -145,6 +146,12 @@ static void free_process(struct kfd_process *p)
 
 	mutex_destroy(&p->mutex);
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (p->process_type == KFD_PROCESS_TYPE_VIRTIO_BE) {
+        printk("kfree p->virtio_be_info\n");
+        kfree(p->virtio_be_info);
+    }
+#endif
 	kfree(p->queues);
 	kfree(p);
 }
@@ -312,14 +319,46 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
 	idr_init(&pdd->alloc_idr);
 
 	/* Create the GPUVM context for this specific device */
-	err = radeon_kfd_process_create_vm(dev, &pdd->vm);
+//	err = radeon_kfd_process_create_vm(dev, &pdd->vm);
 	if (err != 0)
 		return ERR_PTR(err);
 
-    if(!p->vm_process) {
+    printk("radeon_kfd_process_create_vm done\n");
+    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
+        struct kfd_process *virtio_be;
+        struct kvm *kvm;
+        gpa_t pgd_gpa;
+        hpa_t pgd_hpa;
+        
+        virtio_be = p->vm_info->virtio_be_process;
+        kvm = virtio_be->virtio_be_info->kvm;
+        if (!kvm) {
+            printk("radeon_kfd_bind_process_to_device for vm fail %p \n", p);
+            return -EINVAL;
+        }
+
+        // call KVM function to translation p->vm_pgd_gpa to hpa
+        pgd_gpa = p->vm_info->vm_pgd_gpa;
+        kvm_hsa_read_guest_pgd(kvm, pgd_gpa);
+
+        pgd_hpa = kvm_hsa_translate_gpa_to_hpa(kvm, pgd_gpa); 
+        printk("kvm_hsa_translate_gfn_to_pfn 0x%llx -> 0x%llx\n", pgd_gpa, pgd_hpa);
+
+        // set vm_pgd_hpa to IOMMU
+//    	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, virtio_be->mm, 
+//                        p->vm_info->vm_task, p->vm_info->vm_mm, pgd_hpa);
+    	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, virtio_be->mm, 
+                        p->vm_info->vm_task, p->vm_info->vm_mm, pgd_gpa);
+    	if (err < 0) {
+            printk("amd_iommu_vm_process_bind_pasid fail %d\n", err);
+//    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
+    		return ERR_PTR(err);
+        }        
+    }
+    else {      // not vm_process, original code
     	err = amd_iommu_bind_pasid(dev->pdev, p->pasid, p->lead_thread);
     	if (err < 0) {
-    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
+//    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
     		return ERR_PTR(err);
     	}
     }
@@ -377,11 +416,11 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 	/*Remove all handles from idr and release appropriate local memory object*/
 	idr_for_each_entry(&pdd->alloc_idr, mem, id) {
 		idr_remove(&pdd->alloc_idr, id);
-		radeon_kfd_process_gpuvm_free(dev, mem);
+//		radeon_kfd_process_gpuvm_free(dev, mem);
 	}
 
 	/* Destroy the GPUVM VM context */
-	radeon_kfd_process_destroy_vm(dev, pdd->vm);
+//	radeon_kfd_process_destroy_vm(dev, pdd->vm);
 
 	kfree(pdd);
 
@@ -574,7 +613,6 @@ find_vm_process(const void *vm_mm)
 {
     struct kfd_process *p;
     
-    printk("find_vm_process %p\n");
 	int idx = srcu_read_lock(&kfd_processes_srcu);
 	p = find_process_by_mm(vm_mm);
 	srcu_read_unlock(&kfd_processes_srcu, idx);
@@ -606,7 +644,7 @@ create_vm_process(const void *vm_mm)
 
 	process->mm = vm_mm;
 
-    process->vm_process = true;
+    process->process_type = KFD_PROCESS_TYPE_VM_PROCESS;
 
 //	process->mmu_notifier.ops = &kfd_process_mmu_notifier_ops;
 //	err = mmu_notifier_register(&process->mmu_notifier, process->mm);
@@ -622,17 +660,22 @@ create_vm_process(const void *vm_mm)
 	kfd_event_init_process(process);
 
 	err = pqm_init(&process->pqm, process);
-	if (err != 0)
+	if (err != 0) {
+        printk("!!! pqm_init fail\n");
 		goto err_process_pqm_init;
+    }
 
 	return process;
 
 err_process_pqm_init:
-err_mmu_notifier:
+    printk("!!! err_process_pqm_init\n");
+//err_mmu_notifier:
 	radeon_kfd_pasid_free(process->pasid);
 err_alloc_queues:
+    printk("!!! err_alloc_queue\n");
 	kfree(process->queues);
 err_alloc:
+    printk("!!! err_alloc\n");
 	kfree(process);
 	return ERR_PTR(err);
 }
@@ -648,7 +691,7 @@ radeon_kfd_vm_create_process(const void *vm_mm)
 	/* A prior open of /dev/kfd could have already created the process. */
 	process = find_vm_process(vm_mm);
 	if (process)
-		pr_debug("kfd: vm process already found\n");
+		printk("!!! radeon_kfd_vm_create_process: vm process already found\n");
 
 	if (!process) {
 		process = create_vm_process(vm_mm);
@@ -670,13 +713,47 @@ long radeon_kfd_vm_close_process(const void *vm_mm)
 
     process = find_vm_process(vm_mm);
     if(process == NULL) {
-        pr_debug("kfd: vm close process not found\n");
+        printk("!!! radeon_kfd_vm_close_process: process not found\n");
         return -EFAULT;
     }
+
+    kfree(process->vm_info);
 
     shutdown_process(process);
     free_process(process); 
 
     return 0;
 }
+
+// FIXME: for debugging usage
+void read_guest_pgd(struct mm_struct *mm)  
+{
+    struct kvm *kvm;
+    gpa_t pgd_gpa;
+    struct kfd_process *p = find_vm_process((const void*)mm); 
+    printk("read_guest_pgd, p=%p\n", p);
+    if (!p) 
+        return;
+
+    kvm = p->vm_info->virtio_be_process->virtio_be_info->kvm;
+    pgd_gpa = p->vm_info->vm_pgd_gpa;
+    kvm_hsa_read_guest_pgd(kvm, pgd_gpa);
+}
+EXPORT_SYMBOL(read_guest_pgd);
+
+int kvm_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread)              
+{                                                                                   
+    struct kfd_process *p;
+
+    p = find_process(thread);
+    if (!p || p->process_type!=KFD_PROCESS_TYPE_VIRTIO_BE) {
+        printk("kvm_bind_kfd_virtio_be %p fail\n", thread);
+        return -EINVAL;
+    }
+
+    p->virtio_be_info->kvm = kvm;
+    
+    return 0; 
+}
+EXPORT_SYMBOL(kvm_bind_kfd_virtio_be);
 #endif // endif CONFIG_HSA_VIRTUALIZATION

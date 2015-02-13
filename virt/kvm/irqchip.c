@@ -102,6 +102,8 @@ int kvm_send_userspace_msi(struct kvm *kvm, struct kvm_msi *msi)
 	route.msi.address_hi = msi->address_hi;
 	route.msi.data = msi->data;
 
+    if (msi->data == 16529)
+        printk("kvm_send_userspace_msi: address_lo=0x%x, address_hi=0x%x\n", msi->address_lo, msi->address_hi);
 	return kvm_set_msi(&route, kvm, KVM_USERSPACE_IRQ_SOURCE_ID, 1, false);
 }
 

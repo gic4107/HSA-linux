@@ -112,6 +112,7 @@ static int load_mqd(struct mqd_manager *mm, void *mqd)
 	BUG_ON(!mm || !mqd);
 
 	m = get_mqd(mqd);
+    printk("load_mqd mm=%p, mqd=%p, m=%p\n", mm, mqd, m);
 
 	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR, m->cp_mqd_base_addr_lo);
 	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR_HI, m->cp_mqd_base_addr_hi);
@@ -252,6 +253,11 @@ static void acquire_hqd(struct mqd_manager *mm, unsigned int pipe, unsigned int 
 	mec = (pipe + get_first_pipe_offset(mm)) / 4;
 	mec++;
 
+	printk("kfd: acquire mec: %d pipe: %d queue: %d vmid: %d\n",
+			mec,
+			pipe_in_mec,
+			queue,
+			vmid);
 	pr_debug("kfd: acquire mec: %d pipe: %d queue: %d vmid: %d\n",
 			mec,
 			pipe_in_mec,

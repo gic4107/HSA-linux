@@ -1086,5 +1086,10 @@ static inline void kvm_vcpu_set_dy_eligible(struct kvm_vcpu *vcpu, bool val)
 {
 }
 #endif /* CONFIG_HAVE_KVM_CPU_RELAX_INTERCEPT */
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+int kvm_hsa_set_iommu_stage2_pt(struct kvm *kvm, int device_id);
+#endif /* CONFIG_HSA_VIRTUALIZATION */
+
 #endif
 

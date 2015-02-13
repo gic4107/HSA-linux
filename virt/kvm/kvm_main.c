@@ -2408,9 +2408,12 @@ static long kvm_vm_ioctl(struct file *filp,
 	case KVM_IRQFD: {
 		struct kvm_irqfd data;
 
+        printk("KVM_IRQFD\n");
 		r = -EFAULT;
 		if (copy_from_user(&data, argp, sizeof data))
 			goto out;
+        printk("KVM_IRQFD, fd=%d, gsi=%d, flags=0x%x\n", data.fd, data.gsi, data.flags);
+
 		r = kvm_irqfd(kvm, &data);
 		break;
 	}
