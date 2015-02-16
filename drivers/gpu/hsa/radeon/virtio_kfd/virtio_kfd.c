@@ -65,7 +65,7 @@ int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t vm_mm)
     req->vm_mm   = vm_mm;
     req->param   = param;
 
-    printk("cmd=%p param=%p vm_mm=0x%x status=%p\n", req->command, req->param, vm_mm, &req->status);
+    printk("cmd=%d param=%p vm_mm=%llx status=%p\n", req->command, req->param, vm_mm, &req->status);
     sg_init_one(&sg_cmd, &cmd, sizeof(cmd));
     sg_init_one(&sg_vm_mm, &vm_mm, sizeof(vm_mm));
     sg_init_one(&sg_param, param, param_len);
@@ -617,26 +617,27 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         printk("queue_percentage=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_percentage);
         printk("queue_priority=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_priority);
 
-        int wptr;
-        int rptr;
+        uint64_t wptr;
+        uint64_t rptr;
         void __user *wptr_user = (void __user*)(((struct kfd_ioctl_create_queue_args*)args)->write_pointer_address);
         void __user *rptr_user = (void __user*)(((struct kfd_ioctl_create_queue_args*)args)->read_pointer_address);
 
-        ret = access_ok(VERIFY_READ, wptr_user, sizeof(int));
+        ret = access_ok(VERIFY_READ, wptr_user, sizeof(uint64_t));
         printk("access_ok READ, wptr %d\n", ret);
-        ret = access_ok(VERIFY_WRITE, wptr_user, sizeof(int));
+        ret = access_ok(VERIFY_WRITE, wptr_user, sizeof(uint64_t));
         printk("access_ok WRITE, wptr %d\n", ret);
-        ret = access_ok(VERIFY_READ, rptr_user, sizeof(int));
+        ret = access_ok(VERIFY_READ, rptr_user, sizeof(uint64_t));
         printk("access_ok READ, rptr %d\n", ret);
-        ret = access_ok(VERIFY_WRITE, rptr_user, sizeof(int));
+        ret = access_ok(VERIFY_WRITE, rptr_user, sizeof(uint64_t));
         printk("access_ok WRITE, rptr %d\n", ret);
 
-        ret = copy_from_user(&wptr, wptr_user, sizeof(int));
+        printk("current=%p, mm=%p\n", current, current->mm);
+        ret = copy_from_user(&wptr, wptr_user, sizeof(uint64_t));
         printk("wptr copy_from_user %d\n", ret);
-        printk("wptr_addr=%p, wptr=%d\n", wptr_user, wptr);
-        ret = copy_from_user(&rptr, rptr_user, sizeof(int));
+        printk("wptr_addr=%p, wptr=%lld\n", wptr_user, wptr);
+        ret = copy_from_user(&rptr, rptr_user, sizeof(uint64_t));
         printk("rptr copy_from_user %d\n", ret);
-        printk("rptr_addr=%p, rptr=%d\n", rptr_user, rptr);
+        printk("rptr_addr=%p, rptr=%lld\n", rptr_user, rptr);
 
         struct vm_area_struct *vma = find_vma(current->mm, ((struct kfd_ioctl_create_queue_args*)args)->write_pointer_address);
         if (vma) {

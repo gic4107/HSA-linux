@@ -192,8 +192,8 @@ void walk_page_table(struct mm_struct *mm, unsigned long addr)
         
         struct page *page = pte_page(*pte);
         void *map = kmap(page);
-        printk("map=%p, %d\n", map, *(int*)(map+2168));
-        printk("map=%p, %d\n", map, *(int*)(map+2240));
+        printk("map=%p, %lld\n", map, *(uint64_t*)(map+2168));
+        printk("map=%p, %lld\n", map, *(uint64_t*)(map+2240));
 
         kunmap(page);
         pte_unmap(pte);
@@ -237,27 +237,28 @@ static void vm_ppr_handler(void)
             walk_page_table(mm, ppr_log->address);
 
             // get write pointer from user space
-            int wptr;
-            int rptr;
+            uint64_t wptr;
+            uint64_t rptr;
             int ret;
             void __user *wptr_user = (void __user*)(ppr_log->address+2168);
             void __user *rptr_user = (void __user*)(ppr_log->address+2240);
 
-            ret = access_ok(VERIFY_READ, wptr_user, sizeof(int));
+            printk("current=%p, mm=%p\n", current, current->mm);
+            ret = access_ok(VERIFY_READ, wptr_user, sizeof(uint64_t));
             printk("access_ok READ, wptr %d\n", ret);
-            ret = access_ok(VERIFY_WRITE, wptr_user, sizeof(int));
+            ret = access_ok(VERIFY_WRITE, wptr_user, sizeof(uint64_t));
             printk("access_ok WRITE, wptr %d\n", ret);
-            ret = access_ok(VERIFY_READ, rptr_user, sizeof(int));
+            ret = access_ok(VERIFY_READ, rptr_user, sizeof(uint64_t));
             printk("access_ok READ, rptr %d\n", ret);
-            ret = access_ok(VERIFY_WRITE, rptr_user, sizeof(int));
+            ret = access_ok(VERIFY_WRITE, rptr_user, sizeof(uint64_t));
             printk("access_ok WRITE, rptr %d\n", ret);
 
-            ret = copy_from_user(&wptr, wptr_user, sizeof(int));
+            ret = copy_from_user(&wptr, wptr_user, sizeof(uint64_t));
             printk("wptr copy_from_user %d\n", ret);
-            printk("wptr_addr=%p, wptr=%d\n", wptr_user, wptr);
-            ret = copy_from_user(&rptr, rptr_user, sizeof(int));
+            printk("wptr_addr=%p, wptr=%lld\n", wptr_user, wptr);
+            ret = copy_from_user(&rptr, rptr_user, sizeof(uint64_t));
             printk("rptr copy_from_user %d\n", ret);
-            printk("rptr_addr=%p, rptr=%d\n", rptr_user, rptr);
+            printk("rptr_addr=%p, rptr=%lld\n", rptr_user, rptr);
 
             // check vma attribute
             struct vm_area_struct *vma = find_vma(mm, ppr_log->address);
