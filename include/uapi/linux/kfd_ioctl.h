@@ -230,7 +230,13 @@ struct kfd_ioctl_open_graphic_handle_args {
 #define KFD_IOC_RESET_EVENT		_IOW(KFD_IOC_MAGIC, 19, struct kfd_ioctl_reset_event_args)
 #define KFD_IOC_WAIT_EVENTS		_IOWR(KFD_IOC_MAGIC, 20, struct kfd_ioctl_wait_events_args)
 #define KFD_IOC_OPEN_GRAPHIC_HANDLE	_IOWR(KFD_IOC_MAGIC, 21, struct kfd_ioctl_open_graphic_handle_args)
-#define KFD_IOC_TEST_VMA_PAGE_PROT  _IOW(KFD_IOC_MAGIC, 22, int)
+#define KFD_IOC_WALK_PAGE_TABLE     _IOW(KFD_IOC_MAGIC, 22, uint64_t)
+#define KFD_IOC_KICK_DOORBELL       _IO(KFD_IOC_MAGIC, 23)
+#define KFD_IOC_GET_DOORBELL        _IOR(KFD_IOC_MAGIC, 24, uint64_t)
+#define KFD_IOC_CLEAR_PAGE          _IOW(KFD_IOC_MAGIC, 25, uint64_t)
+#define KFD_IOC_WALK_RWPTR          _IO(KFD_IOC_MAGIC, 26)
+#define KFD_IOC_SET_IN_BUF          _IOW(KFD_IOC_MAGIC, 27, uint64_t)
+#define KFD_IOC_SET_OUT_BUF         _IOW(KFD_IOC_MAGIC, 28, uint64_t)
 
 #pragma pack(pop)
 

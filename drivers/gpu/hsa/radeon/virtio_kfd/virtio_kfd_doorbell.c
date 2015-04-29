@@ -35,6 +35,7 @@ int radeon_virtkfd_doorbell_mmap(struct virtkfd_process *process, struct vm_area
 		 "     size                == 0x%08lX\n",
 		 (long long unsigned int) vma->vm_start, start, vma->vm_flags,
 		 doorbell_process_allocation());
+    printk("vma->vm_page_prot=0x%llx\n", vma->vm_page_prot);
 
 	pr_debug("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
 		 "     target user address == 0x%016llX\n"
@@ -44,5 +45,5 @@ int radeon_virtkfd_doorbell_mmap(struct virtkfd_process *process, struct vm_area
 		 (long long unsigned int) vma->vm_start, start, vma->vm_flags,
 		 doorbell_process_allocation());
 
-	return remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot);
+	return io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot);
 }

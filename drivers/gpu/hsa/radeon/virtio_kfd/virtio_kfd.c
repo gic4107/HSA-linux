@@ -15,12 +15,12 @@
 #include <linux/numa.h>
 #include <linux/cdev.h>
 #include <linux/mman.h>
-#include <uapi/linux/kfd_ioctl.h>
 #include <uapi/linux/virtio_ids.h>
 #include <linux/virtio_ring.h>
 #include <linux/virtio_iommu.h>     // for mmu_notifier
 #include "virtio_kfd_priv.h"
 
+#include <asm/pgtable_types.h>
 #define PART_BITS 4
 
 #define VIRTKFD_PROCESS_TABLE_SIZE 5
@@ -38,6 +38,22 @@ static struct class *virtkfd_class;
 struct device *virtkfd_device;
 static DEFINE_IDA(virtkfd_index_ida);
 struct virtio_kfd *vkfd;
+// FIXME: debug
+static uint64_t doorbell_addr;
+static uint64_t in_buf;
+static uint64_t out_buf;
+
+// FIXME: debug
+void dump_mqd(void *mqd)
+{
+    int i;
+
+    printk("dump_mqd: mqd=%p\n", mqd);
+
+    for (i=0; i<sizeof(struct cik_mqd); i+=sizeof(uint32_t)) 
+        printk("%p: %x\n", mqd+i, *(uint32_t*)(mqd+i));
+}
+EXPORT_SYMBOL(dump_mqd);
 
 #define to_vvq(_vq) container_of(_vq, struct vring_virtqueue, vq)
 
@@ -325,6 +341,46 @@ static int virtblk_restore(struct virtio_device *vdev)
 #endif
 */
 
+static int set_queue_properties_from_user(struct queue_properties *q_properties,
+                             struct kfd_ioctl_create_queue_args *args)
+{
+	q_properties->is_interop = false;
+	q_properties->queue_percent = args->queue_percentage;
+	q_properties->priority = args->queue_priority;
+	q_properties->queue_address = args->ring_base_address;
+	q_properties->queue_size = args->ring_size;
+	q_properties->read_ptr = (qptr_t *) args->read_pointer_address;
+	q_properties->write_ptr = (qptr_t *) args->write_pointer_address;
+	if (args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE ||
+		args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE_AQL)
+		q_properties->type = KFD_QUEUE_TYPE_COMPUTE;
+	else if (args->queue_type == KFD_IOC_QUEUE_TYPE_SDMA)
+		q_properties->type = KFD_QUEUE_TYPE_SDMA;
+	else
+		return -ENOTSUPP;
+	if (args->queue_type == KFD_IOC_QUEUE_TYPE_COMPUTE_AQL)
+		q_properties->format = KFD_QUEUE_FORMAT_AQL;
+	else
+		q_properties->format = KFD_QUEUE_FORMAT_PM4;
+
+	printk("%s Arguments: Queue Percentage (%d, %d)\n"
+			"Queue Priority (%d, %d)\n"
+			"Queue Address (0x%llX, 0x%llX)\n"
+			"Queue Size (0x%llX, %u)\n"
+			"Queue r/w Pointers (0x%llX, 0x%llX)\n"
+			"Queue Format (%d)\n",
+			__func__,
+			q_properties->queue_percent, args->queue_percentage,
+			q_properties->priority, args->queue_priority,
+			q_properties->queue_address, args->ring_base_address,
+			q_properties->queue_size, args->ring_size,
+			(uint64_t) q_properties->read_ptr,
+			(uint64_t) q_properties->write_ptr,
+			q_properties->format);
+
+	return 0;
+}
+
 static const struct virtio_device_id id_table[] = {
 	{ VIRTIO_ID_KFD, VIRTIO_DEV_ANY_ID },
 	{ 0 },
@@ -425,6 +481,8 @@ static const struct mmu_notifier_ops virtkfd_process_mmu_notifier_ops = {
 };
 
 static const struct mmu_notifier_ops virtio_kfd_iommu_process_mmu_notifier_ops = {            
+    .release = virtkfd_process_notifier_release,                                     
+    .destroy = virtkfd_process_notifier_destroy,                                     
 	.clear_flush_young      = virtio_iommu_clear_flush_young,
 	.change_pte             = virtio_iommu_change_pte,
 	.invalidate_page        = virtio_iommu_invalidate_page,
@@ -507,33 +565,28 @@ virtkfd_create_process(const struct task_struct *thread)
 static int
 virtkfd_open(struct inode *inode, struct file *filep)
 {
-    printk("kfd_open current=%p, mm=%p\n", current, current->mm);
+    printk("kfd_open current=%p, active_mm=%p, mm=%p, pgd=%p\n", current, current->active_mm, current->mm, current->mm->pgd);
 	printk("kfd_open file=%p\n", filep);
     struct virtkfd_process *process;
     uint64_t doorbell_region_gpa;
     struct vm_process_info info;
     struct task_struct *lead_thread = current->group_leader;
-    int i;
+
+    if (current->group_leader->mm != current->mm) {
+        printk("current->group_leader->mm != current->mm\n");
+        return -EINVAL;
+    }
+
+    if (find_process(current)) {
+        printk("kfd_process exist\n");
+        return 0;
+    }
 
     info.vm_task = (uint64_t)current;
     info.vm_mm   = (uint64_t)current->mm;
     info.vm_pgd_gpa = (uint64_t)__pa(get_task_mm(lead_thread)->pgd);
-    printk("task=%p, mm=%p, pgd=(%llx, %llx), get_task_mm=%p, pgd=(%llx, %llx)\n",
-             current, current->mm, __pa(current->mm->pgd), virt_to_phys(current->mm->pgd),
-             get_task_mm(current), __pa(get_task_mm(current)->pgd), virt_to_phys(get_task_mm(current)->pgd));
-    printk("lead_thread=%p, mm=%p, pgd=(%llx, %llx), get_task_mm=%p, pgd=(%llx, %llx)\n",
-             lead_thread, lead_thread->mm, __pa(lead_thread->mm->pgd), virt_to_phys(lead_thread->mm->pgd),
-             get_task_mm(lead_thread), __pa(get_task_mm(lead_thread)->pgd), virt_to_phys(get_task_mm(lead_thread)->pgd));
-
-    // dump pgd data to debug
-    printk("dump pgd data to debug\n");
-    for (i=0; i<100; i++) 
-        printk("%x ", *(int*)(current->mm->pgd+i*sizeof(int)));
-    printk("\n");
 
     virtkfd_add_req(VIRTKFD_OPEN, &info, sizeof(info), NO_MATCH);     
-    // match used for finding forwarder in back-end, create forwarder and no need to find here
-    printk("VIRTKFD_OPEN done\n"); 
 
     // create virtkfd_process
     process = virtkfd_create_process(current); 
@@ -544,12 +597,12 @@ virtkfd_open(struct inode *inode, struct file *filep)
         return -EFAULT;
     }
     SetPageReserved(virt_to_page(process->doorbell_region));                         // for using remap_pfn_page
+    memset(process->doorbell_region, 0, 4096);
 
     doorbell_region_gpa = (uint64_t)virt_to_phys(process->doorbell_region);
-//    doorbell_region_gpa = (uint64_t)(process->doorbell_region);
+    // FIXME: debug
+    doorbell_addr = doorbell_region_gpa;
 
-    // magic number '-'
-//    memset(process->doorbell_region, '-', PROCESS_DOORBELL_REGION_SIZE);
     // send to BE for mmap to host KFD
     virtkfd_add_req(VIRTKFD_MMAP_DOORBELL_REGION, &doorbell_region_gpa, 
                         sizeof(doorbell_region_gpa), (uint64_t)current->mm);
@@ -567,95 +620,298 @@ virtkfd_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
+pte_t* walk_page_table(struct mm_struct *mm, unsigned long addr)
+{
+    pgd_t *pgd;
+    pud_t *pud;
+    pmd_t *pmd;
+    pte_t *pte;
+    int offset = addr & 0xfff;
+    printk("walk_page_table, offset=%x\n", offset);
+
+    pgd = pgd_offset(mm, addr);
+    if (!pgd_present(*pgd))
+        return NULL;
+    printk("pgd=%p, pgd_val=%llx\n", pgd, pgd_val(*pgd));
+    
+    pud = pud_offset(pgd, addr);
+    if (!pud_present(*pud))
+        return NULL;
+    printk("pud=%p, pud_val=%llx\n", pud, pud_val(*pud));
+    
+    pmd = pmd_offset(pud, addr);
+    if (!pmd_present(*pmd))
+        return NULL;
+    printk("pmd=%p, pmd_val=%llx\n", pmd, pmd_val(*pmd));
+
+    if (pmd_val(*pmd) & _PAGE_PAT)
+        return pmd;
+ 
+    pte = pte_offset_map(pmd, addr);
+
+    return pte;
+}
+
+uint64_t gva_to_gpa(struct mm_struct *mm, unsigned long gva)
+{
+    int offset = gva & 0xfff;
+    pte_t *pte = walk_page_table(mm, gva);
+    uint64_t gpa = 0;
+
+    if (pte_present(*pte)) {
+        printk("pte_val=%llx, offset=%llx\n", pte_val(*pte), offset);
+        gpa = (pte_val(*pte) & PTE_PFN_MASK) + offset;
+    }
+
+    printk("gva_to_gpa: %llx->%llx\n", gva, gpa);
+    return gpa;
+}
+
+void access_clr_a_page(struct mm_struct *mm, unsigned long addr)
+{
+    void *entry;
+    struct page *page;
+    void *map;
+    int offset;
+
+    printk("access_clr_a_page: %llx\n", addr);
+    entry = walk_page_table(mm, addr);
+    if (!entry)
+        return;
+
+    printk("entry=%llx\n", *(uint64_t*)entry);
+
+    if (*(uint64_t*)entry & _PAGE_PAT) {     // 2M page
+        pmd_t *pmd = (pmd_t*)entry;
+        page = pmd_page(*pmd);
+        offset = addr & 0x1fffff;
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
+        kunmap(page);
+
+        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));
+        pmd->pmd = pmd_val(*pmd) & ~_PAGE_ACCESSED;
+        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));
+    }
+    else if (pte_present(*(pte_t*)entry)) {
+        pte_t *pte = (pte_t*)entry;
+        page = pte_page(*pte);
+        offset = addr & 0xfff;
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
+        kunmap(page);
+
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));
+        pte->pte = pte_val(*pte) & ~_PAGE_ACCESSED;
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));
+    }
+}
+
+void access_page(struct mm_struct *mm, unsigned long addr)
+{
+    void *entry;
+    struct page *page;
+    void *map;
+    int offset;
+
+    entry = walk_page_table(mm, addr);
+    if (!entry)
+        return;
+
+    printk("entry=%llx\n", *(uint64_t*)entry);
+
+    if (*(uint64_t*)entry & _PAGE_PAT) {     // 2M page
+        pmd_t *pmd = (pmd_t*)entry;
+        page = pmd_page(*pmd);
+        offset = addr & 0x1fffff;
+
+        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
+        kunmap(page);
+    }
+    else if (pte_present(*(pte_t*)entry)) {
+        pte_t *pte = (pte_t*)entry;
+        page = pte_page(*pte);
+        offset = addr & 0xfff;
+
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
+        kunmap(page);
+    }
+}
+
+void my_clear_page(struct mm_struct *mm, unsigned long addr)
+{
+    pte_t *pte;
+    unsigned long page_start = addr & PAGE_MASK;
+
+    pte = walk_page_table(mm, addr);
+    if (pte_present(*pte)) {
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
+        pte->pte = pte_val(*pte) & ~_PAGE_PRESENT;
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
+        virtio_iommu_invalidate_range_start(NULL, mm, page_start, page_start+4096);
+    }
+}
+
 static long
 virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 	long err = -EINVAL;
     uint64_t vm_mm = (uint64_t)current->mm; 
     struct virtkfd_process *p = find_process(current);
-    void *args;
     int ret;
+    // FIXME: debug
+    int i;
+    static void __user *wptr_user;
+    static void __user *rptr_user;
+    static void __user *ring_user;
+    static void *m;
+    unsigned long va;
 
 	dev_dbg(virtkfd_device,
 		"ioctl cmd 0x%x (#%d), arg 0x%lx\n",
 		cmd, _IOC_NR(cmd), arg);
 
 	switch (cmd) {
-	case KFD_IOC_TEST_VMA_PAGE_PROT:
-		printk("KFD_IOC_TEST_VMA_PAGE_PROT ...");
-        unsigned long tmp;
-        void __user *ptr;
-        int val;
+    // FIXME: debug
+	case KFD_IOC_CLEAR_PAGE:
+		printk("KFD_IOC_CLEAR_PAGE");
 
-        ret = copy_from_user(&tmp, arg, sizeof(tmp));
-        ptr = (void __user*)tmp;        
-        printk("ret=%d, ptr=%p\n", ret, ptr);
-        ret = copy_from_user(&val, ptr, sizeof(val));
-        printk("ret=%d, val=%d\n", ret, val);
+        if (copy_from_user(&va, arg, sizeof(va)))
+            return -EFAULT;
 
-        printk("%p, %p, %d\n", arg, &tmp, tmp);
-        struct vm_area_struct *tmp_vma = find_vma(current->mm, arg);
-        if (tmp_vma) {
-            printk("vma=%p, vma_start=%llx, vma_end=%llx, vma_prot=%llx, vma_flag=%llx\n",
-                     tmp_vma, tmp_vma->vm_start, tmp_vma->vm_end, pgprot_val(tmp_vma->vm_page_prot), tmp_vma->vm_flags);
-        }
+        printk("va=%llx\n", va); 
+        my_clear_page(current->mm, va);
+
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_WALK_PAGE_TABLE:
+		printk("KFD_IOC_WALK_PAGE_TABLE ");
+
+        if (copy_from_user(&va, arg, sizeof(va)))
+            return -EFAULT;
+
+        printk("va=%llx\n", va); 
+        access_clr_a_page(current->mm, va);
+
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_WALK_RWPTR:
+		printk("KFD_IOC_WALK_RWPTR ");
+
+        access_clr_a_page(current->mm, wptr_user);
+        access_clr_a_page(current->mm, rptr_user);
+
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_SET_IN_BUF:
+		printk("KFD_IOC_SET_IN_BUF ");
+
+        if (copy_from_user(&in_buf, arg, sizeof(in_buf)))
+            return -EFAULT;
+        printk("in_buf=%llx\n", in_buf); 
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_SET_OUT_BUF:
+		printk("KFD_IOC_SET_OUT_BUF ");
+
+        if (copy_from_user(&out_buf, arg, sizeof(out_buf)))
+            return -EFAULT;
+        printk("out_buf=%llx\n", out_buf); 
+        break;
+
+    case KFD_IOC_KICK_DOORBELL:
+        printk("KFD_IOC_KICK_DOORBELL, doorbell_addr=%llx", doorbell_addr);
+        dump_mqd(m);
+        access_clr_a_page(current->mm, (unsigned long)m);
+		err = virtkfd_add_req(VIRTKFD_KICK_DOORBELL, &doorbell_addr, sizeof(doorbell_addr), vm_mm);
+        access_clr_a_page(current->mm, (unsigned long)m);
+        dump_mqd(m);
+        break;
+
+    case KFD_IOC_GET_DOORBELL:
+        printk("KFD_IOC_GET_DOORBELL ");
+        uint64_t db_addr = &p->doorbell_user_mapping[0];
+        printk("db_addr=%llx\n", db_addr);
+        copy_to_user((void __user*)arg, &db_addr, sizeof(db_addr));
         break;
 
 	case KFD_IOC_CREATE_QUEUE:
 		printk("KFD_IOC_CREATE_QUEUE\n");
+        struct kfd_ioctl_create_queue_args cq_args;
+        struct virtkfd_ioctl_create_queue_args vcq_args;
+        struct queue_properties q_properties;
+        struct cik_mqd *mqd;
 
-        args = (struct kfd_ioctl_create_queue_args*)kmalloc(sizeof(struct kfd_ioctl_create_queue_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_create_queue_args)))
+        if (copy_from_user(&cq_args, arg, sizeof(struct kfd_ioctl_create_queue_args)))
             return -EFAULT;
 
-        printk("ring_base_address=0x%llx\n", ((struct kfd_ioctl_create_queue_args*)args)->ring_base_address);
-        printk("write_pointer_address=0x%llx\n", ((struct kfd_ioctl_create_queue_args*)args)->write_pointer_address);
-        printk("read_pointer_address=0x%llx\n", ((struct kfd_ioctl_create_queue_args*)args)->read_pointer_address);
-        printk("ring_size=%d\n",((struct kfd_ioctl_create_queue_args*)args)->ring_size);
-        printk("gpu_id=%d\n",((struct kfd_ioctl_create_queue_args*)args)->gpu_id);
-        printk("queue_type=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_type);
-        printk("queue_percentage=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_percentage);
-        printk("queue_priority=%d\n",((struct kfd_ioctl_create_queue_args*)args)->queue_priority);
+//        set_queue_properties_from_user(&q_properties, &cq_args);
+//        mqd = mqd_create(&q_properties);
+        mqd = kzalloc(sizeof(struct cik_mqd), GFP_KERNEL);
+        m = mqd;
 
-        uint64_t wptr;
-        uint64_t rptr;
-        void __user *wptr_user = (void __user*)(((struct kfd_ioctl_create_queue_args*)args)->write_pointer_address);
-        void __user *rptr_user = (void __user*)(((struct kfd_ioctl_create_queue_args*)args)->read_pointer_address);
+        memcpy(&vcq_args.args, &cq_args, sizeof(cq_args));
+        vcq_args.mqd_gva = (uint64_t)mqd;
+        vcq_args.mqd_gpa = (uint64_t)virt_to_phys(mqd);
 
-        ret = access_ok(VERIFY_READ, wptr_user, sizeof(uint64_t));
-        printk("access_ok READ, wptr %d\n", ret);
-        ret = access_ok(VERIFY_WRITE, wptr_user, sizeof(uint64_t));
-        printk("access_ok WRITE, wptr %d\n", ret);
-        ret = access_ok(VERIFY_READ, rptr_user, sizeof(uint64_t));
-        printk("access_ok READ, rptr %d\n", ret);
-        ret = access_ok(VERIFY_WRITE, rptr_user, sizeof(uint64_t));
-        printk("access_ok WRITE, rptr %d\n", ret);
+        printk("ring_base_address=0x%llx\n", cq_args.ring_base_address);
+        printk("write_pointer_address=0x%llx\n", cq_args.write_pointer_address);
+        printk("read_pointer_address=0x%llx\n", cq_args.read_pointer_address);
+        printk("ring_size=%d\n",cq_args.ring_size);
+        printk("gpu_id=%d\n", cq_args.gpu_id);
+        printk("queue_type=%d\n", cq_args.queue_type);
+        printk("queue_percentage=%d\n", cq_args.queue_percentage);
+        printk("queue_priority=%d\n", cq_args.queue_priority);
+        printk("mqd_gva=%p\n", vcq_args.mqd_gva);
+        printk("mqd_gpa=%p\n", vcq_args.mqd_gpa);
 
-        printk("current=%p, mm=%p\n", current, current->mm);
-        ret = copy_from_user(&wptr, wptr_user, sizeof(uint64_t));
-        printk("wptr copy_from_user %d\n", ret);
-        printk("wptr_addr=%p, wptr=%lld\n", wptr_user, wptr);
-        ret = copy_from_user(&rptr, rptr_user, sizeof(uint64_t));
-        printk("rptr copy_from_user %d\n", ret);
-        printk("rptr_addr=%p, rptr=%lld\n", rptr_user, rptr);
+        wptr_user = (void __user*)(cq_args.write_pointer_address);
+        rptr_user = (void __user*)(cq_args.read_pointer_address);
+        ring_user = (void __user*)(cq_args.ring_base_address);
 
-        struct vm_area_struct *vma = find_vma(current->mm, ((struct kfd_ioctl_create_queue_args*)args)->write_pointer_address);
-        if (vma) {
-            printk("vma=%p, vma_start=%llx, vma_end=%llx, vma_prot=%llx, vma_flag=%llx\n",
-                     vma, vma->vm_start, vma->vm_end, pgprot_val(vma->vm_page_prot), vma->vm_flags);
-        }
+        access_clr_a_page(current->mm, (unsigned long)ring_user);
+        access_clr_a_page(current->mm, (unsigned long)wptr_user);
+        access_clr_a_page(current->mm, (unsigned long)rptr_user);
+        access_clr_a_page(current->mm, (unsigned long)in_buf);
+        access_clr_a_page(current->mm, (unsigned long)out_buf);
 
-		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, (struct kfd_ioctl_create_queue_args*)args,
-                                sizeof(struct kfd_ioctl_create_queue_args), vm_mm);       // back-end will fill args
-        printk("queue_id=%d\n", ((struct kfd_ioctl_create_queue_args*)args)->queue_id);
-        printk("doorbell_address=0x%llx\n",((struct kfd_ioctl_create_queue_args*)args)->doorbell_address);
+        // translate ring, r/w pointer into GPA
+//        cq_args.ring_base_address     = gva_to_gpa(current->mm, (unsigned long)ring_user);
+//        cq_args.write_pointer_address = gva_to_gpa(current->mm, (unsigned long)wptr_user);
+//        cq_args.read_pointer_address  = gva_to_gpa(current->mm, (unsigned long)rptr_user);
+
+//		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, &cq_args, sizeof(cq_args), vm_mm);       // back-end will fill args
+        dump_mqd(mqd);
+        access_clr_a_page(current->mm, (unsigned long)mqd);
+		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, &vcq_args, sizeof(vcq_args), vm_mm);       // back-end will fill args
+        access_clr_a_page(current->mm, (unsigned long)mqd);
+        dump_mqd(mqd);
+        cq_args.queue_id = vcq_args.args.queue_id;
+        printk("queue_id=%d\n", cq_args.queue_id);
+
+        access_clr_a_page(current->mm, (unsigned long)mqd);
+        access_clr_a_page(current->mm, (unsigned long)ring_user);
+        access_clr_a_page(current->mm, (unsigned long)wptr_user);
+        access_clr_a_page(current->mm, (unsigned long)rptr_user);
+        access_clr_a_page(current->mm, (unsigned long)in_buf);
 
         // assign doorbell_address with qid
-        ((struct kfd_ioctl_create_queue_args*)args)->doorbell_address = 
-            &p->doorbell_user_mapping[((struct kfd_ioctl_create_queue_args*)args)->queue_id];
-        printk("doorbell_address=0x%llx\n",((struct kfd_ioctl_create_queue_args*)args)->doorbell_address);
+        cq_args.doorbell_address = &p->doorbell_user_mapping[cq_args.queue_id];
+        printk("doorbell_address=0x%llx\n", cq_args.doorbell_address);
 
-        if (copy_to_user((void __user*)arg, args, sizeof(struct kfd_ioctl_create_queue_args))) 
+        if (copy_to_user((void __user*)arg, &cq_args, sizeof(cq_args)))
             return -EFAULT;
 
         // bind mmu_notifier to notify host to flush IOMMU page
@@ -666,40 +922,33 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
         }
 
-        vma = find_vma(current->mm, ((struct kfd_ioctl_create_queue_args*)args)->write_pointer_address);
-        if (vma) {
-            printk("vma=%p, vma_start=%llx, vma_end=%llx, vma_prot=%llx, vma_flag=%llx\n",
-                     vma, vma->vm_start, vma->vm_end, pgprot_val(vma->vm_page_prot), vma->vm_flags);
-        }
-
-        kfree(args);
 		break;
 
 	case KFD_IOC_DESTROY_QUEUE:
 		printk("KFD_IOC_DESTROY_QUEUE\n"); 
+        struct kfd_ioctl_destroy_queue_args dq_args;
 
-        args = (struct kfd_ioctl_destroy_queue_args*)kmalloc(sizeof(struct kfd_ioctl_destroy_queue_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_destroy_queue_args)))
+        access_clr_a_page(current->mm, (unsigned long)wptr_user);
+        access_clr_a_page(current->mm, (unsigned long)wptr_user+24);
+        access_clr_a_page(current->mm, (unsigned long)rptr_user);
+        if (copy_from_user(&dq_args, arg, sizeof(dq_args)))
             return -EFAULT;
-		err = virtkfd_add_req(VIRTKFD_DESTROY_QUEUE, (struct kfd_ioctl_destroy_queue_args*)args,
-                                sizeof(struct kfd_ioctl_destroy_queue_args), vm_mm);       
-        kfree(args);
+		err = virtkfd_add_req(VIRTKFD_DESTROY_QUEUE, &dq_args, sizeof(dq_args), vm_mm);       
 
 		break;
 	case KFD_IOC_SET_MEMORY_POLICY:
 		printk("KFD_IOC_SET_MEMORY_POLICY\n");
+        struct kfd_ioctl_set_memory_policy_args mp_args;
 
-        args = (struct kfd_ioctl_set_memory_policy_args*)kmalloc(sizeof(struct kfd_ioctl_set_memory_policy_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_set_memory_policy_args)))
+        if (copy_from_user(&mp_args, arg, sizeof(mp_args)))
             return -EFAULT;
 
-        printk("gpu_id=%d\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->gpu_id);
-        printk("alternate_aperture_base=0x%llx\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->alternate_aperture_base);
-        printk("alternate_aperture_size=%llu\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->alternate_aperture_size);
-        printk("default_policy=%u\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->default_policy);
-        printk("alternate_policy=%u\n", ((struct kfd_ioctl_set_memory_policy_args*)args)->alternate_policy);
-		err = virtkfd_add_req(VIRTKFD_SET_MEMORY_POLICY, (struct kfd_ioctl_set_memory_policy_args*)args,
-                                sizeof(struct kfd_ioctl_set_memory_policy_args), vm_mm);       // back-end will fill args
+        printk("gpu_id=%d\n", mp_args.gpu_id);
+        printk("alternate_aperture_base=0x%llx\n", mp_args.alternate_aperture_base);
+        printk("alternate_aperture_size=%llu\n", mp_args.alternate_aperture_size);
+        printk("default_policy=%u\n", mp_args.default_policy);
+        printk("alternate_policy=%u\n", mp_args.alternate_policy);
+		err = virtkfd_add_req(VIRTKFD_SET_MEMORY_POLICY, &mp_args, sizeof(mp_args), vm_mm);       // back-end will fill args
 
         // bind mmu_notifier to notify host to flush IOMMU page
         if (!p->virtio_iommu_bind) {
@@ -709,48 +958,43 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
         }
 
-        kfree(args);
 		break;
 
 	case KFD_IOC_GET_CLOCK_COUNTERS:
 		printk("KFD_IOC_GET_CLOCK_COUNTERS\n");
+        struct kfd_ioctl_get_clock_counters_args cc_args;
 
-        args = (struct kfd_ioctl_get_clock_counters_args*)kmalloc(sizeof(struct kfd_ioctl_get_clock_counters_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_get_clock_counters_args)))
+        if (copy_from_user(&cc_args, arg, sizeof(cc_args)))
             return -EFAULT;
 
-        printk("gpu_id=%d\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->gpu_id);
-		err = virtkfd_add_req(VIRTKFD_GET_CLOCK_COUNTERS, (struct kfd_ioctl_get_clock_counters_args*)args,
-                                sizeof(struct kfd_ioctl_get_clock_counters_args), vm_mm);       // back-end will fill args
-        printk("gpu_clock_counter=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->gpu_clock_counter);
-        printk("cpu_clock_counter=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->cpu_clock_counter);
-        printk("system_clock_counter=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->system_clock_counter);
-        printk("system_clock_freq=%llu\n", ((struct kfd_ioctl_get_clock_counters_args*)args)->system_clock_freq);
+        printk("gpu_id=%d\n", cc_args.gpu_id);
+		err = virtkfd_add_req(VIRTKFD_GET_CLOCK_COUNTERS, &cc_args, sizeof(cc_args), vm_mm);       // back-end will fill args
+        printk("gpu_clock_counter=%llu\n", cc_args.gpu_clock_counter);
+        printk("cpu_clock_counter=%llu\n", cc_args.cpu_clock_counter);
+        printk("system_clock_counter=%llu\n", cc_args.system_clock_counter);
+        printk("system_clock_freq=%llu\n", cc_args.system_clock_freq);
 
-        if (copy_to_user((void __user*)arg, args, sizeof(((struct kfd_ioctl_get_clock_counters_args*)args)))) 
+        if (copy_to_user((void __user*)arg, &cc_args, sizeof(cc_args)))
             return -EFAULT;
 
-        kfree(args);
 		break;
 
 	case KFD_IOC_GET_PROCESS_APERTURES:
 		printk("KFD_IOC_GET_PROCESS_APERTURES\n");
+        struct kfd_ioctl_get_process_apertures_args pa_args;
 
-        args = (struct kfd_ioctl_get_process_apertures_args*)kmalloc(sizeof(struct kfd_ioctl_get_process_apertures_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_get_process_apertures_args)))
+        if (copy_from_user(&pa_args, arg, sizeof(pa_args)))
             return -EFAULT;
 
-		err = virtkfd_add_req(VIRTKFD_GET_PROCESS_APERTURES, (struct kfd_ioctl_get_process_apertures_args*)args,
-                                sizeof(struct kfd_ioctl_get_process_apertures_args), vm_mm);       // back-end will fill args
-        printk("num_of_nodes=%d\n", ((struct kfd_ioctl_get_process_apertures_args*)args)->num_of_nodes);
-        printk("lds_base=0x%llx\n", ((struct kfd_ioctl_get_process_apertures_args*)args)->process_apertures[0].lds_base);
-        printk("lds_limit=0x%llx\n",((struct kfd_ioctl_get_process_apertures_args*)args)->process_apertures[0].lds_limit);
-        printk("gpu_id=%d\n",((struct kfd_ioctl_get_process_apertures_args*)args)->process_apertures[0].gpu_id);
+		err = virtkfd_add_req(VIRTKFD_GET_PROCESS_APERTURES, &pa_args, sizeof(pa_args), vm_mm);       // back-end will fill args
+        printk("num_of_nodes=%d\n", pa_args.num_of_nodes);
+        printk("lds_base=0x%llx\n", pa_args.process_apertures[0].lds_base);
+        printk("lds_limit=0x%llx\n", pa_args.process_apertures[0].lds_limit);
+        printk("gpu_id=%d\n", pa_args.process_apertures[0].gpu_id);
 
-        if (copy_to_user((void __user*)arg, args, sizeof(struct kfd_ioctl_get_process_apertures_args))) 
+        if (copy_to_user((void __user*)arg, &pa_args, sizeof(pa_args)))
             return -EFAULT;
 
-        kfree(args);
 		break;
 
 	case KFD_IOC_UPDATE_QUEUE:
@@ -813,42 +1057,39 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 	case KFD_IOC_DESTROY_VIDMEM:
 		printk("KFD_IOC_DESTROY_VIDMEM\n");
+        struct kfd_ioctl_destroy_vidmem_args dv_args;
 
-        args = (struct kfd_ioctl_destroy_vidmem_args*)kmalloc(sizeof(struct kfd_ioctl_destroy_vidmem_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_destroy_vidmem_args)))
+        if (copy_from_user(&dv_args, arg, sizeof(dv_args)))
             return -EFAULT;
-		err = virtkfd_add_req(VIRTKFD_DESTROY_VIDMEM, (struct kfd_ioctl_destroy_vidmem_args*)args,
-                                sizeof(struct kfd_ioctl_destroy_vidmem_args), vm_mm);       
-        kfree(args);
+		err = virtkfd_add_req(VIRTKFD_DESTROY_VIDMEM, &dv_args, sizeof(dv_args), vm_mm);       
 
 		break;
 
 	case KFD_IOC_CREATE_EVENT:
 		printk("KFD_IOC_CREATE_EVENT\n");
-        args = (struct kfd_ioctl_create_event_args*)kmalloc(sizeof(struct kfd_ioctl_create_event_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_create_event_args)))
+        struct kfd_ioctl_create_event_args cv_args; 
+
+        if (copy_from_user(&cv_args, arg, sizeof(cv_args)))
             return -EFAULT;
-        printk("event_type=%u\n", ((struct kfd_ioctl_create_event_args*)args)->event_type);
-        printk("auto_reset=%u\n", ((struct kfd_ioctl_create_event_args*)args)->auto_reset);
-        printk("node_id=%u\n", ((struct kfd_ioctl_create_event_args*)args)->node_id);
-		err = virtkfd_add_req(VIRTKFD_CREATE_EVENT, (struct kfd_ioctl_create_event_args*)args,
-                                sizeof(struct kfd_ioctl_create_event_args), vm_mm);       // back-end will fill args
-        printk("event_trigger_address=0x%llx\n", ((struct kfd_ioctl_create_event_args*)args)->event_trigger_address);
-        printk("event_trigger_data=%u\n", ((struct kfd_ioctl_create_event_args*)args)->event_trigger_data);
-        printk("event_id=%u\n", ((struct kfd_ioctl_create_event_args*)args)->event_id);
-        if (copy_to_user((void __user*)arg, args, sizeof(((struct kfd_ioctl_create_event_args*)args)))) 
+
+        printk("event_type=%u\n", cv_args.event_type);
+        printk("auto_reset=%u\n", cv_args.auto_reset);
+        printk("node_id=%u\n", cv_args.node_id);
+		err = virtkfd_add_req(VIRTKFD_CREATE_EVENT, &cv_args, sizeof(cv_args), vm_mm);       // back-end will fill args
+        printk("event_trigger_address=0x%llx\n", cv_args.event_trigger_address);
+        printk("event_trigger_data=%u\n", cv_args.event_trigger_data);
+        printk("event_id=%u\n", cv_args.event_id);
+        if (copy_to_user((void __user*)arg, &cv_args, sizeof(cv_args)))
             return -EFAULT;
-        kfree(args);
 		break;
+
 	case KFD_IOC_DESTROY_EVENT:
 		printk("KFD_IOC_DESTROY_EVENT\n");
+        struct kfd_ioctl_destroy_event_args de_args;
 
-        args = (struct kfd_ioctl_destroy_event_args*)kmalloc(sizeof(struct kfd_ioctl_destroy_event_args), GFP_KERNEL);
-        if (copy_from_user(args, arg, sizeof(struct kfd_ioctl_destroy_event_args)))
+        if (copy_from_user(&de_args, arg, sizeof(de_args)))
             return -EFAULT;
-		err = virtkfd_add_req(VIRTKFD_DESTROY_EVENT, (struct kfd_ioctl_destroy_event_args*)args,
-                                sizeof(struct kfd_ioctl_destroy_event_args), vm_mm);       
-        kfree(args);
+		err = virtkfd_add_req(VIRTKFD_DESTROY_EVENT, &de_args, sizeof(de_args), vm_mm);       
 
 		break;
 	case KFD_IOC_SET_EVENT:

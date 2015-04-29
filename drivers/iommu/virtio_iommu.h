@@ -43,6 +43,7 @@ struct virtio_iommu_req
 
 struct virtio_iommu_mmu_notification {
     uint64_t mm;
-    uint64_t address;
+    uint64_t start;
+    uint64_t end;
 };
 #endif

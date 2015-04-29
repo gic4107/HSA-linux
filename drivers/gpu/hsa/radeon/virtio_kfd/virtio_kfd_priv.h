@@ -1,7 +1,11 @@
 #ifndef VIRTIO_KFD_PRIV_H
 #define VIRTIO_KFD_PRIV_H
 
+#include <uapi/linux/kfd_ioctl.h>
 #include "../kfd_topology.h"
+// FIXME: debug
+#include "../cik_mqds.h"
+#include "../cik_regs.h"
 
 #define PROPERTIES_NODE_MAX 5
 #define MAX_PROCESS_QUEUES 1024
@@ -40,6 +44,8 @@ typedef u32 doorbell_t;
 #define VIRTKFD_WAIT_EVENTS             22
 #define VIRTKFD_OPEN_GRAPHIC_HANDLE     23
 #define VIRTKFD_MMAP_DOORBELL_REGION    24
+// FIXME: debug
+#define VIRTKFD_KICK_DOORBELL           99
 
 #define NO_MATCH                        0 
 
@@ -178,9 +184,17 @@ struct vm_process_info {
     uint64_t vm_pgd_gpa;
 };
 
+// Use for CREATE_QUEUE
+struct virtkfd_ioctl_create_queue_args {
+    struct kfd_ioctl_create_queue_args args;
+    uint64_t mqd_gva;
+    uint64_t mqd_gpa;
+};
+
 int virtio_kfd_topology_init(void);
 int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t match);
 int radeon_virtkfd_doorbell_mmap(struct virtkfd_process *process, struct vm_area_struct *vma);
+struct cik_mqd *mqd_create(struct queue_properties *q);
 size_t doorbell_process_allocation(void);
 extern struct device* virtkfd_device;
 

@@ -39,6 +39,9 @@
 #include "amd_iommu_vm_ppr.h"
 #include "virtio_iommu.h"
 
+// FIXME: debug
+void dump_mqd(void *mqd);
+
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Yu-Ju Huang <gic4107@gmail.com>");
 
@@ -164,12 +167,13 @@ int virtio_iommu_add_req_no_wait(int cmd, void *param, int param_len, void (*cb)
     return virtio_iommu_add_req(cmd, param, param_len, 0, cb);
 }
 
-void walk_page_table(struct mm_struct *mm, unsigned long addr)
+uint64_t walk_page_table2(struct mm_struct *mm, unsigned long addr)
 {
     pgd_t *pgd;
     pud_t *pud;
     pmd_t *pmd;
     pte_t *pte;
+    uint64_t gpa;
 
     pgd = pgd_offset(mm, addr);
     if (!pgd_present(*pgd))
@@ -189,15 +193,24 @@ void walk_page_table(struct mm_struct *mm, unsigned long addr)
     pte = pte_offset_map(pmd, addr);
     if (pte_present(*pte)) {
         printk("pte=%p, pte_val=%llx\n", pte, pte_val(*pte));   
-        
+        gpa = pte_val(*pte) & 0xFFFFFFFFFF000ULL;
         struct page *page = pte_page(*pte);
         void *map = kmap(page);
-        printk("map=%p, %lld\n", map, *(uint64_t*)(map+2168));
-        printk("map=%p, %lld\n", map, *(uint64_t*)(map+2240));
-
+        printk("write_dispatch_id=%p, %lld\n", map+2168, *(uint64_t*)(map+2168));
+        printk("max_legacy_doorbell_dispatch_id_plus_1=%p, %lld\n", map+2192, *(uint64_t*)(map+2192));
+        printk("read_dispatch_id=%p, %lld\n", map+2240, *(uint64_t*)(map+2240));
+/*        *(uint64_t*)(map+2168) = 10;
+        *(uint64_t*)(map+2192) = 10;
+        *(uint64_t*)(map+2240) = 10;
+        printk("write_dispatch_id=%p, %lld\n", map+2168, *(uint64_t*)(map+2168));
+        printk("max_legacy_doorbell_dispatch_id_plus_1=%p, %lld\n", map+2192, *(uint64_t*)(map+2192));
+        printk("read_dispatch_id=%p, %lld\n", map+2240, *(uint64_t*)(map+2240));
+*/
         kunmap(page);
         pte_unmap(pte);
     }
+
+    return gpa;
 }
 
 static void vm_ppr_handler(void)
@@ -211,12 +224,13 @@ static void vm_ppr_handler(void)
     struct mm_struct *mm;
     struct virtio_iommu_mmu_notification *mmu;
     int log_count = 0;
+    uint64_t *gpa;
 
     head = ppr->vm_consume_head;
     tail = ppr->tail;
     printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, ppr->tail, ppr->vm_consume_head);
 
-    while (head != tail) {
+//    while (head != tail) {
         ++log_count;
         ppr_log = &ppr->ppr_log_region[head];
         printk("ppr_log=%p, task=0x%llx, mm=0x%llx, addr=0x%llx, write=%d\n",
@@ -224,75 +238,40 @@ static void vm_ppr_handler(void)
         mm   = (struct mm_struct*)ppr_log->vm_mm;
         task = (struct task_struct*)ppr_log->vm_task;
 
+//        if (ppr_log->write == 5566)    // FIXME: debug
+//            dump_mqd(ppr_log->address);
+//        else {
     	down_read(&mm->mmap_sem);
     	npages = get_user_pages(task, mm, ppr_log->address, 1, 
-                                        1, 0, &page, NULL);
-//    	npages = get_user_pages(task, mm, ppr_log->address, 1, 
-//                                        ppr_log->write, 0, &page, NULL);
+                                        ppr_log->write, 0, &page, NULL);
     	up_read(&mm->mmap_sem);
 
         if (npages == 1) {
             printk("npages=1\n");
-            // check page attribute
-            walk_page_table(mm, ppr_log->address);
 
-            // get write pointer from user space
-            uint64_t wptr;
-            uint64_t rptr;
-            int ret;
-            void __user *wptr_user = (void __user*)(ppr_log->address+2168);
-            void __user *rptr_user = (void __user*)(ppr_log->address+2240);
-
-            printk("current=%p, mm=%p\n", current, current->mm);
-            ret = access_ok(VERIFY_READ, wptr_user, sizeof(uint64_t));
-            printk("access_ok READ, wptr %d\n", ret);
-            ret = access_ok(VERIFY_WRITE, wptr_user, sizeof(uint64_t));
-            printk("access_ok WRITE, wptr %d\n", ret);
-            ret = access_ok(VERIFY_READ, rptr_user, sizeof(uint64_t));
-            printk("access_ok READ, rptr %d\n", ret);
-            ret = access_ok(VERIFY_WRITE, rptr_user, sizeof(uint64_t));
-            printk("access_ok WRITE, rptr %d\n", ret);
-
-            ret = copy_from_user(&wptr, wptr_user, sizeof(uint64_t));
-            printk("wptr copy_from_user %d\n", ret);
-            printk("wptr_addr=%p, wptr=%lld\n", wptr_user, wptr);
-            ret = copy_from_user(&rptr, rptr_user, sizeof(uint64_t));
-            printk("rptr copy_from_user %d\n", ret);
-            printk("rptr_addr=%p, rptr=%lld\n", rptr_user, rptr);
-
-            // check vma attribute
-            struct vm_area_struct *vma = find_vma(mm, ppr_log->address);
-            if (vma) {
-                printk("vma=%p, vma_start=%llx, vma_end=%llx, vma_prot=%llx, vma_flag=%llx\n",
-                     vma, vma->vm_start, vma->vm_end, pgprot_val(vma->vm_page_prot), vma->vm_flags);
-            }
-            // dump pgd data to debug
-            int i;
-            printk("dump pgd data to debug\n");
-            for (i=0; i<PTRS_PER_PGD; i++) 
-                printk("(%d,%llx) ", i, *((pgd_t*)(mm->pgd)+i));
-            printk("\n");
-
-            mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
-            mmu->mm = (uint64_t)mm;
-            mmu->address = (uint64_t)ppr_log->address;
-            virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_INVALIDATE_RANGE_START, mmu, 
-                                    sizeof(*mmu), virtio_iommu_free_req_param);
-//            virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_INVALIDATE_PAGE, mmu, 
-//                                    sizeof(*mmu), virtio_iommu_free_req_param);
-            printk("VIRTIO_IOMMU_INVALIDATE_PAGE done\n");
+            // gpa send to host to fix stage2 table
+            gpa = (uint64_t*)kmalloc(sizeof(uint64_t), GFP_KERNEL);
+            *gpa = walk_page_table2(mm, ppr_log->address);
         }
+//        }
 
         head = (head+1) % MAX_PPR_LOG_ENTRY;
-    }
+//    }
     ppr->vm_consume_head = head;
     printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, ppr->tail, ppr->vm_consume_head);
 
-//    int tmp;
     // send back to let host finish_pri_tag 
     if (log_count) {
-//        virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR, &tmp, sizeof(tmp), NULL);
-        virtio_iommu_add_req0_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR);
+        virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR, gpa, sizeof(*gpa), virtio_iommu_free_req_param);
+/*
+        mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
+        mmu->mm = (uint64_t)mm;
+        mmu->start = (uint64_t)ppr_log->address;
+        mmu->end   = mmu->start + 0x1000;
+        virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_INVALIDATE_RANGE_START, mmu, 
+                                sizeof(*mmu), virtio_iommu_free_req_param);
+        printk("VIRTIO_IOMMU_INVALIDATE_PAGE done\n");
+*/
     }
 }
 
@@ -336,7 +315,7 @@ int virtio_iommu_clear_flush_young(struct mmu_notifier *mn,
     printk("virtio_iommu_clear_flush_young, addr=%llx\n", address);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
     mmu->mm = (uint64_t)mm;
-    mmu->address = (uint64_t)address;
+    mmu->start = (uint64_t)address;
     virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_CLEAR_FLUSH_YOUNG, mmu, 
                             sizeof(*mmu), virtio_iommu_free_req_param);
 
@@ -353,7 +332,7 @@ void virtio_iommu_change_pte(struct mmu_notifier *mn,
     printk("virtio_iommu_change_pte, addr=%llx\n", address);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
     mmu->mm = (uint64_t)mm;
-    mmu->address = (uint64_t)address;
+    mmu->start = (uint64_t)address;
     virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_CHANGE_PTE, mmu, sizeof(*mmu),
                                              virtio_iommu_free_req_param);
 }
@@ -367,7 +346,7 @@ void virtio_iommu_invalidate_page(struct mmu_notifier *mn,
     printk("virtio_iommu_invalidate_page, addr=%llx\n", address);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
     mmu->mm = (uint64_t)mm;
-    mmu->address = (uint64_t)address;
+    mmu->start = (uint64_t)address;
     virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_INVALIDATE_PAGE, mmu, 
                             sizeof(*mmu), virtio_iommu_free_req_param);
 }
@@ -381,8 +360,9 @@ void virtio_iommu_invalidate_range_start(struct mmu_notifier *mn,
     printk("virtio_iommu_invalidate_range_start, mm=%p, virtio_iommu_free_req_param=%p, start=%llx, end=%llx\n", 
                             mm, virtio_iommu_free_req_param, start, end);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
-    mmu->mm = (uint64_t)mm;
-    mmu->address = (uint64_t)start;
+    mmu->mm    = (uint64_t)mm;
+    mmu->start = (uint64_t)start;
+    mmu->end   = (uint64_t)end;
     virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_INVALIDATE_RANGE_START, mmu,
                              sizeof(*mmu), virtio_iommu_free_req_param);
 }
