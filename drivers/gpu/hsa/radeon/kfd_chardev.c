@@ -40,11 +40,26 @@
 #include "kfd_device_queue_manager.h"
 #include "kfd_dbgmgr.h"
 #include "cik_regs.h"
+#include <linux/kvm_host.h>     // kvm for translate mqd
 // FIXME: Debug
 #include <linux/highmem.h>
+#include <asm/pgtable_types.h>
+void __user *wptr_user;
+void __user *rptr_user;
+void __user *ring_user;
+extern uint32_t *debug_doorbell;
+extern u32 __iomem *pasid1_doorbell_kernel_ptr;
+extern u32 __iomem *pasid2_doorbell_kernel_ptr;
+extern void *mqd_kva;
+uint64_t in_buf;
+uint64_t out_buf;
 
-// for HSA Virtualization
+// FIXME: mqd identical mapping
+uint64_t identical_hva_space;
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
 #include <asm/kvm_host.h>
+#endif
 
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
 static int kfd_open(struct inode *, struct file *);
@@ -172,12 +187,14 @@ set_queue_properties_from_user(struct queue_properties *q_properties, struct kfd
 	return 0;
 }
 
-void walk_page_table(struct mm_struct *mm, unsigned long addr)
+void* walk_page_table(struct mm_struct *mm, unsigned long addr)
 {
     pgd_t *pgd;
     pud_t *pud;
     pmd_t *pmd;
     pte_t *pte;
+    int offset = addr & 0xfff;
+    printk("walk_page_table, offset=%x\n", offset);
 
     pgd = pgd_offset(mm, addr);
     if (!pgd_present(*pgd))
@@ -193,17 +210,103 @@ void walk_page_table(struct mm_struct *mm, unsigned long addr)
     if (!pmd_present(*pmd))
         return NULL;
     printk("pmd=%p, pmd_val=%llx\n", pmd, pmd_val(*pmd));
+    if (pmd_val(*pmd) & _PAGE_PAT) 
+        return pmd;
 
     pte = pte_offset_map(pmd, addr);
-    if (pte_present(*pte)) {
-        printk("pte=%p, pte_val=%llx\n", pte, pte_val(*pte));   
-        
-        struct page *page = pte_page(*pte);
-        void *map = kmap(page);
-        printk("map=%p, %d\n", map, *(int*)(map+3060));
 
+    return pte;
+}
+
+void access_clr_a_page(struct mm_struct *mm, unsigned long addr)
+{
+    void *entry;
+    struct page *page;
+    void *map;
+    int offset;
+
+    printk("access_clr_a_page: %llx\n", addr);
+    entry = walk_page_table(mm, addr);
+    if (!entry)
+        return;
+
+    printk("entry=%llx\n", *(uint64_t*)entry);
+
+    if (*(uint64_t*)entry & _PAGE_PAT) {     // 2M page
+        pmd_t *pmd = (pmd_t*)entry;
+        page = pmd_page(*pmd);
+        offset = addr & 0x1fffff;
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
         kunmap(page);
-        pte_unmap(pte);
+
+        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));   
+        pmd->pmd = pmd_val(*pmd) & ~_PAGE_ACCESSED;
+        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));   
+    }
+    else if (pte_present(*(pte_t*)entry)) {
+        pte_t *pte = (pte_t*)entry;
+        page = pte_page(*pte);
+        offset = addr & 0xfff;
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
+        kunmap(page);
+
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
+        pte->pte = pte_val(*pte) & ~_PAGE_ACCESSED;
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
+    }
+}
+
+void access_page(struct mm_struct *mm, unsigned long addr)
+{
+    void *entry;
+    struct page *page;
+    void *map;
+    int offset;
+
+    printk("access_page: %llx\n", addr);
+    entry = walk_page_table(mm, addr);
+    if (!entry)
+        return;
+
+    printk("entry=%llx\n", *(uint64_t*)entry);
+
+    if (*(uint64_t*)entry & _PAGE_PAT) {     // 2M page
+        pmd_t *pmd = (pmd_t*)entry;
+        page = pmd_page(*pmd);
+        offset = addr & 0x1fffff;
+
+        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));   
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
+        kunmap(page);
+    }
+    else if (pte_present(*(pte_t*)entry)) {
+        pte_t *pte = (pte_t*)entry;
+        page = pte_page(*pte);
+        offset = addr & 0xfff;
+
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
+
+        map = kmap(page);
+        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
+        kunmap(page);
+    }
+}
+
+void my_clear_page(struct mm_struct *mm, unsigned long addr)
+{
+    pte_t *pte;
+
+    pte = walk_page_table(mm, addr);
+    if (pte_present(*pte)) {
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
+        pte->pte = pte_val(*pte) & ~_PAGE_PRESENT;
+        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
     }
 }
 
@@ -216,12 +319,27 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	unsigned int queue_id;
 	struct kfd_process_device *pdd;
 	struct queue_properties q_properties;
+    int iommu_nested_translation = 0;
 
 	memset(&q_properties, 0, sizeof(struct queue_properties));
 
-	if (copy_from_user(&args, arg, sizeof(args)))
-		return -EFAULT;
-    
+  	if (copy_from_user(&args, arg, sizeof(args)))
+   		return -EFAULT;
+
+#ifdef MQD_IOMMU
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    struct kfd_ioctl_vm_create_queue_args vargs;
+    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
+        if (copy_from_user(&vargs, arg, sizeof(vargs)))
+            return -EFAULT;
+        p->vm_info->mqd_gva = vargs.mqd_gva;
+        p->vm_info->mqd_hva = vargs.mqd_hva;
+        printk("mqd_gva=%llx\n", p->vm_info->mqd_gva);
+        printk("mqd_hva=%llx\n", p->vm_info->mqd_hva);
+    }
+#endif
+#endif
+
     printk("ring_base_address=0x%llx\n", args.ring_base_address);
     printk("write_pointer_address=0x%llx\n", args.write_pointer_address);
     printk("read_pointer_address=0x%llx\n", args.read_pointer_address);
@@ -230,39 +348,20 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
     printk("queue_type=%d\n", args.queue_type);
     printk("queue_percentage=%d\n", args.queue_percentage);
     // FIXME: debug code to show the permission
-    if (p->process_type == KFD_PROCESS_TYPE_NORMAL) {
+//    if (p->process_type == KFD_PROCESS_TYPE_NORMAL) {     // comment only if vm's info sent in HVA
         printk("write_pointer_addr=%llx\n", args.write_pointer_address);
 
-            int wptr;
-            int rptr;
-            int ret;
-            void __user *wptr_user = (void __user*)(args.write_pointer_address);
-            void __user *rptr_user = (void __user*)(args.read_pointer_address);
+        wptr_user = (void __user*)(args.write_pointer_address);
+        rptr_user = (void __user*)(args.read_pointer_address);
+        ring_user = (void __user*)(args.ring_base_address);
 
-            ret = access_ok(VERIFY_READ, wptr_user, sizeof(int));
-            printk("access_ok READ, wptr %d\n", ret);
-            ret = access_ok(VERIFY_WRITE, wptr_user, sizeof(int));
-            printk("access_ok WRITE, wptr %d\n", ret);
-            ret = access_ok(VERIFY_READ, rptr_user, sizeof(int));
-            printk("access_ok READ, rptr %d\n", ret);
-            ret = access_ok(VERIFY_WRITE, rptr_user, sizeof(int));
-            printk("access_ok WRITE, rptr %d\n", ret);
-
-            ret = copy_from_user(&wptr, wptr_user, sizeof(int));
-            printk("wptr copy_from_user %d\n", ret);
-            printk("wptr_addr=%p, wptr=%d\n", wptr_user, wptr);
-            ret = copy_from_user(&rptr, rptr_user, sizeof(int));
-            printk("rptr copy_from_user %d\n", ret);
-            printk("rptr_addr=%p, rptr=%d\n", rptr_user, rptr);
-        
-        walk_page_table(current->mm, args.write_pointer_address);
-
-        struct vm_area_struct *vma = find_vma(current->mm, args.write_pointer_address);
-        if (vma) {
-            printk("vma=%p, vma_start=%llx, vma_end=%llx, vma_prot=%llx, vma_flag=%llx\n",
-                vma, vma->vm_start, vma->vm_end, pgprot_val(vma->vm_page_prot), vma->vm_flags);
-        }
-    }
+//        access_clr_a_page(current->mm, (unsigned long)wptr_user);
+//        access_clr_a_page(current->mm, (unsigned long)wptr_user+24);
+//        access_clr_a_page(current->mm, (unsigned long)rptr_user);
+        access_page(current->mm, (unsigned long)ring_user);
+        access_page(current->mm, (unsigned long)wptr_user);
+        access_page(current->mm, (unsigned long)rptr_user);
+//    }
 
 	if (!access_ok(VERIFY_WRITE, args.read_pointer_address, sizeof(qptr_t))) {
 		pr_err("kfd: can't access read pointer");
@@ -294,12 +393,18 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 			p->pasid,
 			dev->id);
 
+
 #ifdef CONFIG_HSA_VIRTUALIZATION
-    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
-        err = kvm_hsa_disable_iommu_nested_translation(dev->pdev);
-        if (err) {
-            printk("kvm_hsa_disable_iommu_nested_translation fail\n");
-            return -EINVAL;
+    if (sched_policy == KFD_SCHED_POLICY_HWS) {
+        iommu_nested_translation = kvm_hsa_is_iommu_nested_translation();
+        if (iommu_nested_translation) {
+            err = kvm_hsa_disable_iommu_nested_translation();
+            if (err) {
+                printk("kvm_hsa_disable_iommu_nested_translation fail\n");
+                return -EINVAL;
+            }
+    
+            adjust_vm_process_pgd(dev, p);
         }
     }
 #endif
@@ -309,11 +414,15 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 		goto err_create_queue;
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
-    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
-        err = kvm_hsa_enable_iommu_nested_translation(dev->pdev);
-        if (err) {
-            printk("kvm_hsa_enable_iommu_nested_translation fail\n");
-            return -EINVAL;
+    if (sched_policy == KFD_SCHED_POLICY_HWS) {
+        if (iommu_nested_translation) {
+            err = kvm_hsa_enable_iommu_nested_translation(dev->pdev);
+            if (err) {
+                printk("kvm_hsa_enable_iommu_nested_translation fail\n");
+                return -EINVAL;
+            }
+    
+            resume_vm_process_pgd(dev, p);
         }
     }
 #endif
@@ -351,7 +460,6 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 			args.read_pointer_address,
 			args.write_pointer_address,
 			args.doorbell_address);
-
 	return 0;
 
 err_copy_args_out:
@@ -367,9 +475,19 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 {
 	int retval;
 	struct kfd_ioctl_destroy_queue_args args;
+    int iommu_nested_translation;
+    int err;
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
+
+    // FIXME: debug code to show the permission
+//    if (p->process_type == KFD_PROCESS_TYPE_NORMAL) {     // comment only if vm's info sent in HVA
+        access_page(current->mm, (unsigned long)ring_user);
+        access_page(current->mm, (unsigned long)wptr_user);
+        access_page(current->mm, (unsigned long)rptr_user);
+        access_page(current->mm, (unsigned long)mqd_kva); 
+//    }
 
 	pr_debug("kfd: destroying queue id %d for PASID %d\n",
 				args.queue_id,
@@ -377,7 +495,32 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 
 	mutex_lock(&p->mutex);
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (sched_policy == KFD_SCHED_POLICY_HWS) {
+        iommu_nested_translation = kvm_hsa_is_iommu_nested_translation();
+        if (iommu_nested_translation) {
+            err = kvm_hsa_stop_iommu_nested_translation();
+            if (err) {
+                printk("kvm_hsa_disable_iommu_nested_translation fail\n");
+                return -EINVAL;
+            }
+        }
+    }
+#endif
+
 	retval = pqm_destroy_queue(&p->pqm, args.queue_id);
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (sched_policy == KFD_SCHED_POLICY_HWS) {
+        if (iommu_nested_translation) {
+            err = kvm_hsa_resume_iommu_nested_translation();
+            if (err) {
+                printk("kvm_hsa_enable_iommu_nested_translation fail\n");
+                return -EINVAL;
+            }
+        }
+    }
+#endif
 
 	mutex_unlock(&p->mutex);
 	return retval;
@@ -1345,7 +1488,7 @@ static int kfd_ioctl_vm_virtio_be_bind_vm_process(struct file *filep,
     return 0;
 }
 
-static int kfd_ioctl_set_iommu_nested_cr3(struct file *filep,
+static int kfd_ioctl_iommu_enable_nested_translation(struct file *filep,
                 struct kfd_process *p, void __user *arg)
 {
     uint32_t gpu_id;
@@ -1372,12 +1515,6 @@ static int kfd_ioctl_set_iommu_nested_cr3(struct file *filep,
         return -EINVAL;
     }
     
-    ret = kvm_hsa_set_iommu_nested_cr3(p->virtio_be_info->kvm, dev->pdev);
-    if (ret) {
-        printk("kvm_hsa_set_iommu_nested_cr3 fail\n");
-        return -EINVAL;
-    }
-
     return 0;
 }
 
@@ -1388,6 +1525,9 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 	struct kfd_process *process;
 	long err = -EINVAL;
+    volatile int i;
+    // FIXME: debug
+    unsigned long va;
 
 	dev_dbg(kfd_device,
 		"ioctl cmd 0x%x (#%d), arg 0x%lx\n",
@@ -1519,9 +1659,9 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         err = 0;
         break;
 
-    case KFD_IOC_SET_IOMMU_NESTED_CR3:
-        printk("KFD_IOC_SET_IOMMU_NESTED_CR3\n");
-        err = kfd_ioctl_set_iommu_nested_cr3(filep, process, (void __user *)arg); 
+    case KFD_IOC_IOMMU_ENABLE_NESTED_TRANSLATION:
+        printk("KFD_IOC_IOMMU_ENABLE_NESTED_TRANSLATION\n");
+        err = kfd_ioctl_iommu_enable_nested_translation(filep, process, (void __user *)arg); 
         break;
 
     case KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS:  // used for mmap
@@ -1650,6 +1790,108 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         printk("Not support now !\n");
         err = -EINVAL;
 		break;
+
+	case KFD_IOC_VM_IDENTICAL_HVA_SPACE:
+		printk("KFD_IOC_VM_IDENTICAL_HVA_SPACE\n");
+    	if (copy_from_user(&identical_hva_space, (void __user *)arg, sizeof(identical_hva_space)))
+    		return -EFAULT;    
+        printk("identical_hva_space=%llx\n", identical_hva_space);
+        access_page(current->mm, (unsigned long)identical_hva_space);
+        
+        err = 0;
+		break;
+
+    // FIXME: debug
+    case KFD_IOC_DEBUG_DOORBELL_VALUE:
+        printk("KFD_IOC_DEBUG_DOORBELL_VALUE, debug_doorbell=%p\n", debug_doorbell);        
+        for(i=0; i<1024; i++) {
+            printk("%d, ", debug_doorbell[i]);
+            if(i % 16 == 0)  printk("\n");
+        }        
+        break;
+
+    // FIXME: debug
+    case KFD_IOC_DUMP_MQD:
+        dump_mqd(mqd_kva); 
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_KICK_DOORBELL1:
+		printk("KFD_IOC_KICK_DOORBELL1, %p\n", pasid1_doorbell_kernel_ptr);
+        printk("mqd_kva = %p\n", mqd_kva);
+        dump_mqd(mqd_kva); 
+        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+        write_kernel_doorbell((u32 *)pasid1_doorbell_kernel_ptr, 16);
+        for(i=1; i!=0; i++);
+        for(i=1; i!=0; i++);
+        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+        dump_mqd(mqd_kva); 
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_KICK_DOORBELL2:
+		printk("KFD_IOC_KICK_DOORBELL2, %p\n", pasid2_doorbell_kernel_ptr);
+        printk("mqd_kva = %p\n", mqd_kva);
+        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+//        access_clr_a_page(current->mm, (unsigned long)identical_hva_space);
+        dump_mqd(mqd_kva); 
+        write_kernel_doorbell((u32 *)pasid2_doorbell_kernel_ptr, 16);
+        for(i=1; i!=0; i++);
+        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+//        access_clr_a_page(current->mm, (unsigned long)identical_hva_space);
+        dump_mqd(mqd_kva); 
+        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_SET_IN_BUF:
+		printk("KFD_IOC_SET_IN_BUF ");
+        if (copy_from_user(&in_buf, arg, sizeof(in_buf)))
+            return -EFAULT;
+        printk("in_buf=%llx\n", in_buf);
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_SET_OUT_BUF:
+		printk("KFD_IOC_SET_OUT_BUF ");
+        if (copy_from_user(&out_buf, arg, sizeof(out_buf)))
+            return -EFAULT;
+        printk("out_buf=%llx\n", out_buf);
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_WALK_RWPTR:
+		printk("KFD_IOC_WALK_RWPTR ");
+
+        access_clr_a_page(current->mm, wptr_user);
+        access_clr_a_page(current->mm, rptr_user);
+
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_WALK_PAGE_TABLE:
+		printk("KFD_IOC_WALK_PAGE_TABLE ");
+
+        if (copy_from_user(&va, arg, sizeof(va)))
+            return -EFAULT;
+
+        printk("va=%llx\n", va); 
+        access_clr_a_page(current->mm, va);
+
+        break;
+
+    // FIXME: debug
+	case KFD_IOC_CLEAR_PAGE:
+		printk("KFD_IOC_CLEAR_PAGE   ");
+
+        if (copy_from_user(&va, arg, sizeof(va)))
+            return -EFAULT;
+
+        printk("va=%llx\n", va); 
+        my_clear_page(current->mm, va);
+
+        break;
+
 #endif
 	default:
 		dev_err(kfd_device,

@@ -651,6 +651,7 @@ int drm_prime_sg_to_page_addr_arrays(struct sg_table *sgt, struct page **pages,
 			if (WARN_ON(pg_index >= max_pages))
 				return -1;
 			pages[pg_index] = page;
+            printk("drm_prime_sg_to_page_addr_arrays: pages[pg_index]=%p\n", pages[pg_index]);
 			if (addrs)
 				addrs[pg_index] = addr;
 

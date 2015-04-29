@@ -21,6 +21,7 @@
 #include "irq.h"
 #include "mmu.h"
 #include "x86.h"
+#include "hsa.h"
 #include "kvm_cache_regs.h"
 
 #include <linux/kvm_host.h>
@@ -35,6 +36,8 @@
 #include <linux/srcu.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/ftrace_event.h>     // gic4107
+#include "trace.h"                  // gic4107
 
 #include <asm/page.h>
 #include <asm/cmpxchg.h>
@@ -1065,6 +1068,10 @@ static unsigned long *gfn_to_rmap(struct kvm *kvm, gfn_t gfn, int level)
 	struct kvm_memory_slot *slot;
 
 	slot = gfn_to_memslot(kvm, gfn);
+    if (!slot) {
+        printk("gfn_to_rmap: slot is NULL, gfn=%llx, level=%d\n", gfn, level);
+        return NULL;
+    }
 	return __gfn_to_rmap(gfn, level, slot);
 }
 
@@ -1084,6 +1091,11 @@ static int rmap_add(struct kvm_vcpu *vcpu, u64 *spte, gfn_t gfn)
 	sp = page_header(__pa(spte));
 	kvm_mmu_page_set_gfn(sp, spte - sp->spt, gfn);
 	rmapp = gfn_to_rmap(vcpu->kvm, gfn, sp->role.level);
+    if (!rmapp) {
+        printk("rmap_add: spte=%p, *spte=%llx, sp=%p, gfn=%llx, level=%d, rmapp is NULL\n", 
+                                            spte, *spte, sp, gfn, sp->role.level);
+        return 0;
+    }
 	return pte_list_add(vcpu, spte, rmapp);
 }
 
@@ -2081,7 +2093,7 @@ static void __link_shadow_page_iommu(u64 *sptep, struct kvm_mmu_page *sp, bool a
     if (next_level == 0)       // pte
         spte |= (spte & PT_USER_MASK)? PTE_U_MASK: 0;
 
-//    printk("link_shadow_page_iommu: next_level=%d spte=%llx\n", next_level, spte);
+//    printk("link_shadow_page_iommu: next_level=%d role.level=%d, sptep=%p, spte=%llx\n", next_level, sp->role.level, sptep, spte);
 
 	mmu_spte_set(sptep, spte);
 }
@@ -2502,8 +2514,8 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 	if (pte_access & ACC_USER_MASK)
 		spte |= shadow_user_mask;
 
-	if (level > PT_PAGE_TABLE_LEVEL)
-		spte |= PT_PAGE_SIZE_MASK;
+	if (level > PT_PAGE_TABLE_LEVEL)    // for huge page
+		spte |= PT_PAGE_SIZE_MASK;      
 	if (tdp_enabled)
 		spte |= kvm_x86_ops->get_mt_mask(vcpu, gfn,
 			kvm_is_mmio_pfn(pfn));
@@ -2551,15 +2563,15 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 		mark_page_dirty(vcpu->kvm, gfn);
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
-    int next_level = level - 1;
-    BUG_ON(next_level<0 || next_level >7);
+    int next_level = 0;
     spte |= (u64)next_level << PT_NEXT_LEVEL_SHIFT;
     spte |= (spte & PT_WRITABLE_MASK)? PT_IW_MASK: 0;
     spte |= PT_IR_MASK;
-    if (next_level == 0)       // pte
-        spte |= (spte & PT_USER_MASK)? PTE_U_MASK: 0;
+    spte |= (spte & PT_USER_MASK)? PTE_U_MASK: 0;
 
-//    printk("set_spte: next_level=%d spte=%llx\n", next_level, spte);
+    // FIXME: debug
+    trace_kvm_set_spte(next_level, sptep, spte);
+//    printk("set_spte: next_level=%d sptep=%p, spte=%llx\n", next_level, sptep, spte);
 #endif
 
 set_pte:
@@ -2725,8 +2737,10 @@ static int __direct_map(struct kvm_vcpu *vcpu, gpa_t v, int write,
 		return 0;
 
 	for_each_shadow_entry(vcpu, (u64)gfn << PAGE_SHIFT, iterator) {
+        trace_kvm_shadow_entry(gfn, pfn, level, iterator.level, 
+                                        is_shadow_present_pte(*iterator.sptep));
 		if (iterator.level == level) {
-			mmu_set_spte(vcpu, iterator.sptep, ACC_ALL,
+			mmu_set_spte(vcpu, iterator.sptep, ACC_ALL,     // set spte to sptep
 				     write, &emulate, level, gfn, pfn,
 				     prefault, map_writable);
 			direct_pte_prefetch(vcpu, iterator.sptep);
@@ -3082,6 +3096,7 @@ static int mmu_alloc_direct_roots(struct kvm_vcpu *vcpu)
 		++sp->root_count;
 		spin_unlock(&vcpu->kvm->mmu_lock);
 		vcpu->arch.mmu.root_hpa = __pa(sp->spt);
+        printk("mmu_alloc_direct_roots: root_hpa=%llx\n", vcpu->arch.mmu.root_hpa);
 	} else if (vcpu->arch.mmu.shadow_root_level == PT32E_ROOT_LEVEL) {
 		for (i = 0; i < 4; ++i) {
 			hpa_t root = vcpu->arch.mmu.pae_root[i];
@@ -3469,18 +3484,37 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 	mmu_seq = vcpu->kvm->mmu_notifier_seq;
 	smp_rmb();
 
-	if (try_async_pf(vcpu, prefault, gfn, gpa, &pfn, write, &map_writable))
+	if (try_async_pf(vcpu, prefault, gfn, gpa, &pfn, write, &map_writable)) {
+        // FIXME: debug
+        printk("try_async_pf return ture;\n");
 		return 0;
+    }
 
-	if (handle_abnormal_pfn(vcpu, 0, gfn, pfn, ACC_ALL, &r))
+	if (handle_abnormal_pfn(vcpu, 0, gfn, pfn, ACC_ALL, &r)) {
+        // FIXME: debug
+        printk("handle_abnormal_pfn return ture;\n");
 		return r;
+    }
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (error_code & IDENTICAL_MAPPING_MASK) {
+        printk("IDENTICAL_MAPPING: gfn=%llx, pfn=%llx\n", gfn, pfn);
+//        if (pfn != KVM_PFN_NOSLOT) {
+//            printk("Identical mapping but pfn = %llx\n", pfn);
+//        }
+//        else 
+        pfn = gfn;
+//        pfn = 0;
+        printk("IDENTICAL_MAPPING: gfn=%llx, pfn=%llx\n", gfn, pfn);
+    }
+#endif
 
 	spin_lock(&vcpu->kvm->mmu_lock);
 	if (mmu_notifier_retry(vcpu->kvm, mmu_seq))
 		goto out_unlock;
 	make_mmu_pages_available(vcpu);
 	if (likely(!force_pt_level))
-		transparent_hugepage_adjust(vcpu, &gfn, &pfn, &level);
+		transparent_hugepage_adjust(vcpu, &gfn, &pfn, &level);  // may change level
 	r = __direct_map(vcpu, gpa, write, map_writable,
 			 level, gfn, pfn, prefault);
 	spin_unlock(&vcpu->kvm->mmu_lock);
@@ -3938,12 +3972,17 @@ int kvm_mmu_load(struct kvm_vcpu *vcpu)
 	r = mmu_topup_memory_caches(vcpu);
 	if (r)
 		goto out;
-	r = mmu_alloc_roots(vcpu);
+	r = mmu_alloc_roots(vcpu);      // modify root_hpa
 	kvm_mmu_sync_roots(vcpu);
 	if (r)
 		goto out;
 	/* set_cr3() should ensure TLB has been flushed */
+    printk("kvm_mmu_load, set_cr3 root_hpa=%llx\n", vcpu->arch.mmu.root_hpa);
 	vcpu->arch.mmu.set_cr3(vcpu, vcpu->arch.mmu.root_hpa);
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (kvm_hsa_is_iommu_nested_translation())
+        kvm_hsa_set_iommu_nested_cr3(vcpu->arch.mmu.root_hpa);
+#endif
 out:
 	return r;
 }

@@ -53,6 +53,9 @@
 #define PFERR_USER_MASK (1U << 2)
 #define PFERR_RSVD_MASK (1U << 3)
 #define PFERR_FETCH_MASK (1U << 4)
+#ifdef CONFIG_HSA_VIRTUALIZATION
+#define IDENTICAL_MAPPING_MASK (1U << 10)
+#endif
 
 int kvm_mmu_get_spte_hierarchy(struct kvm_vcpu *vcpu, u64 addr, u64 sptes[4]);
 void kvm_mmu_set_mmio_spte_mask(u64 mmio_mask);
@@ -93,7 +96,7 @@ static inline int kvm_mmu_reload(struct kvm_vcpu *vcpu)
 		return 0;
 
 //    printk("kvm_mmu_reload call kvm_mmu_load\n"); // keep showing
-	return kvm_mmu_load(vcpu);
+	return kvm_mmu_load(vcpu);      // here when root_hpa = INVALID_PAGE (cuase by set_msr_mtrr)
 }
 
 static inline int is_present_gpte(unsigned long pte)

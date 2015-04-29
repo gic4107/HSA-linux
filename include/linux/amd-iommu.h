@@ -21,6 +21,7 @@
 #define _ASM_X86_AMD_IOMMU_H
 
 #include <linux/types.h>
+#include <linux/kvm_host.h> // for kvm
 
 #ifdef CONFIG_AMD_IOMMU
 
@@ -172,12 +173,14 @@ extern int amd_iommu_set_invalidate_ctx_cb(struct pci_dev *pdev,
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
 extern int amd_iommu_set_nested_cr3(struct pci_dev *pdev, u64 nested_cr3);
+extern int amd_iommu_is_nested_translation(struct pci_dev *pdev);
 extern int amd_iommu_enable_nested_translation(struct pci_dev *pdev, int level);
 extern int amd_iommu_disable_nested_translation(struct pci_dev *pdev);
-extern int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, 
-                     struct mm_struct *virtio_be_mm, struct task_struct *task,
-                     struct mm_struct *,unsigned long gcr3);
+extern int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, struct kvm *kvm, 
+             struct mm_struct *virtio_be_mm, struct task_struct *vm_task, 
+             struct mm_struct *vm_mm, unsigned long gcr3);
 extern void amd_iommu_vm_ppr(struct fault *fault, int write);
+int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3);
 #endif
 
 #else

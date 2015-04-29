@@ -45,8 +45,8 @@ static const struct kgd2kfd_calls kgd2kfd = {
 	.resume		= kgd2kfd_resume,
 };
 
-int sched_policy = KFD_SCHED_POLICY_HWS;
-//int sched_policy = KFD_SCHED_POLICY_NO_HWS;
+//int sched_policy = KFD_SCHED_POLICY_HWS;
+int sched_policy = KFD_SCHED_POLICY_NO_HWS;
 module_param(sched_policy, int, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(sched_policy, "Kernel cmdline parameter define the kfd scheduling policy");
 
@@ -88,6 +88,7 @@ kfd_module_init(void)
 	if (err < 0)
 		goto err_topology;
 
+    printk("sched_policy=%d\n", sched_policy);
 	return 0;
 err_topology:
 	radeon_kfd_chardev_exit();

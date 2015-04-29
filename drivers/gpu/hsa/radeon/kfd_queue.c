@@ -24,6 +24,8 @@
 #include <linux/slab.h>
 #include "kfd_priv.h"
 
+#define DEBUG
+
 void print_queue_properties(struct queue_properties *q)
 {
 	if (!q)
@@ -56,6 +58,35 @@ void print_queue(struct queue *q)
 	if (!q)
 		return;
 	pr_debug("Printing queue\n"
+			"Queue Type: %u\n"
+			"Queue Size: %llu\n"
+			"Queue percent: %u\n"
+			"Queue Address: 0x%llX\n"
+			"Queue Id: %u\n"
+			"Queue Process Vmid: %u\n"
+			"Queue Read Pointer: 0x%p\n"
+			"Queue Write Pointer: 0x%p\n"
+			"Queue Doorbell Pointer: 0x%p\n"
+			"Queue Doorbell Offset: %u\n"
+			"Queue MQD Address: 0x%p\n"
+			"Queue MQD Gart: 0x%llX\n"
+			"Queue Process Address: 0x%p\n"
+			"Queue Device Address: 0x%p\n",
+			q->properties.type,
+			q->properties.queue_size,
+			q->properties.queue_percent,
+			q->properties.queue_address,
+			q->properties.queue_id,
+			q->properties.vmid,
+			q->properties.read_ptr,
+			q->properties.write_ptr,
+			q->properties.doorbell_ptr,
+			q->properties.doorbell_off,
+			q->mqd,
+			q->gart_mqd_addr,
+			q->process,
+			q->device);
+	printk("Printing queue\n"
 			"Queue Type: %u\n"
 			"Queue Size: %llu\n"
 			"Queue percent: %u\n"

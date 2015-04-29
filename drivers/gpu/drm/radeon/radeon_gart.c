@@ -276,6 +276,8 @@ int radeon_gart_bind(struct radeon_device *rdev, unsigned offset,
 	uint64_t page_base;
 	int i, j;
 
+    printk("radeon_gart_bind: num_page=%d, offset=%x, page=%p, dma_addr=%p\n",
+                pages, offset, pagelist, dma_addr);     // 1,499000, dma_addr=PA of system ram
 	if (!rdev->gart.ready) {
 		WARN(1, "trying to bind memory to uninitialized GART !\n");
 		return -EINVAL;
@@ -284,6 +286,7 @@ int radeon_gart_bind(struct radeon_device *rdev, unsigned offset,
 	p = t / (PAGE_SIZE / RADEON_GPU_PAGE_SIZE);
 
 	for (i = 0; i < pages; i++, p++) {
+        printk("rdev->gart.ptr=%p, dma_addr=%llx, page=%p\n", rdev->gart.ptr, dma_addr[i], pagelist[i]);        
 		rdev->gart.pages_addr[p] = dma_addr[i];
 		rdev->gart.pages[p] = pagelist[i];
 		if (rdev->gart.ptr) {

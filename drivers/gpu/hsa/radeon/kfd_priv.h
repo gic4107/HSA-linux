@@ -34,8 +34,12 @@
 #include <linux/spinlock.h>
 #include <linux/idr.h>
 
-// gic4107
+#ifdef CONFIG_HSA_VIRTUALIZATION
 #include <linux/kvm_host.h>
+#define MQD_IOMMU 1
+//#define IDENTICAL_MAPPING 1
+#endif
+struct mqd_manager;
 
 struct kfd_scheduler_class;
 
@@ -386,6 +390,8 @@ struct vm_info {
     uint64_t vm_task;
     uint64_t vm_mm;
     uint64_t vm_pgd_gpa;    
+    uint64_t mqd_gva;
+    uint64_t mqd_hva;
 };
 #endif
 
@@ -438,6 +444,13 @@ struct kfd_process* radeon_kfd_vm_create_process(const void *);
 long                radeon_kfd_vm_close_process(const void *);
 struct kfd_process* find_vm_process(const void *);
 int radeon_kfd_vm_doorbell_mmap(struct kfd_process*, struct vm_area_struct*);
+int adjust_vm_process_pgd(struct kfd_dev *dev, struct kfd_process *p);
+int resume_vm_process_pgd(struct kfd_dev *dev, struct kfd_process *p);
+int update_mqd_vm(void *mqd, void *mqd_gva);
+// FIXME: debug
+void access_clr_a_page(struct mm_struct *mm, unsigned long addr);
+void access_page(struct mm_struct *mm, unsigned long addr);
+void dump_mqd(void *mqd);
 #define KFD_MMAP_VM_PROCESS_DOORBELL_START	0
 #define KFD_MMAP_VM_PROCESS_DOORBELL_END	sizeof(doorbell_t) * MAX_PROCESS_QUEUES
 #define KFD_MMAP_VM_PROCESS_EVENTS_START	KFD_MMAP_DOORBELL_END

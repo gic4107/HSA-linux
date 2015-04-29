@@ -30,6 +30,10 @@ struct mm_struct;
 #include "kfd_priv.h"
 #include "kfd_dbgmgr.h"
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+#include <asm/kvm_host.h>
+#endif
+
 /* Initial size for the array of queues.
  * The allocated size is doubled each time it is exceeded up to MAX_PROCESS_QUEUES. */
 #define INITIAL_QUEUE_ARRAY_SIZE 16
@@ -160,11 +164,23 @@ static void shutdown_process(struct kfd_process *p)
 {
 	/* IOMMU bindings: automatic */
 	/* doorbell mappings: automatic */
+    struct kfd_process *iter;
+    int vm_process = 0;
 
 	mutex_lock(&kfd_processes_mutex);
 	hash_del_rcu(&p->kfd_processes);
 	mutex_unlock(&kfd_processes_mutex);
 	synchronize_srcu(&kfd_processes_srcu);
+
+    hlist_for_each_entry_rcu(iter, kfd_processes, kfd_processes) {
+        if (p->process_type != KFD_PROCESS_TYPE_NORMAL) {
+            printk("shutdown_process, type=%d\n", p->process_type);
+            vm_process = 1;
+        }
+    }
+    
+    if (vm_process == 0)
+        kvm_hsa_disable_iommu_nested_translation();
 }
 
 static void
@@ -225,6 +241,8 @@ create_process(const struct task_struct *thread)
 		goto err_mmu_notifier;
 
 	process->lead_thread = thread->group_leader;
+    printk("create_process: task=%p, lead_thread=%p, mm=%p, get_task_mm=%p, mm->pgd=%p, get_task_mm->pgd=%p\n", 
+                 thread, process->lead_thread, process->mm, get_task_mm(process->lead_thread), process->mm->pgd, get_task_mm(process->lead_thread)->pgd);
 
 	process->queue_array_size = INITIAL_QUEUE_ARRAY_SIZE;
 
@@ -328,7 +346,6 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
         struct kfd_process *virtio_be;
         struct kvm *kvm;
         gpa_t pgd_gpa;
-        hpa_t pgd_hpa;
         
         virtio_be = p->vm_info->virtio_be_process;
         kvm = virtio_be->virtio_be_info->kvm;
@@ -337,18 +354,13 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
             return -EINVAL;
         }
 
-        // call KVM function to translation p->vm_pgd_gpa to hpa
         pgd_gpa = p->vm_info->vm_pgd_gpa;
-        kvm_hsa_read_guest_pgd(kvm, pgd_gpa);
-
-        pgd_hpa = kvm_hsa_translate_gpa_to_hpa(kvm, pgd_gpa); 
-        printk("kvm_hsa_translate_gfn_to_pfn 0x%llx -> 0x%llx\n", pgd_gpa, pgd_hpa);
 
         // set vm_pgd_hpa to IOMMU
-//    	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, virtio_be->mm, 
-//                        p->vm_info->vm_task, p->vm_info->vm_mm, pgd_hpa);
-    	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, virtio_be->mm, 
+    	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, kvm, virtio_be->mm, 
                         p->vm_info->vm_task, p->vm_info->vm_mm, pgd_gpa);
+//    	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, kvm, virtio_be->mm, 
+//                        p->vm_info->vm_task, p->vm_info->vm_mm, 0x1234000);
     	if (err < 0) {
             printk("amd_iommu_vm_process_bind_pasid fail %d\n", err);
 //    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
@@ -756,4 +768,20 @@ int kvm_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread)
     return 0; 
 }
 EXPORT_SYMBOL(kvm_bind_kfd_virtio_be);
+
+int adjust_vm_process_pgd(struct kfd_dev *dev, struct kfd_process *p)
+{
+    struct kfd_process *virtio_be = p->vm_info->virtio_be_process;
+    struct mm_struct *mm;
+    BUG_ON(!virtio_be);
+
+    mm = get_task_mm(virtio_be->lead_thread);
+  	return amd_iommu_set_gcr3(dev->pdev, p->pasid, __pa(mm->pgd));
+}
+
+int resume_vm_process_pgd(struct kfd_dev *dev, struct kfd_process *p)
+{
+  	return amd_iommu_set_gcr3(dev->pdev, p->pasid, p->vm_info->vm_pgd_gpa);
+}
+
 #endif // endif CONFIG_HSA_VIRTUALIZATION

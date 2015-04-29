@@ -27,6 +27,10 @@
 
 // gic4107 for debug
 #include <linux/sched.h>
+uint32_t *debug_doorbell;
+u32 __iomem *pasid1_doorbell_kernel_ptr;
+u32 __iomem *pasid2_doorbell_kernel_ptr;
+
 
 /*
  * This extension supports a kernel level doorbells management for the kernel queues
@@ -76,9 +80,28 @@ void radeon_kfd_doorbell_init(struct kfd_dev *kfd)
 	kfd->doorbell_process_limit = doorbell_process_limit - 1;
 
 	kfd->doorbell_kernel_ptr = ioremap(kfd->doorbell_base, doorbell_process_allocation());
+    // FIXME: debug
+    pasid1_doorbell_kernel_ptr = ioremap(kfd->doorbell_base + 
+                1*doorbell_process_allocation(), doorbell_process_allocation());
+    pasid2_doorbell_kernel_ptr = ioremap(kfd->doorbell_base + 
+                2*doorbell_process_allocation(), doorbell_process_allocation());
+    printk("doorbell_process_allocation=%d\n", doorbell_process_allocation());
+    printk("pasid1_doorbell_kernel_ptr=%p, pasid2_doorbell_kernel_ptr=%p\n", 
+                    pasid1_doorbell_kernel_ptr, pasid2_doorbell_kernel_ptr);
 	BUG_ON(!kfd->doorbell_kernel_ptr);
 
 	pr_debug("kfd: doorbell initialization\n"
+				 "     doorbell base           == 0x%08lX\n"
+				 "     doorbell_id_offset      == 0x%08lu\n"
+				 "     doorbell_process_limit  == 0x%08lu\n"
+				 "     doorbell_kernel_offset  == 0x%08lX\n"
+				 "     doorbell aperture size  == 0x%08lX\n"
+				 "     doorbell kernel address == 0x%08lX\n",
+				 (uintptr_t)kfd->doorbell_base, kfd->doorbell_id_offset, doorbell_process_limit,
+				 (uintptr_t)kfd->doorbell_base, kfd->shared_resources.doorbell_aperture_size,
+				 (uintptr_t)kfd->doorbell_kernel_ptr);
+
+	printk("kfd: doorbell initialization\n"
 				 "     doorbell base           == 0x%08lX\n"
 				 "     doorbell_id_offset      == 0x%08lu\n"
 				 "     doorbell_process_limit  == 0x%08lu\n"
@@ -101,11 +124,20 @@ int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct 
 
 	BUG_ON(vma->vm_pgoff < KFD_MMAP_DOORBELL_START || vma->vm_pgoff >= KFD_MMAP_DOORBELL_END);
 
+    printk("radeon_kfd_doorbell_mmap\n");
     printk("vm_end=0x%lx, vm_start=0x%lx\n", vma->vm_end, vma->vm_start);
 	/* For simplicitly we only allow mapping of the entire doorbell allocation of a single device & process. */
 	if (vma->vm_end - vma->vm_start != doorbell_process_allocation())
 		return -EINVAL;
 
+    // FIXME: debug
+/*    debug_doorbell = (uint32_t*)__get_free_page(GFP_KERNEL);
+    if (!debug_doorbell)
+        return -ENOMEM;
+    memset(debug_doorbell, 0, 4096);
+    SetPageReserved(virt_to_page(debug_doorbell));
+    printk("debug_doorbell=%p\n", debug_doorbell);
+*/
 	/* device_index must be GPU ID!! */
 	device_index = vma->vm_pgoff - KFD_MMAP_DOORBELL_START;
 
@@ -113,10 +145,14 @@ int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct 
 	if (dev == NULL)
 		return -EINVAL;
 
+    printk("doorbell_base=%llx\n", dev->doorbell_base);
 	vma->vm_flags |= VM_IO | VM_DONTCOPY | VM_DONTEXPAND | VM_NORESERVE | VM_DONTDUMP | VM_PFNMAP;
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
+//	start = dev->doorbell_base + (process->pasid+1) * doorbell_process_allocation();
 	start = dev->doorbell_base + process->pasid * doorbell_process_allocation();
+//    start = virt_to_phys(debug_doorbell);
+//    debug_doorbell = __va(start);
 
 	printk("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
 		 "     target user address == 0x%016llX\n"
@@ -125,6 +161,7 @@ int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct 
 		 "     size                == 0x%08lX\n",
 		 (long long unsigned int) vma->vm_start, start, vma->vm_flags,
 		 doorbell_process_allocation());
+    printk("vma->vm_page_prot=0x%llx\n", vma->vm_page_prot);
 
 	pr_debug("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
 		 "     target user address == 0x%016llX\n"
@@ -144,11 +181,21 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
 	unsigned int device_index = VM_PROCESS_GPUID;
 	struct kfd_dev *dev;
 	phys_addr_t start;
+    struct kfd_process_device *pdd;
 
 	BUG_ON(vma->vm_pgoff < KFD_MMAP_VM_PROCESS_DOORBELL_START ||
                              vma->vm_pgoff >= KFD_MMAP_VM_PROCESS_DOORBELL_END);
 
     printk("radeon_kfd_vm_doorbell_mmap\n");
+
+    // FIXME: debug
+/*    debug_doorbell = (uint32_t*)__get_free_page(GFP_KERNEL);
+    if (!debug_doorbell)
+        return -ENOMEM;
+    memset(debug_doorbell, 0, 4096);
+    SetPageReserved(virt_to_page(debug_doorbell));
+    printk("debug_doorbell=%p\n", debug_doorbell);
+*/
     printk("vm_end=0x%lx, vm_start=0x%lx\n", vma->vm_end, vma->vm_start);
 	/* For simplicitly we only allow mapping of the entire doorbell allocation of a single device & process. */
 	if (vma->vm_end - vma->vm_start != doorbell_process_allocation())
@@ -158,12 +205,20 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
 	if (dev == NULL)
 		return -EINVAL;
 
+    pdd = radeon_kfd_get_process_device_data(dev, process);
+
+    printk("doorbell_base=%llx\n", dev->doorbell_base);
 	vma->vm_flags |= VM_IO | VM_DONTCOPY | VM_DONTEXPAND | VM_NORESERVE | VM_DONTDUMP | VM_PFNMAP;
+    vma->vm_flags &= ~VM_READ;
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	start = dev->doorbell_base + process->pasid * doorbell_process_allocation();
+//    debug_doorbell = __va(start);
+//    start = virt_to_phys(debug_doorbell);
     vma->vm_pgoff = start >> PAGE_SHIFT;
-    printk("vma->pgoff=0x%lx\n", vma->vm_pgoff);
+    pdd->doorbell_mapping = vma->vm_start;
+    
+    printk("vma->pgoff=0x%lx, pdd_doorbell_mapping=%llx\n", vma->vm_pgoff, pdd->doorbell_mapping);
 
 	printk("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
 		 "     target user address == 0x%016llX\n"
@@ -172,6 +227,7 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
 		 "     size                == 0x%08lX\n",
 		 (long long unsigned int) vma->vm_start, start, vma->vm_flags,
 		 doorbell_process_allocation());
+    printk("vma->vm_page_prot=0x%llx\n", vma->vm_page_prot);
 
 	pr_debug("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
 		 "     target user address == 0x%016llX\n"
@@ -181,13 +237,6 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
 		 (long long unsigned int) vma->vm_start, start, vma->vm_flags,
 		 doorbell_process_allocation());
 
-/*    int ret = io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot);
-    int i;
-    u32 __iomem *doorbell_kernel = dev->doorbell_kernel_ptr + process->pasid * doorbell_process_allocation();
-    for(i=0; i<4096; i++)
-        printk("%c ", *(char*)(doorbell_kernel+i));
-    return ret;
-*/
     printk("current=%p, mm=%p, vma=%p, vma->vm_mm=%p\n", current, current->mm, vma, vma->vm_mm);
     int ret = io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot);
     printk("current=%p, mm=%p, vma=%p, vma->vm_mm=%p, ret=%d\n", current, current->mm, vma, vma->vm_mm, ret);
@@ -240,6 +289,11 @@ u32 __iomem *radeon_kfd_get_kernel_doorbell(struct kfd_dev *kfd, unsigned int *d
 	*doorbell_off = KERNEL_DOORBELL_PASID * (doorbell_process_allocation()/sizeof(doorbell_t)) + inx;
 
 	pr_debug("kfd: get kernel queue doorbell\n"
+			 "     doorbell offset   == 0x%08d\n"
+			 "     kernel address    == 0x%08lX\n",
+			 *doorbell_off, (uintptr_t)(kfd->doorbell_kernel_ptr + inx));
+
+	printk("kfd: get kernel queue doorbell\n"
 			 "     doorbell offset   == 0x%08d\n"
 			 "     kernel address    == 0x%08lX\n",
 			 *doorbell_off, (uintptr_t)(kfd->doorbell_kernel_ptr + inx));

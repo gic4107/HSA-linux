@@ -45,7 +45,7 @@
 	 __pgdat->node_start_pfn;					\
 })
 
-#elif defined(CONFIG_SPARSEMEM_VMEMMAP)
+#elif defined(CONFIG_SPARSEMEM_VMEMMAP)     // here
 
 /* memmap is virtually contiguous.  */
 #define __pfn_to_page(pfn)	(vmemmap + (pfn))

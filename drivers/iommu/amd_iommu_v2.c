@@ -383,6 +383,24 @@ static void mn_invalidate_page(struct mmu_notifier *mn,
 	__mn_flush_page(mn, address);
 }
 
+static void mn_invalidate_range(struct mmu_notifier *mn,
+				struct mm_struct *mm,
+				unsigned long start, unsigned long end)
+{
+	struct pasid_state *pasid_state;
+	struct device_state *dev_state;
+
+    printk("mn_invalidate_range\n");
+	pasid_state = mn_to_state(mn);
+	dev_state   = pasid_state->device_state;
+/*
+	if ((start ^ (end - 1)) < PAGE_SIZE)
+		amd_iommu_flush_page(dev_state->domain, pasid_state->pasid,
+				     start);
+	else*/
+		amd_iommu_flush_tlb(dev_state->domain, pasid_state->pasid);
+}
+
 static void mn_invalidate_range_start(struct mmu_notifier *mn,
 				      struct mm_struct *mm,
 				      unsigned long start, unsigned long end)
@@ -413,6 +431,7 @@ void set_pri_tag_status(struct pasid_state *pasid_state,
 {
 	unsigned long flags;
 
+    printk("set_pri_tag_status %d\n", status);
 	spin_lock_irqsave(&pasid_state->lock, flags);
 	pasid_state->pri[tag].status = status;
 	spin_unlock_irqrestore(&pasid_state->lock, flags);
@@ -645,6 +664,32 @@ again:
 }
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
+int amd_iommu_is_nested_translation(struct pci_dev *pdev)
+{
+	struct device_state *dev_state;
+    struct iommu_domain *dom;
+    struct protection_domain *domain;
+	u16 devid;
+
+	might_sleep();
+
+	if (!amd_iommu_v2_supported())
+		return -ENODEV;
+
+	devid     = device_id(pdev);
+	dev_state = get_device_state(devid);
+
+	if (dev_state == NULL)
+		return -EINVAL;
+
+    dom = dev_state->domain;
+    domain = dom->priv;
+    printk("amd_iommu_is_nested_translation: mode=%d\n", domain->mode);
+    
+    return domain->mode;
+}
+EXPORT_SYMBOL(amd_iommu_is_nested_translation);
+
 int amd_iommu_enable_nested_translation(struct pci_dev *pdev, int level)
 {
 	struct device_state *dev_state;
@@ -736,7 +781,7 @@ int amd_iommu_set_nested_cr3(struct pci_dev *pdev, u64 nested_cr3)
 }
 EXPORT_SYMBOL(amd_iommu_set_nested_cr3);
 
-int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, 
+int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, struct kvm *kvm, 
              struct mm_struct *virtio_be_mm, struct task_struct *vm_task, 
              struct mm_struct *vm_mm, unsigned long gcr3)
 {
@@ -773,6 +818,7 @@ int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid,
 
 	pasid_state->task         = vm_task;
 	pasid_state->mm           = vm_mm;
+    pasid_state->kvm          = kvm;
 	pasid_state->device_state = dev_state;
 	pasid_state->pasid        = pasid;
 	pasid_state->mn.ops       = &iommu_mn;  // cpu modify page table cause iommu flust
@@ -787,8 +833,6 @@ int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid,
 		goto out_free;
     }
 
-    int i;
-    for (i=1; i=0; i++);
 	ret = amd_iommu_domain_set_gcr3(dev_state->domain, pasid, gcr3);
     printk("amd_iommu_vm_process_bind_pasid, pdev=%p, domain=%p, task=%p, mm=%p, pasid=%d, gcr3=0x%llx\n", pdev, dev_state->domain, vm_task, vm_mm, pasid, gcr3);
 	if (ret) {
@@ -815,6 +859,18 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(amd_iommu_vm_process_bind_pasid);
+
+int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3)
+{
+	struct device_state *dev_state;
+	u16 devid;
+	devid     = device_id(pdev);
+	dev_state = get_device_state(devid);
+
+    printk("amd_iommu_set_gcr3 pasid=%d, gcr3=%llx\n", pasid, gcr3);
+    return amd_iommu_domain_set_gcr3(dev_state->domain, pasid, gcr3);
+}
+EXPORT_SYMBOL(amd_iommu_set_gcr3);
 #endif
 
 int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,

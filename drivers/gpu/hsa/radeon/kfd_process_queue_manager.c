@@ -110,6 +110,14 @@ static int create_cp_queue(struct process_queue_manager *pqm, struct kfd_dev *de
 
 	q_properties->doorbell_off = radeon_kfd_queue_id_to_doorbell(dev, pqm->process, qid);
 
+    printk("create_cp_queue: doorbell_ptr=%p\n"
+           "                 doorbell_off=%llx\n"
+           "                 queue_address=%llx\n"
+           "                 read_ptr=%p\n"
+           "                 write_ptr=%p\n",
+            q_properties->doorbell_ptr, q_properties->doorbell_off, 
+            q_properties->queue_address, q_properties->read_ptr, q_properties->write_ptr);
+
 	/* let DQM handle it*/
 	q_properties->vmid = 0;
 	q_properties->queue_id = qid;

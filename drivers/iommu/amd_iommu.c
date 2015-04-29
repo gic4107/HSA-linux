@@ -896,6 +896,7 @@ static void build_inv_dte(struct iommu_cmd *cmd, u16 devid)
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->data[0] = devid;
 	CMD_SET_TYPE(cmd, CMD_INV_DEV_ENTRY);
+    printk("build_inv_dte: %x\n", cmd->data[0]);
 }
 
 static void build_inv_iommu_pages(struct iommu_cmd *cmd, u64 address,
@@ -927,6 +928,7 @@ static void build_inv_iommu_pages(struct iommu_cmd *cmd, u64 address,
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_SIZE_MASK;
 	if (pde) /* PDE bit - we want to flush everything, not only the PTEs */
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_PDE_MASK;
+    printk("build_inv_iommu_pages, %x, %x, %x, %x\n", cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3]);
 }
 
 static void build_inv_iotlb_pages(struct iommu_cmd *cmd, u16 devid, int qdep,
@@ -958,6 +960,7 @@ static void build_inv_iotlb_pages(struct iommu_cmd *cmd, u16 devid, int qdep,
 	CMD_SET_TYPE(cmd, CMD_INV_IOTLB_PAGES);
 	if (s)
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_SIZE_MASK;
+    printk("build_inv_iotlb_pages, %x, %x, %x, %x\n", cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3]);
 }
 
 static void build_inv_iommu_pasid(struct iommu_cmd *cmd, u16 domid, int pasid,
@@ -1449,6 +1452,7 @@ static int iommu_map_page(struct protection_domain *dom,
 	u64 __pte, *pte;
 	int i, count;
 
+    printk("iommu_map_page\n");
 	if (!(prot & IOMMU_PROT_MASK))
 		return -EINVAL;
 
@@ -2150,7 +2154,7 @@ static void set_dte_entry(u16 devid, struct protection_domain *domain, bool ats)
 	flags &= ~(0xffffUL);
 	flags |= domain->id;
 
-    printk("set_dte_entry: domain=%p, mode=%d, glx=%d\n", domain, domain->mode, domain->glx);
+    printk("set_dte_entry: domain=%p, iommu_domain=%p, mode=%d, glx=%d\n", domain, domain->iommu_domain, domain->mode, domain->glx);
     printk("set_dte_entry: pt_root=0x%llx, gcr3=0x%llx\n", domain->pt_root, domain->gcr3_tbl);
     printk("set_dte_entry: virt_to_phys(pt_root)=0x%llx, __pa(gcr3)=0x%llx\n", virt_to_phys(domain->pt_root), __pa(domain->gcr3_tbl));
     printk("set_dte_entry: data[0]=%llx, data[1]=%llx\n", pte_root, flags);
@@ -3446,6 +3450,7 @@ static phys_addr_t amd_iommu_iova_to_phys(struct iommu_domain *dom,
 	phys_addr_t paddr;
 	u64 *pte, __pte;
 
+    printk("amd_iommu_iova_to_phys\n");
 	if (domain->mode == PAGE_MODE_NONE)
 		return iova;
 
@@ -3732,6 +3737,84 @@ int amd_iommu_flush_tlb(struct iommu_domain *dom, int pasid)
 }
 EXPORT_SYMBOL(amd_iommu_flush_tlb);
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+static int __flush_all(struct protection_domain *domain, u64 address, size_t size)
+{
+	struct iommu_dev_data *dev_data;
+	struct iommu_cmd cmd;
+	int i, ret;
+
+	if (!(domain->flags & PD_IOMMUV2_MASK))
+		return -EINVAL;
+
+    printk("__flush_all\n");
+	build_inv_iommu_pages(&cmd, address, size, domain->id, 1);
+
+	/*
+	 * IOMMU TLB needs to be flushed before Device TLB to
+	 * prevent device TLB refill from IOMMU TLB
+	 */
+	for (i = 0; i < amd_iommus_present; ++i) {
+		if (domain->dev_iommu[i] == 0)
+			continue;
+
+		ret = iommu_queue_command(amd_iommus[i], &cmd);
+		if (ret != 0)
+			goto out;
+	}
+
+	/* Wait until IOMMU TLB flushes are complete */
+	domain_flush_complete(domain);
+
+	/* Now flush device TLBs */
+	list_for_each_entry(dev_data, &domain->dev_list, list) {
+		struct amd_iommu *iommu;
+		int qdep;
+
+		BUG_ON(!dev_data->ats.enabled);
+
+		qdep  = dev_data->ats.qdep;
+		iommu = amd_iommu_rlookup_table[dev_data->devid];
+
+		build_inv_iotlb_pages(&cmd, dev_data->devid, qdep, address, size);
+
+		ret = iommu_queue_command(iommu, &cmd);
+		if (ret != 0)
+			goto out;
+	}
+
+	/* Wait until all device TLBs are flushed */
+	domain_flush_complete(domain);
+
+	ret = 0;
+
+out:
+
+	return ret;
+}
+
+static int __amd_iommu_flush_all_tlb(struct protection_domain *domain)
+{
+	INC_STATS_COUNTER(invalidate_iotlb_all);
+
+	return __flush_all(domain, 0, CMD_INV_IOMMU_ALL_PAGES_ADDRESS);
+}
+
+int amd_iommu_flush_all_tlb(struct iommu_domain *dom)
+{
+	struct protection_domain *domain = dom->priv;
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&domain->lock, flags);
+	ret = __amd_iommu_flush_all_tlb(domain);
+	spin_unlock_irqrestore(&domain->lock, flags);
+
+	return ret;
+}
+EXPORT_SYMBOL(amd_iommu_flush_all_tlb);
+#endif
+
 static u64 *__get_gcr3_pte(u64 *root, int level, int pasid, bool alloc)
 {
 	int index;
@@ -3781,7 +3864,11 @@ static int __set_gcr3(struct protection_domain *domain, int pasid,
 
     printk("===== __set_gcr3 domain=%p, gcr3_tbl=%p, glx=%d, pasid=%d, pte=%p, *pte=0x%llx, cr3=0x%llx\n", 
                 domain, domain->gcr3_tbl, domain->glx, pasid, pte, *pte, cr3);
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    return __amd_iommu_flush_all_tlb(domain);
+#else
 	return __amd_iommu_flush_tlb(domain, pasid);
+#endif
 }
 
 static int __clear_gcr3(struct protection_domain *domain, int pasid)

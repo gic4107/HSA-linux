@@ -58,6 +58,9 @@ static void ttm_dma_tt_alloc_page_directory(struct ttm_dma_tt *ttm)
 	ttm->ttm.pages = drm_calloc_large(ttm->ttm.num_pages, sizeof(void*));
 	ttm->dma_address = drm_calloc_large(ttm->ttm.num_pages,
 					    sizeof(*ttm->dma_address));
+    printk("ttm_dma_tt_alloc_page_directory: \
+                        ttm->ttm.pages=%p, page=%p, ttm->dma_address=%p, num_pages=%d\n",        // page[0]=null, num_page=1
+                        ttm->ttm.pages, ttm->ttm.pages[0], ttm->dma_address, ttm->ttm.num_pages);
 }
 
 #ifdef CONFIG_X86

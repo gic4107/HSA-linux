@@ -54,16 +54,20 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 		uint64_t *gart_addr, struct queue_properties *q)
 {
 	uint64_t addr;
-	struct cik_mqd *m;
+	struct cik_mqd *m, *mmm;
 	int retval;
 	BUG_ON(!mm || !q || !mqd);
 
 	pr_debug("kfd: In func %s\n", __func__);
 
 	retval = 0;
-	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&m, &addr, ALIGN(sizeof(struct cik_mqd), 256));
+//	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&m, &addr, ALIGN(sizeof(struct cik_mqd), 256));
+	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&mmm, &addr, ALIGN(sizeof(struct cik_mqd), 256));
 	if (retval != 0)
 		return -ENOMEM;
+
+    m = kzalloc(sizeof(struct cik_mqd), GFP_KERNEL);
+    printk("m=%p, mmm=%p\n", m, mmm);
 
 	memset(m, 0, ALIGN(sizeof(struct cik_mqd), 256));
 
@@ -82,8 +86,16 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 	m->cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS | QUANTUM_DURATION(10);
 
 	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
+#ifdef MQD_IOMMU
+	m->cp_mqd_base_addr_lo        = lower_32(m);
+	m->cp_mqd_base_addr_hi        = upper_32(m);
+#else
 	m->cp_mqd_base_addr_lo        = lower_32(addr);
 	m->cp_mqd_base_addr_hi        = upper_32(addr);
+#endif
+    printk("init_mqd: addr=%llx, m=%p\n", addr, m);
+    printk("init_mqd: mqd_base_addr_lo=%llx, mqd_base_addr_hi=%llx\n", 
+                    m->cp_mqd_base_addr_lo, m->cp_mqd_base_addr_hi);
 
 	m->cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE | IB_ATC_EN;
 	/* Although WinKFD writes this, I suspect it should not be necessary. */
@@ -94,7 +106,11 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 
 	*mqd = m;
 	if (gart_addr != NULL)
+#ifdef MQD_IOMMU
+        *gart_addr = m;
+#else
 		*gart_addr = addr;
+#endif
 	retval = mm->update_mqd(mm, m, q);
 
 	return retval;
@@ -113,6 +129,7 @@ static int load_mqd(struct mqd_manager *mm, void *mqd)
 
 	m = get_mqd(mqd);
     printk("load_mqd mm=%p, mqd=%p, m=%p\n", mm, mqd, m);
+    printk("mqd_base_addr_lo=%llx, mqd_base_addr_hi=%llx\n", m->cp_mqd_base_addr_lo, m->cp_mqd_base_addr_hi);
 
 	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR, m->cp_mqd_base_addr_lo);
 	WRITE_REG(mm->dev, CP_MQD_BASE_ADDR_HI, m->cp_mqd_base_addr_hi);
@@ -160,6 +177,21 @@ static int load_mqd(struct mqd_manager *mm, void *mqd)
 	return 0;
 }
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+int update_mqd_vm(void *mqd, void *mqd_gva)
+{
+	struct cik_mqd *m;
+	m = get_mqd(mqd);
+
+    printk("update_mqd_vm\n");
+	m->cp_mqd_base_addr_lo        = lower_32(mqd_gva);
+	m->cp_mqd_base_addr_hi        = upper_32(mqd_gva);
+    printk("update_mqd_vm:   cp_mqd_base_addr_lo=%llx\n"
+           "                     cp_mqd_base_addr_hi=%llx\n",
+           m->cp_mqd_base_addr_lo, m->cp_mqd_base_addr_hi);
+}
+#endif
+
 static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties *q)
 {
 	struct cik_mqd *m;
@@ -168,6 +200,8 @@ static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties
 	pr_debug("kfd: In func %s\n", __func__);
 
 	m = get_mqd(mqd);
+    printk("update_mqd: mm=%p, mqd=%p, q=%p, m=%p\n", mm, mqd, q, m);
+
 	m->cp_hqd_pq_control = DEFAULT_RPTR_BLOCK_SIZE | DEFAULT_MIN_AVAIL_SIZE | PQ_ATC_EN;
 	/* calculating queue size which is log base 2 of actual queue size -1 dwords and another -1 for ffs */
 	m->cp_hqd_pq_control |= ffs(q->queue_size / sizeof(unsigned int)) - 1 - 1;
@@ -178,6 +212,15 @@ static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties
 	m->cp_hqd_pq_doorbell_control = DOORBELL_EN | DOORBELL_OFFSET(q->doorbell_off);
 
 	m->cp_hqd_vmid = q->vmid;
+    printk("update_mqd:     pq_base_lo=%llx\n"
+           "                pq_base_hi=%llx\n"
+           "                rptr_lo   =%llx\n"
+           "                rptr_hi   =%llx\n"
+           "                doorbell_conotrol=%llx\n"
+           "                vmid      =%d\n",
+           m->cp_hqd_pq_base_lo, m->cp_hqd_pq_base_hi, 
+           m->cp_hqd_pq_rptr_report_addr_lo, m->cp_hqd_pq_rptr_report_addr_hi,
+           m->cp_hqd_pq_doorbell_control, m->cp_hqd_vmid);
 
 	if (q->format == KFD_QUEUE_FORMAT_AQL) {
 		m->cp_hqd_iq_rptr = AQL_ENABLE;
@@ -593,6 +636,20 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 	}
 
 	return mqd;
+}
+
+// FIXME: debug
+void dump_mqd(void *mqd)
+{
+    struct cik_mqd *m;
+    int i;
+    m = get_mqd(mqd);
+    void *p = m;
+
+    printk("dump_mqd: mqd=%p, m=%p\n", mqd, m);
+
+    for (i=0; i<sizeof(struct cik_mqd); i+=sizeof(uint32_t))
+        printk("%p: %x\n", p+i, *(uint32_t*)(p+i));
 }
 
 /* SDMA queues should be implemented here when the cp will supports them */

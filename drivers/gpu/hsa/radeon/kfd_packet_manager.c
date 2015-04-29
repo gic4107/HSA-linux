@@ -31,6 +31,14 @@
 #include "cik_mqds.h"
 #include "cik_regs.h"
 
+// FIXME: debug
+extern void __user *ring_user;
+extern void __user *wptr_user;
+extern void __user *rptr_user;
+extern void *mqd_kva;
+extern uint64_t in_buf;
+extern uint64_t out_buf;
+
 static inline void inc_wptr(unsigned int *wptr, unsigned int increment_bytes, unsigned int buffer_size_bytes)
 {
 	unsigned int temp = *wptr + increment_bytes / sizeof(uint32_t);
@@ -371,8 +379,34 @@ int pm_send_runlist(struct packet_manager *pm, struct list_head *dqm_queues)
 	if (retval != 0)
 		goto fail_create_runlist;
 
+    // FIXME: debug
+    if (ring_user && wptr_user && rptr_user) {
+        access_clr_a_page(current->mm, (unsigned long)ring_user);
+        access_clr_a_page(current->mm, (unsigned long)wptr_user);
+        access_clr_a_page(current->mm, (unsigned long)rptr_user);
+        access_clr_a_page(current->mm, (unsigned long)mqd_kva);
+    }
+    if (in_buf & out_buf) {
+        access_clr_a_page(current->mm, (unsigned long)in_buf);
+        access_clr_a_page(current->mm, (unsigned long)out_buf);
+    }
+    
 	pm->priv_queue->submit_packet(pm->priv_queue);
 	pm->priv_queue->sync_with_hw(pm->priv_queue, KFD_HIQ_TIMEOUT);
+
+    volatile int i;
+    for (i=1; i!=0; i++);
+    // FIXME: debug
+    if (ring_user && wptr_user && rptr_user) {
+        access_page(current->mm, (unsigned long)ring_user);
+        access_page(current->mm, (unsigned long)wptr_user);
+        access_page(current->mm, (unsigned long)rptr_user);
+        access_page(current->mm, (unsigned long)mqd_kva);
+    }
+    if (in_buf & out_buf) {
+        access_page(current->mm, (unsigned long)in_buf);
+        access_page(current->mm, (unsigned long)out_buf);
+    }
 
 	mutex_unlock(&pm->lock);
 

@@ -15,6 +15,7 @@
 #include <linux/cgroup.h>
 #include <linux/module.h>
 #include <linux/hashtable.h>
+#include <linux/kvm_host.h> // for kvm
 #include <uapi/linux/iommu_vm_ppr_ioctl.h>
 
 #include "amd_iommu_v2.h"
@@ -108,10 +109,12 @@ void amd_iommu_vm_ppr(struct fault *fault, int write)
 }
 EXPORT_SYMBOL(amd_iommu_vm_ppr);
 
-static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr)
+static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
 {
     int head, tail;
     struct fault *fault;
+    u32 error_code = 0;
+    int ret;
 
 //    printk("vm_finish_ppr: %p\n", iommu_vm_ppr);
     printk("vm_finish_ppr: tail=%d, head=%d, vm_consume_head=%d\n", 
@@ -119,7 +122,7 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr)
     head = iommu_vm_ppr->head;
     tail = iommu_vm_ppr->vm_consume_head;
 
-    while (head != tail) {
+//    while (head != tail) {
         fault = (struct fault*)(iommu_vm_ppr->ppr_log_region[head].fault);
         printk("fault=%p, pasid=%d\n", fault, fault->pasid);
     	if (fault->dev_state->inv_ppr_cb) {
@@ -146,13 +149,21 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr)
     		}
     	} 
 
+        // fix stage2 page table
+        ret = kvm_hsa_iommu_nested_page_fault(fault->state->kvm, gpa, fault->flags);  
+        printk("ret=%d\n", ret);
+
+        // flush
+  		amd_iommu_flush_all_tlb(fault->dev_state->domain);
+
         printk("finish_pri_tag\n");
+		set_pri_tag_status(fault->state, fault->tag, PPR_SUCCESS);
 	    finish_pri_tag(fault->dev_state, fault->state, fault->tag, 1);    
     	put_pasid_state(fault->state);    
     	kfree(fault);
         
         head = (head+1) % MAX_PPR_LOG_ENTRY;
-    }
+//    }
 
     iommu_vm_ppr->head = head;
     printk("tail=%d, head=%d, vm_consume_head=%d\n", 
@@ -199,6 +210,8 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
     struct vm_mmu_notification mmu_notify;
     struct pasid_state *pasid_state;
     struct device_state *dev_state;
+    unsigned long start, end;
+    uint64_t gpa;
     int fd;
 	int r;
 
@@ -235,8 +248,13 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
 		break;
 
     case IVP_IOC_VM_FINISH_PPR:
-        printk("IVP_IOC_VM_FINISH_PPR\n");
-        r = vm_finish_ppr(iommu_vm_ppr);
+		if (copy_from_user(&gpa, argp, sizeof gpa)) {
+			r = -EFAULT;
+			break;
+		}
+        printk("IVP_IOC_VM_FINISH_PPR, gpa=%llx\n", gpa);
+
+        r = vm_finish_ppr(iommu_vm_ppr, gpa);
         break;
 
     case IVP_IOC_MMU_CLEAR_FLUSH_YOUNG:
@@ -246,8 +264,8 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
 			break;
 		}
 
-        printk("mm=%llx, addr=%llx\n", mmu_notify.mm, mmu_notify.address);
-        __mm_flush_page((struct mm_struct*)(mmu_notify.mm), mmu_notify.address);
+        printk("mm=%llx, addr=%llx\n", mmu_notify.mm, mmu_notify.start);
+        __mm_flush_page((struct mm_struct*)(mmu_notify.mm), mmu_notify.start);
         break;
 
     case IVP_IOC_MMU_CHANGE_PTE:
@@ -257,8 +275,8 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
 			break;
 		}
 
-        printk("mm=%llx, addr=%llx\n", mmu_notify.mm, mmu_notify.address);
-        __mm_flush_page((struct mm_struct*)(mmu_notify.mm), mmu_notify.address);
+        printk("mm=%llx, addr=%llx\n", mmu_notify.mm, mmu_notify.start);
+        __mm_flush_page((struct mm_struct*)(mmu_notify.mm), mmu_notify.start);
         break;
 
     case IVP_IOC_MMU_INVALIDATE_PAGE:
@@ -268,8 +286,8 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
 			break;
 		}
 
-        printk("mm=%llx, addr=%llx\n", mmu_notify.mm, mmu_notify.address);
-        __mm_flush_page((struct mm_struct*)(mmu_notify.mm), mmu_notify.address);
+        printk("mm=%llx, addr=%llx\n", mmu_notify.mm, mmu_notify.start);
+        __mm_flush_page((struct mm_struct*)(mmu_notify.mm), mmu_notify.start);
         break;
 
     case IVP_IOC_MMU_INVALIDATE_RANGE_START:
@@ -278,30 +296,20 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
 			r = -EFAULT;
 			break;
 		}
-
-        //FIXME: for debugging usage
-//        read_guest_pgd_p((struct mm_struct*)(mmu_notify.mm));
-
-        printk("mm=%llx, addr=%llx\n", mmu_notify.mm, mmu_notify.address);
+        start = mmu_notify.start;
+        end   = mmu_notify.end;
+        printk("mm=%llx, start=%llx, end=%llx\n", mmu_notify.mm, start, end);
         pasid_state = mm_to_state((struct mm_struct*)(mmu_notify.mm));
-        if (!pasid_state) {
-            printk("pasid_state null\n");
-            r = -EFAULT;
-            break;
-        }
-
         dev_state   = pasid_state->device_state;
-        if (!dev_state) {
-            printk("dev_state null\n");
-            r = -EFAULT;
-            break;
-        }
 
         printk("domain=%p, pasid=%d\n", dev_state->domain, pasid_state->pasid);
-        amd_iommu_flush_tlb(dev_state->domain, pasid_state->pasid);
 
-        //FIXME: for debugging usage
-//        read_guest_pgd_p((struct mm_struct*)(mmu_notify.mm));
+/*    	if ((start ^ (end - 1)) < PAGE_SIZE)
+    		amd_iommu_flush_page(dev_state->domain, pasid_state->pasid,
+    				     start);
+    	else*/
+    		amd_iommu_flush_all_tlb(dev_state->domain);
+
         break;
 
 	default:
@@ -335,7 +343,7 @@ amd_iommu_vm_ppr_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	start = virt_to_phys(iommu_vm_ppr);
     vma->vm_pgoff = start >> PAGE_SHIFT;
-    printk("start=0x%lx, vma->pgoff=0x%lx\n", start, vma->vm_pgoff);
+    printk("start=0x%lx, vma->pgoff=0x%lx, vm_flags=%llx\n", start, vma->vm_pgoff, vma->vm_flags);
 
 	return io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, VM_PPR_SIZE, vma->vm_page_prot);
 }

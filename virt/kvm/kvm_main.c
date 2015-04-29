@@ -894,6 +894,12 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	kvm_free_physmem_slot(kvm, &old, &new);
 	kfree(old_memslots);
 
+    printk("__kvm_set_memory_region, new: id %d, flags 0x%x, base_gfn %llx, npage 0x%x, userspace_addr %llx\n", 
+                    new.id, new.flags, new.base_gfn, new.npages, new.userspace_addr);
+    struct kvm_memory_slot *my;
+    kvm_for_each_memslot(my, kvm->memslots)
+        printk("id %d, base_gfn %llx, npage 0x%x, userspace_addr %llx\n", 
+                my->id, my->base_gfn, my->npages, my->userspace_addr);
 	/*
 	 * IOMMU mapping:  New slots need to be mapped.  Old slots need to be
 	 * un-mapped and re-mapped if their base changes.  Since base change
@@ -911,10 +917,13 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	return 0;
 
 out_slots:
+    printk("out_slots\n");
 	kfree(slots);
 out_free:
+    printk("out_free\n");
 	kvm_free_physmem_slot(kvm, &new, &old);
 out:
+    printk("out\n");
 	return r;
 }
 EXPORT_SYMBOL_GPL(__kvm_set_memory_region);
@@ -936,6 +945,9 @@ static int kvm_vm_ioctl_set_memory_region(struct kvm *kvm,
 {
 	if (mem->slot >= KVM_USER_MEM_SLOTS)
 		return -EINVAL;
+    printk("kvm_vm_ioctl_set_memory_region, slot %d, flags 0x%x, gpa=%llx, "
+           "size %llx, userspace_addr=%llx\n", mem->slot, mem->flags, 
+                mem->guest_phys_addr, mem->memory_size, mem->userspace_addr);
 	return kvm_set_memory_region(kvm, mem);
 }
 

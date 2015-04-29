@@ -28,6 +28,7 @@ struct pasid_state {
 	wait_queue_head_t wq;			/* To wait for count == 0 */
 #ifdef CONFIG_HSA_VIRTUALIZATION
     struct mm_struct *virtio_be_mm;
+    struct kvm *kvm;
 #endif
 };
 

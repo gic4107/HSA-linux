@@ -517,6 +517,7 @@ static int radeon_ttm_backend_bind(struct ttm_tt *ttm,
 	struct radeon_ttm_tt *gtt = (void*)ttm;
 	int r;
 
+    printk("radeon_ttm_backend_bind\n");
 	gtt->offset = (unsigned long)(bo_mem->start << PAGE_SHIFT);
 	if (!ttm->num_pages) {
 		WARN(1, "nothing to bind %lu pages for mreg %p back %p!\n",
@@ -564,6 +565,7 @@ static struct ttm_tt *radeon_ttm_tt_create(struct ttm_bo_device *bdev,
 	rdev = radeon_get_rdev(bdev);
 #if __OS_HAS_AGP
 	if (rdev->flags & RADEON_IS_AGP) {
+        printk("RADEON_IS_AGP\n");  // not here
 		return ttm_agp_tt_create(bdev, rdev->ddev->agp->bridge,
 					 size, page_flags, dummy_read_page);
 	}
@@ -590,10 +592,14 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 	int r;
 	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SG);
 
+    printk("radeon_ttm_tt_populate, ttm->state=%d\n", ttm->state);     // 2
+    if (gtt->ttm.dma_address[0])        // no
+        printk("dma_address=%llx\n", gtt->ttm.dma_address[0]);
 	if (ttm->state != tt_unpopulated)
 		return 0;
 
 	if (slave && ttm->sg) {
+        printk("radeon_ttm_tt_populate1\n");        // no
 		drm_prime_sg_to_page_addr_arrays(ttm->sg, ttm->pages,
 						 gtt->ttm.dma_address, ttm->num_pages);
 		ttm->state = tt_unbound;
@@ -602,17 +608,20 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 
 	rdev = radeon_get_rdev(ttm->bdev);
 #if __OS_HAS_AGP
-	if (rdev->flags & RADEON_IS_AGP) {
+    printk("__OS_HAS_AGP\n");               // yes
+	if (rdev->flags & RADEON_IS_AGP) {      // no
 		return ttm_agp_tt_populate(ttm);
 	}
 #endif
 
 #ifdef CONFIG_SWIOTLB
+    printk("CONFIG_SWIOTLB\n");
 	if (swiotlb_nr_tbl()) {
-		return ttm_dma_populate(&gtt->ttm, rdev->dev);
+		return ttm_dma_populate(&gtt->ttm, rdev->dev);      // here
 	}
 #endif
 
+    printk("radeon_ttm_tt_populate2\n");
 	r = ttm_pool_populate(ttm);
 	if (r) {
 		return r;
@@ -631,6 +640,7 @@ static int radeon_ttm_tt_populate(struct ttm_tt *ttm)
 			ttm_pool_unpopulate(ttm);
 			return -EFAULT;
 		}
+        printk("radeon_ttm_tt_populate3: dma_address=%llx\n", gtt->ttm.dma_address[i]);
 	}
 	return 0;
 }

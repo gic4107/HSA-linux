@@ -3882,20 +3882,6 @@ long kvm_arch_vm_ioctl(struct file *filp,
 		break;
 	}
 #ifdef CONFIG_HSA_VIRTUALIZATION
-    case KVM_HSA_SET_IOMMU_NESTED_CR3: {
-        int device_id;
-
-		r = -EFAULT;
- 		if (copy_from_user(&device_id, argp, sizeof(device_id)))
-   			goto out;
-            
-        printk("KVM_HSA_SET_IOMMU_NESTED_CR3, device_id=%d\n", device_id);
- 		r = kvm_hsa_set_iommu_nested_cr3(kvm, device_id);
-   		if (r)
-   			goto out;
-   
-        break;
-    }
     case KVM_HSA_BIND_KFD_VIRTIO_BE: {
 
         printk("KVM_HSA_BIND_KFD_VIRTIO_BE\n");
@@ -7081,6 +7067,7 @@ void kvm_arch_sync_events(struct kvm *kvm)
 void kvm_arch_destroy_vm(struct kvm *kvm)
 {
 	if (current->mm == kvm->mm) {
+        printk("kvm_arch_destroy_vm\n");
 		/*
 		 * Free memory regions allocated on behalf of userspace,
 		 * unless the the memory map has changed due to process exit

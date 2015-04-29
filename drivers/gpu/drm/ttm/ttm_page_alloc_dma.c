@@ -848,6 +848,7 @@ static int ttm_dma_pool_get_pages(struct dma_pool *pool,
 		d_page = list_first_entry(&pool->free_list, struct dma_page, page_list);
 		ttm->pages[index] = d_page->p;
 		ttm_dma->dma_address[index] = d_page->dma;
+        printk("ttm_dma_pool_get_pages: dma_address=%llx\n", ttm_dma->dma_address[index]);
 		list_move_tail(&d_page->page_list, &ttm_dma->pages_list);
 		r = 0;
 		pool->npages_in_use += 1;

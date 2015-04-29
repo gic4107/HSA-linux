@@ -71,6 +71,7 @@ extern int amd_iommu_pc_get_set_reg_val(u16 devid, u8 bank, u8 cntr, u8 fxn,
 #ifdef CONFIG_HSA_VIRTUALIZATION
 extern int amd_iommu_complete_ppr(struct pci_dev *pdev, int pasid,
 				  int status, int tag, bool gn);
+int amd_iommu_flush_all_tlb(struct iommu_domain *dom);
 #else
 extern int amd_iommu_complete_ppr(struct pci_dev *pdev, int pasid,
 				  int status, int tag);

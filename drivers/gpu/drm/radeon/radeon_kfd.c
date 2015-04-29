@@ -190,6 +190,7 @@ static int allocate_mem(struct kgd_dev *kgd, size_t size, size_t alignment, enum
 	struct kgd_mem *mem;
 	int r;
 
+    printk("allocate_mem\n");
 	mem = kzalloc(sizeof(struct kgd_mem), GFP_KERNEL);
 	if (!mem)
 		return -ENOMEM;
@@ -203,6 +204,8 @@ static int allocate_mem(struct kgd_dev *kgd, size_t size, size_t alignment, enum
 	}
 
 	*memory_handle = mem;
+    printk("allocate_mem, mem=%p, mem->bo=%p, mem->bo_va=%p, tbo=%p\n",
+                                     mem, mem->bo, mem->bo_va, &mem->bo->tbo);
 	return 0;
 }
 
@@ -217,11 +220,14 @@ static int gpumap_mem(struct kgd_dev *kgd, struct kgd_mem *mem, uint64_t *vmid0_
 {
 	int r;
 
+    printk("gpumap_mem\n");
 	r = radeon_bo_reserve(mem->bo, true);
 	BUG_ON(r != 0); /* ttm_bo_reserve can only fail if the buffer reservation lock is held in circumstances that would deadlock. */
 	r = radeon_bo_pin(mem->bo, mem->domain, vmid0_address);
 	radeon_bo_unreserve(mem->bo);
 
+    printk("gpumap_mem, mem->bo=%p, mem->domain=%p, vmid0_address=%p, *vmid0_address=%llx\n", 
+                                            mem->bo, mem->domain, vmid0_address, *vmid0_address);
 	return r;
 }
 
@@ -240,6 +246,7 @@ static int kmap_mem(struct kgd_dev *kgd, struct kgd_mem *mem, void **ptr)
 {
 	int r;
 
+    printk("kmap_mem\n");
 	r = radeon_bo_reserve(mem->bo, true);
 	BUG_ON(r != 0); /* ttm_bo_reserve can only fail if the buffer reservation lock is held in circumstances that would deadlock. */
 	r = radeon_bo_kmap(mem->bo, ptr);

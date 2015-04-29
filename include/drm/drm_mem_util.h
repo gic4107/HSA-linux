@@ -34,7 +34,7 @@ static __inline__ void *drm_calloc_large(size_t nmemb, size_t size)
 	if (size != 0 && nmemb > SIZE_MAX / size)
 		return NULL;
 
-	if (size * nmemb <= PAGE_SIZE)
+	if (size * nmemb <= PAGE_SIZE)  // here
 	    return kcalloc(nmemb, size, GFP_KERNEL);
 
 	return __vmalloc(size * nmemb,

@@ -836,6 +836,53 @@ TRACE_EVENT(kvm_track_tsc,
 		  __print_symbolic(__entry->host_clock, host_clocks))
 );
 
+// FIXME: debug
+TRACE_EVENT(kvm_shadow_entry,
+	TP_PROTO(unsigned long gfn, unsigned long pfn,
+		 unsigned int level, unsigned int iterator_level, int shadow_present),
+	TP_ARGS(gfn, pfn, level, iterator_level, shadow_present),
+
+	TP_STRUCT__entry(
+		__field(	unsigned long,	gfn			)
+		__field(	unsigned long,	pfn			)
+		__field(	unsigned int,	level    	)
+		__field(	unsigned int,	iterator_level	)
+		__field(	int,		    shadow_present	)
+	),
+
+	TP_fast_assign(
+		__entry->gfn		= gfn;
+		__entry->pfn		= pfn;
+		__entry->level		= level;
+		__entry->iterator_level		= iterator_level;
+        __entry->shadow_present     = shadow_present;
+	),
+
+	TP_printk("gfn %llx, pfn %llx, level %u, iterator_level %u, shadow_present %d",
+		  __entry->gfn, __entry->pfn, __entry->level, 
+          __entry->iterator_level, __entry->shadow_present)
+);
+
+TRACE_EVENT(kvm_set_spte,
+	TP_PROTO(unsigned int next_level, unsigned long *sptep, unsigned long spte),
+	TP_ARGS(next_level, sptep, spte),
+
+	TP_STRUCT__entry(
+		__field(	unsigned int,	next_level  )
+		__field(	unsigned long*,	sptep		)
+		__field(	unsigned long,	spte    	)
+	),
+
+	TP_fast_assign(
+		__entry->next_level	= next_level;
+		__entry->sptep		= sptep;
+		__entry->spte		= spte;
+	),
+
+	TP_printk("next_level %d, sptep %llx, spte %llx",
+		  __entry->next_level, __entry->sptep, __entry->spte)
+);
+
 #endif /* CONFIG_X86_64 */
 
 #endif /* _TRACE_KVM_H */

@@ -2300,22 +2300,24 @@ static int remap_pte_range(struct mm_struct *mm, pmd_t *pmd,
 	pte_t *pte;
 	spinlock_t *ptl;
     int debug_flag = 0;
-    if(pfn == 0xD0003) {
+    if(pfn == 0xD0003 || pfn == 0xD0002) {
         debug_flag = 1;
         printk("===== remap_pte_range =====\n");
     }
 
 	pte = pte_alloc_map_lock(mm, pmd, addr, &ptl);
-    if(debug_flag) {
-        printk("pte=%p, prot=0x%lx, pfn_pte0x%llx, pte_mkspecial=0x%llx\n", 
-            pte, prot, pfn_pte(pfn, prot), pte_mkspecial(pfn_pte(pfn, prot)));
-    }
 	if (!pte)
 		return -ENOMEM;
 	arch_enter_lazy_mmu_mode();
 	do {
 		BUG_ON(!pte_none(*pte));
 		set_pte_at(mm, addr, pte, pte_mkspecial(pfn_pte(pfn, prot)));
+
+        if(debug_flag) {
+            printk("pte=%p, pte_val=%llx, prot=%lx, pfn_pte=%llx, pte_mkspecial=%llx\n", 
+                pte, pte_val(*pte), prot, pfn_pte(pfn, prot), pte_mkspecial(pfn_pte(pfn, prot)));
+        }
+
 		pfn++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 	arch_leave_lazy_mmu_mode();
@@ -2384,7 +2386,7 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	int err;
     int debug_flag = 0;
 
-    if(pfn == 0xD0003) {
+    if(pfn == 0xD0003 || pfn == 0xD0002) {
         printk("===== remap_pfn_range =====\n");
         printk("pfn=0x%lx, addr=0x%llx\n", pfn, addr);
         debug_flag = 1;
