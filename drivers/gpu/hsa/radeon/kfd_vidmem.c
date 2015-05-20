@@ -145,3 +145,10 @@ void radeon_kfd_vidmem_free_unmap(struct kfd_dev *kfd, kfd_mem_obj mem_obj)
 	radeon_kfd_vidmem_unkmap(kfd, mem_obj);
 	radeon_kfd_vidmem_free(kfd, mem_obj);
 }
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct page **radeon_kfd_vidmem_pages(struct kfd_dev *kfd, kfd_mem_obj *mem_obj, int *num_pages)
+{
+    return kfd2kgd->mem_pages(kfd->kgd, (struct kgd_mem*)*mem_obj, num_pages); 
+}
+#endif

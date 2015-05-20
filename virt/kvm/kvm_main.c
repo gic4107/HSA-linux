@@ -746,34 +746,48 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	enum kvm_mr_change change;
 
 	r = check_memory_region_flags(mem);
-	if (r)
+	if (r) {
+        printk("out1\n");
 		goto out;
+    }
 
 	r = -EINVAL;
 	/* General sanity checks */
-	if (mem->memory_size & (PAGE_SIZE - 1))
+	if (mem->memory_size & (PAGE_SIZE - 1)) {
+        printk("out2\n");
 		goto out;
-	if (mem->guest_phys_addr & (PAGE_SIZE - 1))
+    }
+	if (mem->guest_phys_addr & (PAGE_SIZE - 1)) {
+        printk("out3\n");
 		goto out;
+    }
 	/* We can read the guest memory with __xxx_user() later on. */
 	if ((mem->slot < KVM_USER_MEM_SLOTS) &&
 	    ((mem->userspace_addr & (PAGE_SIZE - 1)) ||
 	     !access_ok(VERIFY_WRITE,
 			(void __user *)(unsigned long)mem->userspace_addr,
-			mem->memory_size)))
+			mem->memory_size))) {
+        printk("out4\n");
 		goto out;
-	if (mem->slot >= KVM_MEM_SLOTS_NUM)
+    }
+	if (mem->slot >= KVM_MEM_SLOTS_NUM) {
+        printk("out5\n");
 		goto out;
-	if (mem->guest_phys_addr + mem->memory_size < mem->guest_phys_addr)
+    }
+	if (mem->guest_phys_addr + mem->memory_size < mem->guest_phys_addr) {
+        printk("out6\n");
 		goto out;
+    }
 
 	slot = id_to_memslot(kvm->memslots, mem->slot);
 	base_gfn = mem->guest_phys_addr >> PAGE_SHIFT;
 	npages = mem->memory_size >> PAGE_SHIFT;
 
 	r = -EINVAL;
-	if (npages > KVM_MEM_MAX_NR_PAGES)
+	if (npages > KVM_MEM_MAX_NR_PAGES) {
+        printk("out7\n");
 		goto out;
+    }
 
 	if (!npages)
 		mem->flags &= ~KVM_MEM_LOG_DIRTY_PAGES;
@@ -792,8 +806,12 @@ int __kvm_set_memory_region(struct kvm *kvm,
 		else { /* Modify an existing slot. */
 			if ((mem->userspace_addr != old.userspace_addr) ||
 			    (npages != old.npages) ||
-			    ((new.flags ^ old.flags) & KVM_MEM_READONLY))
+			    ((new.flags ^ old.flags) & KVM_MEM_READONLY)) {
+                printk("out71: ");
+                printk("old=%llx %d %llx\n", old.userspace_addr, old.npages, old.flags);
+                printk("new=%llx %d %llx\n", mem->userspace_addr, npages, new.flags);
 				goto out;
+            }
 
 			if (base_gfn != old.base_gfn)
 				change = KVM_MR_MOVE;
@@ -801,13 +819,16 @@ int __kvm_set_memory_region(struct kvm *kvm,
 				change = KVM_MR_FLAGS_ONLY;
 			else { /* Nothing to change. */
 				r = 0;
+                printk("out8\n");
 				goto out;
 			}
 		}
 	} else if (old.npages) {
 		change = KVM_MR_DELETE;
-	} else /* Modify a non-existent slot: disallowed. */
+	} else /* Modify a non-existent slot: disallowed. */ {
+        printk("out9\n");
 		goto out;
+    }
 
 	if ((change == KVM_MR_CREATE) || (change == KVM_MR_MOVE)) {
 		/* Check for overlaps */
@@ -817,8 +838,10 @@ int __kvm_set_memory_region(struct kvm *kvm,
 			    (slot->id == mem->slot))
 				continue;
 			if (!((base_gfn + npages <= slot->base_gfn) ||
-			      (base_gfn >= slot->base_gfn + slot->npages)))
+			      (base_gfn >= slot->base_gfn + slot->npages))) {
+                printk("out10\n");
 				goto out;
+            }
 		}
 	}
 

@@ -55,7 +55,9 @@ uint64_t in_buf;
 uint64_t out_buf;
 
 // FIXME: mqd identical mapping
-uint64_t identical_hva_space;
+#ifdef IDENTICAL_MAPPING
+struct identical_mapping_info identical_mapping;
+#endif
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
 #include <asm/kvm_host.h>
@@ -1791,12 +1793,15 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         err = -EINVAL;
 		break;
 
-	case KFD_IOC_VM_IDENTICAL_HVA_SPACE:
-		printk("KFD_IOC_VM_IDENTICAL_HVA_SPACE\n");
-    	if (copy_from_user(&identical_hva_space, (void __user *)arg, sizeof(identical_hva_space)))
+	case KFD_IOC_VM_IDENTICAL_MAPPING_SPACE:
+		printk("KFD_IOC_VM_IDENTICAL_MAPPING_SPACE\n");
+        struct kfd_ioctl_vm_identical_mapping_space_args args;
+    	if (copy_from_user(&args, (void __user *)arg, sizeof(args)))
     		return -EFAULT;    
-        printk("identical_hva_space=%llx\n", identical_hva_space);
-        access_page(current->mm, (unsigned long)identical_hva_space);
+        identical_mapping.start     = args.identical_hva_start;
+        identical_mapping.num_pages = args.num_pages;
+        identical_mapping.used      = 0;
+        printk("identical_hva_space=%llx\n", identical_mapping.start);
         
         err = 0;
 		break;

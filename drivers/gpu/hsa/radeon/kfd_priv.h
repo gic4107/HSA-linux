@@ -36,8 +36,8 @@
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
 #include <linux/kvm_host.h>
-#define MQD_IOMMU 1
-//#define IDENTICAL_MAPPING 1
+//#define MQD_IOMMU 1
+#define IDENTICAL_MAPPING 1
 #endif
 struct mqd_manager;
 
@@ -192,6 +192,9 @@ uint64_t radeon_kfd_process_get_pd(void *vm);
 int radeon_kfd_process_gpuvm_alloc(struct kfd_dev *kfd, uint64_t va, size_t size, void *vm, void **mem_obj);
 void radeon_kfd_process_gpuvm_free(struct kfd_dev *kfd, void *mem_obj);
 int radeon_kfd_process_open_graphic_handle(struct kfd_dev *kfd, uint64_t va, void *vm, int32_t fd, uint32_t handle, void **mem_obj);
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct page **radeon_kfd_vidmem_pages(struct kfd_dev *kfd, kfd_mem_obj *mem_obj, int *num_pages);
+#endif
 
 
 
@@ -393,6 +396,14 @@ struct vm_info {
     uint64_t mqd_gva;
     uint64_t mqd_hva;
 };
+
+#ifdef IDENTICAL_MAPPING
+struct identical_mapping_info {
+    uint64_t start;
+    int num_pages;
+    int used;
+};
+#endif
 #endif
 
 /* Process data */

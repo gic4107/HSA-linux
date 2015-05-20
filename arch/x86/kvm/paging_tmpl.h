@@ -595,8 +595,7 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, gva_t addr,
 			goto out_gpte_changed;
 
 		if (sp)
-			link_shadow_page(it.sptep, sp, PT_GUEST_ACCESSED_MASK, it.level);
-//			link_shadow_page(it.sptep, sp, PT_GUEST_ACCESSED_MASK);
+			link_shadow_page(it.sptep, sp, PT_GUEST_ACCESSED_MASK);
 	}
 
 	for (;
@@ -616,8 +615,7 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, gva_t addr,
 
 		sp = kvm_mmu_get_page(vcpu, direct_gfn, addr, it.level-1,
 				      true, direct_access, it.sptep);
-		link_shadow_page(it.sptep, sp, PT_GUEST_ACCESSED_MASK, it.level);
-//		link_shadow_page(it.sptep, sp, PT_GUEST_ACCESSED_MASK);
+		link_shadow_page(it.sptep, sp, PT_GUEST_ACCESSED_MASK);
 	}
 
 	clear_sp_write_flooding_count(it.sptep);

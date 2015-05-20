@@ -106,8 +106,9 @@ struct kfd2kgd_calls {
 	bool (*read_atc_vmid_pasid_mapping_reg_valid_field)(struct kgd_dev *kgd, uint8_t vmid);
 	uint16_t (*read_atc_vmid_pasid_mapping_reg_pasid_field)(struct kgd_dev *kgd, uint8_t vmid);
 	void (*write_vmid_invalidate_request)(struct kgd_dev *kgd, uint8_t vmid);
-
-
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    struct page** (*mem_pages)(struct kgd_dev *kgd, struct kgd_mem *mem, int *num_pages);
+#endif
 };
 
 bool kgd2kfd_init(unsigned interface_version,

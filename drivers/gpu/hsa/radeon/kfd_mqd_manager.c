@@ -61,13 +61,15 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 	pr_debug("kfd: In func %s\n", __func__);
 
 	retval = 0;
-//	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&m, &addr, ALIGN(sizeof(struct cik_mqd), 256));
+#ifdef MQD_IOMMU
 	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&mmm, &addr, ALIGN(sizeof(struct cik_mqd), 256));
-	if (retval != 0)
-		return -ENOMEM;
-
     m = kzalloc(sizeof(struct cik_mqd), GFP_KERNEL);
     printk("m=%p, mmm=%p\n", m, mmm);
+#else
+	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&m, &addr, ALIGN(sizeof(struct cik_mqd), 256));
+#endif
+	if (retval != 0)
+		return -ENOMEM;
 
 	memset(m, 0, ALIGN(sizeof(struct cik_mqd), 256));
 

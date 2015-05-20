@@ -722,3 +722,13 @@ int ttm_bo_move_accel_cleanup(struct ttm_buffer_object *bo,
 	return 0;
 }
 EXPORT_SYMBOL(ttm_bo_move_accel_cleanup);
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct page **ttm_bo_pages(struct ttm_tt *ttm, int *num_pages)
+{
+    printk("ttm_bo_pages, ttm=%p, pages=%p, num_page=%d\n", ttm, ttm->pages, ttm->num_pages);
+    *num_pages = ttm->num_pages;
+    return ttm->pages;
+}
+EXPORT_SYMBOL(ttm_bo_pages);
+#endif

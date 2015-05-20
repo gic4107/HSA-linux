@@ -66,6 +66,10 @@ static bool read_atc_vmid_pasid_mapping_reg_valid_field(struct kgd_dev *kgd, uin
 static uint16_t read_atc_vmid_pasid_mapping_reg_pasid_field(struct kgd_dev *kgd, uint8_t vmid);
 static void write_vmid_invalidate_request(struct kgd_dev *kgd, uint8_t vmid);
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct page **mem_pages(struct kgd_dev *kgd, struct kgd_mem *mem, int *num_pages);
+#endif
+
 static const struct kfd2kgd_calls kfd2kgd = {
 	.allocate_mem = allocate_mem,
 	.free_mem = free_mem,
@@ -88,7 +92,10 @@ static const struct kfd2kgd_calls kfd2kgd = {
 	.open_graphic_handle = open_graphic_handle,
 	.read_atc_vmid_pasid_mapping_reg_pasid_field = read_atc_vmid_pasid_mapping_reg_pasid_field,
 	.read_atc_vmid_pasid_mapping_reg_valid_field = read_atc_vmid_pasid_mapping_reg_valid_field,
-	.write_vmid_invalidate_request = write_vmid_invalidate_request
+	.write_vmid_invalidate_request = write_vmid_invalidate_request,
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    .mem_pages = mem_pages
+#endif
 };
 
 static const struct kgd2kfd_calls *kgd2kfd;
@@ -599,3 +606,12 @@ static void write_vmid_invalidate_request(struct kgd_dev *kgd, uint8_t vmid)
 	struct radeon_device *rdev = (struct radeon_device *) kgd;
 	return WREG32(VM_INVALIDATE_REQUEST, 1 << vmid);
 }
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+struct page **ttm_bo_pages(struct ttm_tt *ttm, int *num_pages);
+struct page **mem_pages(struct kgd_dev *kgd, struct kgd_mem *mem, int *num_pages)
+{
+    printk("mem_pages: mem=%p\n", mem);
+    return ttm_bo_pages(mem->bo->tbo.ttm, num_pages);    
+}
+#endif

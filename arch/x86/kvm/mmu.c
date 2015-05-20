@@ -2071,11 +2071,9 @@ static void shadow_walk_next(struct kvm_shadow_walk_iterator *iterator)
 	return __shadow_walk_next(iterator, *iterator->sptep);
 }
 
-#ifdef CONFIG_HSA_VIRTUALIZATION
-static void __link_shadow_page_iommu(u64 *sptep, struct kvm_mmu_page *sp, bool accessed, int level)
+static void link_shadow_page(u64 *sptep, struct kvm_mmu_page *sp, bool accessed)
 {
 	u64 spte;
-    int next_level = level - 1;
 
 	BUILD_BUG_ON(VMX_EPT_READABLE_MASK != PT_PRESENT_MASK ||
 			VMX_EPT_WRITABLE_MASK != PT_WRITABLE_MASK);
@@ -2086,42 +2084,17 @@ static void __link_shadow_page_iommu(u64 *sptep, struct kvm_mmu_page *sp, bool a
 	if (accessed)
 		spte |= shadow_accessed_mask;
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    int next_level = sp->role.level;
     BUG_ON(next_level<=0 || next_level >=7);
     spte |= (u64)next_level << PT_NEXT_LEVEL_SHIFT;
     spte |= (spte & PT_WRITABLE_MASK)? PT_IW_MASK: 0;
     spte |= PT_IR_MASK;
     if (next_level == 0)       // pte
         spte |= (spte & PT_USER_MASK)? PTE_U_MASK: 0;
-
-//    printk("link_shadow_page_iommu: next_level=%d role.level=%d, sptep=%p, spte=%llx\n", next_level, sp->role.level, sptep, spte);
-
-	mmu_spte_set(sptep, spte);
-}
-#else 
-static void __link_shadow_page(u64 *sptep, struct kvm_mmu_page *sp, bool accessed)
-{
-	u64 spte;
-
-	BUILD_BUG_ON(VMX_EPT_READABLE_MASK != PT_PRESENT_MASK ||
-			VMX_EPT_WRITABLE_MASK != PT_WRITABLE_MASK);
-
-	spte = __pa(sp->spt) | PT_PRESENT_MASK | PT_WRITABLE_MASK |
-	       shadow_user_mask | shadow_x_mask;
-
-	if (accessed)
-		spte |= shadow_accessed_mask;
-
-	mmu_spte_set(sptep, spte);
-}
 #endif
 
-static void link_shadow_page(u64 *sptep, struct kvm_mmu_page *sp, bool accessed, int level)
-{
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    __link_shadow_page_iommu(sptep, sp, accessed, level);
-#else
-    __link_shadow_page(sptep, sp, accessed);
-#endif
+	mmu_spte_set(sptep, spte);
 }
 
 static void validate_direct_spte(struct kvm_vcpu *vcpu, u64 *sptep,
@@ -2571,7 +2544,7 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 
     // FIXME: debug
     trace_kvm_set_spte(next_level, sptep, spte);
-//    printk("set_spte: next_level=%d sptep=%p, spte=%llx\n", next_level, sptep, spte);
+    printk("set_spte: next_level=%d sptep=%p, spte=%llx\n", next_level, sptep, spte);
 #endif
 
 set_pte:
@@ -2758,8 +2731,7 @@ static int __direct_map(struct kvm_vcpu *vcpu, gpa_t v, int write,
 					      iterator.level - 1,
 					      1, ACC_ALL, iterator.sptep);
 
-			link_shadow_page(iterator.sptep, sp, true, iterator.level);
-//			link_shadow_page(iterator.sptep, sp, true);     // set pte entry including control bits
+			link_shadow_page(iterator.sptep, sp, true);     // set pte entry including control bits
 		}
 	}
 	return emulate;
@@ -3856,7 +3828,7 @@ void kvm_init_shadow_mmu(struct kvm_vcpu *vcpu, struct kvm_mmu *context)
 	ASSERT(vcpu);
 	ASSERT(!VALID_PAGE(vcpu->arch.mmu.root_hpa));
 
-	if (!is_paging(vcpu))
+	if (!is_paging(vcpu))       
 		nonpaging_init_context(vcpu, context);
 	else if (is_long_mode(vcpu))
 		paging64_init_context(vcpu, context);
@@ -3899,6 +3871,7 @@ EXPORT_SYMBOL_GPL(kvm_init_shadow_ept_mmu);
 
 static void init_kvm_softmmu(struct kvm_vcpu *vcpu)
 {
+    printk("init_kvm_softmmu\n");
 	kvm_init_shadow_mmu(vcpu, vcpu->arch.walk_mmu);
 	vcpu->arch.walk_mmu->set_cr3           = kvm_x86_ops->set_cr3;
 	vcpu->arch.walk_mmu->get_cr3           = get_cr3;
