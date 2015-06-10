@@ -230,7 +230,10 @@ static void vm_ppr_handler(void)
     tail = ppr->tail;
     printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, ppr->tail, ppr->vm_consume_head);
 
-//    while (head != tail) {
+    if (head == tail)
+        return;
+
+    while (head != tail) {
         ++log_count;
         ppr_log = &ppr->ppr_log_region[head];
         printk("ppr_log=%p, task=0x%llx, mm=0x%llx, addr=0x%llx, write=%d\n",
@@ -238,9 +241,6 @@ static void vm_ppr_handler(void)
         mm   = (struct mm_struct*)ppr_log->vm_mm;
         task = (struct task_struct*)ppr_log->vm_task;
 
-//        if (ppr_log->write == 5566)    // FIXME: debug
-//            dump_mqd(ppr_log->address);
-//        else {
     	down_read(&mm->mmap_sem);
     	npages = get_user_pages(task, mm, ppr_log->address, 1, 
                                         ppr_log->write, 0, &page, NULL);
@@ -253,10 +253,9 @@ static void vm_ppr_handler(void)
             gpa = (uint64_t*)kmalloc(sizeof(uint64_t), GFP_KERNEL);
             *gpa = walk_page_table2(mm, ppr_log->address);
         }
-//        }
 
         head = (head+1) % MAX_PPR_LOG_ENTRY;
-//    }
+    }
     ppr->vm_consume_head = head;
     printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, ppr->tail, ppr->vm_consume_head);
 
@@ -280,14 +279,14 @@ static void virtio_iommu_done(struct virtqueue *vq)
     struct virtio_iommu_req *req;
     int len;
 	unsigned long flags;
-    int virtio_req_back = 0;
+//    int virtio_req_back = 0;
 
     printk("virtio_iommu_done\n");
 	spin_lock_irqsave(&viommu->vq_lock, flags);
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-            virtio_req_back = 1;
+//            virtio_req_back = 1;
             if (req->cb)
                 req->cb(req->param);
 
@@ -302,7 +301,7 @@ static void virtio_iommu_done(struct virtqueue *vq)
 
 	spin_unlock_irqrestore(&viommu->vq_lock, flags);
 
-    if (!virtio_req_back)   // interrupt by iommu-vm-ppr sending irqfd
+//    if (!virtio_req_back)   // interrupt by iommu-vm-ppr sending irqfd
         vm_ppr_handler();
 }
 

@@ -7,6 +7,9 @@
 #include "../cik_mqds.h"
 #include "../cik_regs.h"
 
+// FIXME: debug
+#define MQD_IOMMU 1
+
 #define PROPERTIES_NODE_MAX 5
 #define MAX_PROCESS_QUEUES 1024
 

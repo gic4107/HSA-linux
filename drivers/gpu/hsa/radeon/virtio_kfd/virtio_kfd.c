@@ -857,6 +857,7 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         if (copy_from_user(&cq_args, arg, sizeof(struct kfd_ioctl_create_queue_args)))
             return -EFAULT;
 
+#ifdef MQD_IOMMU
 //        set_queue_properties_from_user(&q_properties, &cq_args);
 //        mqd = mqd_create(&q_properties);
         mqd = kzalloc(sizeof(struct cik_mqd), GFP_KERNEL);
@@ -865,6 +866,7 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         memcpy(&vcq_args.args, &cq_args, sizeof(cq_args));
         vcq_args.mqd_gva = (uint64_t)mqd;
         vcq_args.mqd_gpa = (uint64_t)virt_to_phys(mqd);
+#endif
 
         printk("ring_base_address=0x%llx\n", cq_args.ring_base_address);
         printk("write_pointer_address=0x%llx\n", cq_args.write_pointer_address);
@@ -892,13 +894,17 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 //        cq_args.write_pointer_address = gva_to_gpa(current->mm, (unsigned long)wptr_user);
 //        cq_args.read_pointer_address  = gva_to_gpa(current->mm, (unsigned long)rptr_user);
 
-//		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, &cq_args, sizeof(cq_args), vm_mm);       // back-end will fill args
+#ifdef MQD_IOMMU
         dump_mqd(mqd);
         access_clr_a_page(current->mm, (unsigned long)mqd);
 		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, &vcq_args, sizeof(vcq_args), vm_mm);       // back-end will fill args
         access_clr_a_page(current->mm, (unsigned long)mqd);
         dump_mqd(mqd);
         cq_args.queue_id = vcq_args.args.queue_id;
+#else
+		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, &cq_args, sizeof(cq_args), vm_mm);       // back-end will fill args
+        cq_args.queue_id = cq_args.queue_id;
+#endif
         printk("queue_id=%d\n", cq_args.queue_id);
 
         access_clr_a_page(current->mm, (unsigned long)mqd);
@@ -915,13 +921,13 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             return -EFAULT;
 
         // bind mmu_notifier to notify host to flush IOMMU page
-        if (!p->virtio_iommu_bind) {
+/*        if (!p->virtio_iommu_bind) {
             printk("bind virtio_iommu notifier\n"); 
             p->virtio_iommu_bind = 1;
             p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
             mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
         }
-
+*/
 		break;
 
 	case KFD_IOC_DESTROY_QUEUE:
@@ -951,13 +957,13 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		err = virtkfd_add_req(VIRTKFD_SET_MEMORY_POLICY, &mp_args, sizeof(mp_args), vm_mm);       // back-end will fill args
 
         // bind mmu_notifier to notify host to flush IOMMU page
-        if (!p->virtio_iommu_bind) {
+/*        if (!p->virtio_iommu_bind) {
             printk("bind virtio_iommu notifier\n"); 
             p->virtio_iommu_bind = 1;
             p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
             mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
         }
-
+*/
 		break;
 
 	case KFD_IOC_GET_CLOCK_COUNTERS:
@@ -1007,13 +1013,13 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 //		err = kfd_ioctl_dbg_register(filep, process, (void __user *) arg);
 
         // bind mmu_notifier to notify host to flush IOMMU page
-        if (!p->virtio_iommu_bind) {
+/*        if (!p->virtio_iommu_bind) {
             printk("bind virtio_iommu notifier\n"); 
             p->virtio_iommu_bind = 1;
             p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
             mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
         }
-
+*/
 		break;
 
 	case KFD_IOC_DBG_UNREGISTER:
@@ -1046,13 +1052,13 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 //		err = kfd_ioctl_create_vidmem(filep, process, (void __user *)arg);
 
         // bind mmu_notifier to notify host to flush IOMMU page
-        if (!p->virtio_iommu_bind) {
+/*        if (!p->virtio_iommu_bind) {
             printk("bind virtio_iommu notifier\n"); 
             p->virtio_iommu_bind = 1;
             p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
             mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
         }
-
+*/
 		break;
 
 	case KFD_IOC_DESTROY_VIDMEM:
@@ -1112,13 +1118,13 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 //		err = kfd_ioctl_open_graphic_handle(filep, process, (void __user *)arg);
 
         // bind mmu_notifier to notify host to flush IOMMU page
-        if (!p->virtio_iommu_bind) {
+/*        if (!p->virtio_iommu_bind) {
             printk("bind virtio_iommu notifier\n"); 
             p->virtio_iommu_bind = 1;
             p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
             mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
         }
-
+*/
 		break;
 
 	default:

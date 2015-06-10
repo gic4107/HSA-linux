@@ -51,8 +51,6 @@ static inline void native_pte_clear(struct mm_struct *mm, unsigned long addr,
 
 static inline void native_set_pte(pte_t *ptep, pte_t pte)
 {
-//    if ((unsigned long)(pte_val(pte)) & 0x880000000000)
-        printk("native_set_pte: ptep=%p, pte=%llx\n", ptep, ((unsigned long)(pte_val(pte))));
 	*ptep = pte;
 }
 
@@ -63,8 +61,6 @@ static inline void native_set_pte_atomic(pte_t *ptep, pte_t pte)
 
 static inline void native_set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
-//    if ((unsigned long)(pmd_val(pmd)) & 0x880000000000)
-        printk("native_set_pmd: pmdp=%p, pmd=%llx\n", pmdp, ((unsigned long)(pmd_val(pmd))));
 	*pmdp = pmd;
 }
 
@@ -101,8 +97,6 @@ static inline pmd_t native_pmdp_get_and_clear(pmd_t *xp)
 
 static inline void native_set_pud(pud_t *pudp, pud_t pud)
 {
-//    if ((unsigned long)(pud_val(pud)) & 0x880000000000)
-        printk("native_set_pud: pudp=%p, pud=%llx\n", pudp, ((unsigned long)(pud_val(pud))));
 	*pudp = pud;
 }
 
@@ -113,8 +107,6 @@ static inline void native_pud_clear(pud_t *pud)
 
 static inline void native_set_pgd(pgd_t *pgdp, pgd_t pgd)
 {
-//    if ((unsigned long)(pgd_val(pgd)) & 0x880000000000)
-        printk("native_set_pgd: pgdp=%p, pgd=%llx\n", pgdp, ((unsigned long)(pgd_val(pgd))));
 	*pgdp = pgd;
 }
 
