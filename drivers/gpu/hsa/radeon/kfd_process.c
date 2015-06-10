@@ -30,10 +30,6 @@ struct mm_struct;
 #include "kfd_priv.h"
 #include "kfd_dbgmgr.h"
 
-#ifdef CONFIG_HSA_VIRTUALIZATION
-#include <asm/kvm_host.h>
-#endif
-
 /* Initial size for the array of queues.
  * The allocated size is doubled each time it is exceeded up to MAX_PROCESS_QUEUES. */
 #define INITIAL_QUEUE_ARRAY_SIZE 16
@@ -42,6 +38,11 @@ struct mm_struct;
 #define KFD_PROCESS_TABLE_SIZE 5 /* bits: 32 entries */
 static DEFINE_HASHTABLE(kfd_processes, KFD_PROCESS_TABLE_SIZE);
 static DEFINE_MUTEX(kfd_processes_mutex);
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+#include <asm/kvm_host.h>
+LIST_HEAD(vm_info_list);
+#endif
 
 DEFINE_STATIC_SRCU(kfd_processes_srcu);
 
@@ -178,9 +179,6 @@ static void shutdown_process(struct kfd_process *p)
             vm_process = 1;
         }
     }
-    
-    if (vm_process == 0)
-        kvm_hsa_disable_iommu_nested_translation();
 }
 
 static void
@@ -359,8 +357,6 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
         // set vm_pgd_hpa to IOMMU
     	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, kvm, virtio_be->mm, 
                         p->vm_info->vm_task, p->vm_info->vm_mm, pgd_gpa);
-//    	err = amd_iommu_vm_process_bind_pasid(dev->pdev, p->pasid, kvm, virtio_be->mm, 
-//                        p->vm_info->vm_task, p->vm_info->vm_mm, 0x1234000);
     	if (err < 0) {
             printk("amd_iommu_vm_process_bind_pasid fail %d\n", err);
 //    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
@@ -768,6 +764,74 @@ int kvm_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread)
     return 0; 
 }
 EXPORT_SYMBOL(kvm_bind_kfd_virtio_be);
+
+/* Check whether the cr3 use KFD, and whether its SPT is same.
+ * If all same, just return.
+ * If guest process' SPT changes, bind SPT to IOMMU.
+ */ 
+void radeon_kfd_bind_iommu_spt(gpa_t guest_cr3, hpa_t spt_root)
+{
+    struct vm_info *vm_info;
+    struct kfd_process *virtio_be;
+    struct kvm *kvm;
+    int pasid;
+    int err;
+
+    if (list_empty(&vm_info_list))
+        return;
+
+    printk("guest_cr3=%llx, spt_root=%llx\n", guest_cr3, spt_root);
+    list_for_each_entry(vm_info, &vm_info_list, list) {
+        if (vm_info->vm_pgd_gpa == guest_cr3) {
+            if (vm_info->vm_spt_root == spt_root) { // SPT same, just return
+                printk("PASID %d, spt_root same\n", vm_info->kfd_process->pasid);
+                return;
+            }
+            break;
+        }
+    }
+
+    if (!vm_info) {
+        printk("radeon_kfd_bind_iommu_spt: vm_info null\n");
+        return;
+    }
+
+    if (!vm_info->dev) {
+        return;
+    }
+
+    if (vm_info->vm_pgd_gpa != guest_cr3) {
+        printk("radeon_kfd_bind_iommu_spt: not a kfd_process, vm_info's cr3=%llx\n", vm_info->vm_pgd_gpa);
+        return;
+    }
+
+    printk("PASID %d, original spt_root=%llx\n", 
+                      vm_info->kfd_process->pasid, vm_info->vm_spt_root);
+    vm_info->vm_spt_root = spt_root;        // set SPT
+    pasid = vm_info->kfd_process->pasid;             
+    virtio_be = vm_info->virtio_be_process;
+    kvm = virtio_be->virtio_be_info->kvm;
+
+    printk("Set SPT root %llx to PASID %d, dev=%p, pdev=%p\n", spt_root, pasid, vm_info->dev, vm_info->dev->pdev);
+    err = amd_iommu_set_gcr3(vm_info->dev->pdev, pasid, spt_root);      // bind SPT to IOMMU
+   	if (err < 0) {
+        printk("amd_iommu_set_gcr3 fail %d\n", err);
+    }        
+}
+EXPORT_SYMBOL(radeon_kfd_bind_iommu_spt);
+
+uint64_t radeon_kfd_get_vm_process_pgd(uint64_t vm_task)
+{
+    struct vm_info *vm_info;
+    printk("radeon_kfd_get_vm_process_pgd %llx\n", vm_task);
+
+    list_for_each_entry(vm_info, &vm_info_list, list) 
+        if(vm_info->vm_task == vm_task)
+            return vm_info->vm_pgd_gpa;
+
+    return 0;
+}
+EXPORT_SYMBOL(radeon_kfd_get_vm_process_pgd);
 
 int adjust_vm_process_pgd(struct kfd_dev *dev, struct kfd_process *p)
 {

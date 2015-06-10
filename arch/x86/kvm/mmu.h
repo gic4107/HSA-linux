@@ -54,6 +54,7 @@
 #define PFERR_RSVD_MASK (1U << 3)
 #define PFERR_FETCH_MASK (1U << 4)
 #ifdef CONFIG_HSA_VIRTUALIZATION
+#define PFERR_IOMMU_MASK (1U << 9)
 #define IDENTICAL_MAPPING_MASK (1U << 10)
 #endif
 

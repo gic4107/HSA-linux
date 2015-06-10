@@ -61,6 +61,7 @@ struct identical_mapping_info identical_mapping;
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
 #include <asm/kvm_host.h>
+extern struct list_head vm_info_list;
 #endif
 
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
@@ -360,9 +361,9 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 //        access_clr_a_page(current->mm, (unsigned long)wptr_user);
 //        access_clr_a_page(current->mm, (unsigned long)wptr_user+24);
 //        access_clr_a_page(current->mm, (unsigned long)rptr_user);
-        access_page(current->mm, (unsigned long)ring_user);
-        access_page(current->mm, (unsigned long)wptr_user);
-        access_page(current->mm, (unsigned long)rptr_user);
+//        access_page(current->mm, (unsigned long)ring_user);
+//        access_page(current->mm, (unsigned long)wptr_user);
+//        access_page(current->mm, (unsigned long)rptr_user);
 //    }
 
 	if (!access_ok(VERIFY_WRITE, args.read_pointer_address, sizeof(qptr_t))) {
@@ -391,46 +392,20 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 		goto err_bind_process;
 	}
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
+        p->vm_info->dev = dev;
+        printk("dev=%p, pdev=%p\n", dev, dev->pdev);
+    }
+#endif
+
 	pr_debug("kfd: creating queue for PASID %d on GPU 0x%x\n",
 			p->pasid,
 			dev->id);
 
-
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    if (sched_policy == KFD_SCHED_POLICY_HWS) {
-        iommu_nested_translation = kvm_hsa_is_iommu_nested_translation();
-        if (iommu_nested_translation) {
-            err = kvm_hsa_disable_iommu_nested_translation();
-            if (err) {
-                printk("kvm_hsa_disable_iommu_nested_translation fail\n");
-                return -EINVAL;
-            }
-    
-            adjust_vm_process_pgd(dev, p);
-        }
-    }
-#endif
-
 	err = pqm_create_queue(&p->pqm, dev, filep, &q_properties, 0, q_properties.type, &queue_id);
 	if (err != 0)
 		goto err_create_queue;
-
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    if (sched_policy == KFD_SCHED_POLICY_HWS) {
-        if (iommu_nested_translation) {
-            err = kvm_hsa_enable_iommu_nested_translation(dev->pdev);
-            if (err) {
-                printk("kvm_hsa_enable_iommu_nested_translation fail\n");
-                return -EINVAL;
-            }
-    
-            resume_vm_process_pgd(dev, p);
-        }
-    }
-#endif
-
-	args.queue_id = queue_id;
-	args.doorbell_address = (uint64_t)q_properties.doorbell_ptr;
 
 	if (copy_to_user(arg, &args, sizeof(args))) {
 		err = -EFAULT;
@@ -485,10 +460,10 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 
     // FIXME: debug code to show the permission
 //    if (p->process_type == KFD_PROCESS_TYPE_NORMAL) {     // comment only if vm's info sent in HVA
-        access_page(current->mm, (unsigned long)ring_user);
-        access_page(current->mm, (unsigned long)wptr_user);
-        access_page(current->mm, (unsigned long)rptr_user);
-        access_page(current->mm, (unsigned long)mqd_kva); 
+//        access_page(current->mm, (unsigned long)ring_user);
+//        access_page(current->mm, (unsigned long)wptr_user);
+//        access_page(current->mm, (unsigned long)rptr_user);
+//        access_page(current->mm, (unsigned long)mqd_kva); 
 //    }
 
 	pr_debug("kfd: destroying queue id %d for PASID %d\n",
@@ -497,32 +472,7 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 
 	mutex_lock(&p->mutex);
 
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    if (sched_policy == KFD_SCHED_POLICY_HWS) {
-        iommu_nested_translation = kvm_hsa_is_iommu_nested_translation();
-        if (iommu_nested_translation) {
-            err = kvm_hsa_stop_iommu_nested_translation();
-            if (err) {
-                printk("kvm_hsa_disable_iommu_nested_translation fail\n");
-                return -EINVAL;
-            }
-        }
-    }
-#endif
-
 	retval = pqm_destroy_queue(&p->pqm, args.queue_id);
-
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    if (sched_policy == KFD_SCHED_POLICY_HWS) {
-        if (iommu_nested_translation) {
-            err = kvm_hsa_resume_iommu_nested_translation();
-            if (err) {
-                printk("kvm_hsa_enable_iommu_nested_translation fail\n");
-                return -EINVAL;
-            }
-        }
-    }
-#endif
 
 	mutex_unlock(&p->mutex);
 	return retval;
@@ -1308,12 +1258,17 @@ kfd_ioctl_vm_create_process(struct file *filep, struct kfd_process *p, void __us
     }
 
     process->vm_info = kmalloc(sizeof(struct vm_info), GFP_KERNEL);
+    process->vm_info->kfd_process = process;
     process->vm_info->virtio_be_process = p; 
     process->vm_info->vm_task = vm_info.vm_task;
     process->vm_info->vm_mm   = vm_info.vm_mm;
     process->vm_info->vm_pgd_gpa = vm_info.vm_pgd_gpa;
+    process->vm_info->vm_spt_root = 0;
+    process->vm_info->dev = NULL;
 
     process->is_32bit_user_mode = is_compat_task();
+    list_add(&process->vm_info->list, &vm_info_list);
+   
 
 	dev_dbg(kfd_device, "process %d opened, compat mode (32 bit) - %d\n",
 		process->pasid, process->is_32bit_user_mode);
@@ -1490,6 +1445,7 @@ static int kfd_ioctl_vm_virtio_be_bind_vm_process(struct file *filep,
     return 0;
 }
 
+/*
 static int kfd_ioctl_iommu_enable_nested_translation(struct file *filep,
                 struct kfd_process *p, void __user *arg)
 {
@@ -1519,7 +1475,7 @@ static int kfd_ioctl_iommu_enable_nested_translation(struct file *filep,
     
     return 0;
 }
-
+*/
 #endif
 
 static long
@@ -1661,11 +1617,11 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         err = 0;
         break;
 
-    case KFD_IOC_IOMMU_ENABLE_NESTED_TRANSLATION:
+/*    case KFD_IOC_IOMMU_ENABLE_NESTED_TRANSLATION:
         printk("KFD_IOC_IOMMU_ENABLE_NESTED_TRANSLATION\n");
         err = kfd_ioctl_iommu_enable_nested_translation(filep, process, (void __user *)arg); 
         break;
-
+*/
     case KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS:  // used for mmap
         printk("KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS\n");
         err = kfd_ioctl_vm_virtio_be_bind_vm_process(filep, process, (void __user *)arg);
@@ -1793,6 +1749,7 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         err = -EINVAL;
 		break;
 
+#ifdef IDENTICAL_MAPPING
 	case KFD_IOC_VM_IDENTICAL_MAPPING_SPACE:
 		printk("KFD_IOC_VM_IDENTICAL_MAPPING_SPACE\n");
         struct kfd_ioctl_vm_identical_mapping_space_args args;
@@ -1805,6 +1762,7 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         
         err = 0;
 		break;
+#endif
 
     // FIXME: debug
     case KFD_IOC_DEBUG_DOORBELL_VALUE:
@@ -1825,11 +1783,11 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		printk("KFD_IOC_KICK_DOORBELL1, %p\n", pasid1_doorbell_kernel_ptr);
         printk("mqd_kva = %p\n", mqd_kva);
         dump_mqd(mqd_kva); 
-        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
         write_kernel_doorbell((u32 *)pasid1_doorbell_kernel_ptr, 16);
-        for(i=1; i!=0; i++);
-        for(i=1; i!=0; i++);
-        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+//        for(i=1; i!=0; i++);
+//        for(i=1; i!=0; i++);
+//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
         dump_mqd(mqd_kva); 
         break;
 
@@ -1837,15 +1795,15 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	case KFD_IOC_KICK_DOORBELL2:
 		printk("KFD_IOC_KICK_DOORBELL2, %p\n", pasid2_doorbell_kernel_ptr);
         printk("mqd_kva = %p\n", mqd_kva);
-        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
 //        access_clr_a_page(current->mm, (unsigned long)identical_hva_space);
         dump_mqd(mqd_kva); 
         write_kernel_doorbell((u32 *)pasid2_doorbell_kernel_ptr, 16);
-        for(i=1; i!=0; i++);
-        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+//        for(i=1; i!=0; i++);
+//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
 //        access_clr_a_page(current->mm, (unsigned long)identical_hva_space);
         dump_mqd(mqd_kva); 
-        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
+//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
         break;
 
     // FIXME: debug
@@ -1868,8 +1826,8 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	case KFD_IOC_WALK_RWPTR:
 		printk("KFD_IOC_WALK_RWPTR ");
 
-        access_clr_a_page(current->mm, wptr_user);
-        access_clr_a_page(current->mm, rptr_user);
+//        access_clr_a_page(current->mm, wptr_user);
+//        access_clr_a_page(current->mm, rptr_user);
 
         break;
 
@@ -1881,7 +1839,7 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             return -EFAULT;
 
         printk("va=%llx\n", va); 
-        access_clr_a_page(current->mm, va);
+//        access_clr_a_page(current->mm, va);
 
         break;
 

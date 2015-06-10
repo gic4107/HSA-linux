@@ -133,6 +133,10 @@ int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 
 	kvm_set_msi_irq(e, &irq);
 
+    if (e->msi.data == 16529) {     // vm_ppr irqfd
+        printk("kvm_set_msi: dest_id=%x, vector=%x, dest_mode=%x, trig_mode=%x, delivery_mode=%x, level=%x, shorthand=%x\n", irq.dest_id, irq.vector, irq.dest_mode, irq.trig_mode, irq.delivery_mode, irq.level, irq.shorthand);
+    }
+
 	return kvm_irq_delivery_to_apic(kvm, NULL, &irq, NULL);
 }
 

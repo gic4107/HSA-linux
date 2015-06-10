@@ -53,6 +53,10 @@
  */
 bool tdp_enabled = false;
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
+#define NPT_DISABLE 1
+#endif
+
 enum {
 	AUDIT_PRE_PAGE_FAULT,
 	AUDIT_POST_PAGE_FAULT,
@@ -2085,6 +2089,7 @@ static void link_shadow_page(u64 *sptep, struct kvm_mmu_page *sp, bool accessed)
 		spte |= shadow_accessed_mask;
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
+#ifndef NPT_DISABLE
     int next_level = sp->role.level;
     BUG_ON(next_level<=0 || next_level >=7);
     spte |= (u64)next_level << PT_NEXT_LEVEL_SHIFT;
@@ -2092,6 +2097,7 @@ static void link_shadow_page(u64 *sptep, struct kvm_mmu_page *sp, bool accessed)
     spte |= PT_IR_MASK;
     if (next_level == 0)       // pte
         spte |= (spte & PT_USER_MASK)? PTE_U_MASK: 0;
+#endif
 #endif
 
 	mmu_spte_set(sptep, spte);
@@ -2536,16 +2542,16 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
 		mark_page_dirty(vcpu->kvm, gfn);
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
+#ifndef NPT_DISABLE
     int next_level = 0;
     spte |= (u64)next_level << PT_NEXT_LEVEL_SHIFT;
     spte |= (spte & PT_WRITABLE_MASK)? PT_IW_MASK: 0;
     spte |= PT_IR_MASK;
     spte |= (spte & PT_USER_MASK)? PTE_U_MASK: 0;
-
-    // FIXME: debug
-    trace_kvm_set_spte(next_level, sptep, spte);
-    printk("set_spte: next_level=%d sptep=%p, spte=%llx\n", next_level, sptep, spte);
 #endif
+#endif
+    // FIXME: debug
+    trace_kvm_set_spte(0, sptep, spte);
 
 set_pte:
 	if (mmu_spte_update(sptep, spte))
@@ -3871,7 +3877,6 @@ EXPORT_SYMBOL_GPL(kvm_init_shadow_ept_mmu);
 
 static void init_kvm_softmmu(struct kvm_vcpu *vcpu)
 {
-    printk("init_kvm_softmmu\n");
 	kvm_init_shadow_mmu(vcpu, vcpu->arch.walk_mmu);
 	vcpu->arch.walk_mmu->set_cr3           = kvm_x86_ops->set_cr3;
 	vcpu->arch.walk_mmu->get_cr3           = get_cr3;
@@ -3950,11 +3955,15 @@ int kvm_mmu_load(struct kvm_vcpu *vcpu)
 	if (r)
 		goto out;
 	/* set_cr3() should ensure TLB has been flushed */
-    printk("kvm_mmu_load, set_cr3 root_hpa=%llx\n", vcpu->arch.mmu.root_hpa);
+    printk("kvm_mmu_load, vcpu=%p, arch=%p, mmu=%p, set_cr3 cr3=%llx, root_hpa=%llx\n", vcpu, &vcpu->arch, &vcpu->arch.mmu, vcpu->arch.cr3, vcpu->arch.mmu.root_hpa);
 	vcpu->arch.mmu.set_cr3(vcpu, vcpu->arch.mmu.root_hpa);
 #ifdef CONFIG_HSA_VIRTUALIZATION
+#ifdef NPT_DISABLE
+    kvm_hsa_iommu_bind_spt(vcpu->arch.cr3, vcpu->arch.mmu.root_hpa);    // set SPT to IOMMU if need
+#else
     if (kvm_hsa_is_iommu_nested_translation())
         kvm_hsa_set_iommu_nested_cr3(vcpu->arch.mmu.root_hpa);
+#endif
 #endif
 out:
 	return r;

@@ -37,7 +37,7 @@
 #ifdef CONFIG_HSA_VIRTUALIZATION
 #include <linux/kvm_host.h>
 //#define MQD_IOMMU 1
-#define IDENTICAL_MAPPING 1
+//#define IDENTICAL_MAPPING 1
 #endif
 struct mqd_manager;
 
@@ -389,10 +389,14 @@ struct virtio_be_info {
 };
 
 struct vm_info {
+    struct kfd_dev *dev;
+    struct kfd_process *kfd_process;
     struct kfd_process *virtio_be_process;
+    struct list_head list;
     uint64_t vm_task;
     uint64_t vm_mm;
     uint64_t vm_pgd_gpa;    
+    uint64_t vm_spt_root;
     uint64_t mqd_gva;
     uint64_t mqd_hva;
 };

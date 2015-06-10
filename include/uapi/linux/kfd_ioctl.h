@@ -342,11 +342,13 @@ struct kfd_ioctl_vm_open_graphic_handle_args {
     uint64_t vm_mm; 
 };
 
+#ifdef IDENTICAL_MAPPING
 // for identical mapping
 struct kfd_ioctl_vm_identical_mapping_space_args {
     uint64_t identical_hva_start;
     int num_pages;
 };
+#endif
 
 // IOCTL cmds for virtualization
 #define KFD_IOC_VM_GET_VERSION		_IOR(KFD_IOC_MAGIC, 65, struct kfd_ioctl_vm_get_version_args)
@@ -371,7 +373,7 @@ struct kfd_ioctl_vm_identical_mapping_space_args {
 #define KFD_IOC_VM_WAIT_EVENTS		_IOWR(KFD_IOC_MAGIC, 84, struct kfd_ioctl_vm_wait_events_args)
 #define KFD_IOC_VM_OPEN_GRAPHIC_HANDLE	_IOWR(KFD_IOC_MAGIC, 85, struct kfd_ioctl_vm_open_graphic_handle_args)
 #define KFD_IOC_VM_SET_VIRTIO_BE    _IO(KFD_IOC_MAGIC, 86)
-#define KFD_IOC_VM_CREATE_PROCESS   _IOW(KFD_IOC_MAGIC, 87, uint64_t)
+#define KFD_IOC_VM_CREATE_PROCESS   _IOW(KFD_IOC_MAGIC, 87, struct vm_process_info)
 #define KFD_IOC_VM_CLOSE_PROCESS  	_IOW(KFD_IOC_MAGIC, 88, uint64_t)
 #define KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS      _IOW(KFD_IOC_MAGIC, 89, uint64_t)
 #define KFD_IOC_VM_VIRTIO_BE_UNBIND_VM_PROCESS    _IO(KFD_IOC_MAGIC, 90)

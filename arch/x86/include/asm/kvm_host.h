@@ -1077,6 +1077,7 @@ int kvm_hsa_resume_iommu_nested_translation(void);
 int kvm_hsa_stop_iommu_nested_translation(void);
 int kvm_hsa_set_iommu_nested_cr3(hpa_t root_hpa);
 int kvm_hsa_iommu_nested_page_fault(struct kvm *kvm, gpa_t gpa, u32 flags);
+int kvm_hsa_iommu_spt_page_fault(struct kvm *kvm, gva_t gva, u32 flags, u64 guest_cr3);
 hpa_t kvm_hsa_translate_gpa_to_hpa(struct kvm *kvm, gpa_t gpa);
 void kvm_hsa_read_guest_pgd(struct kvm* kvm, gpa_t gpa);
 #endif

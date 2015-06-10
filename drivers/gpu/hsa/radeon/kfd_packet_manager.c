@@ -381,19 +381,19 @@ int pm_send_runlist(struct packet_manager *pm, struct list_head *dqm_queues)
 
     // FIXME: debug
     if (ring_user && wptr_user && rptr_user) {
-        access_clr_a_page(current->mm, (unsigned long)ring_user);
-        access_clr_a_page(current->mm, (unsigned long)wptr_user);
-        access_clr_a_page(current->mm, (unsigned long)rptr_user);
-        access_clr_a_page(current->mm, (unsigned long)mqd_kva);
+//        access_clr_a_page(current->mm, (unsigned long)ring_user);
+//        access_clr_a_page(current->mm, (unsigned long)wptr_user);
+//        access_clr_a_page(current->mm, (unsigned long)rptr_user);
+//        access_clr_a_page(current->mm, (unsigned long)mqd_kva);
     }
     if (in_buf & out_buf) {
-        access_clr_a_page(current->mm, (unsigned long)in_buf);
-        access_clr_a_page(current->mm, (unsigned long)out_buf);
+//        access_clr_a_page(current->mm, (unsigned long)in_buf);
+//        access_clr_a_page(current->mm, (unsigned long)out_buf);
     }
     
 	pm->priv_queue->submit_packet(pm->priv_queue);
 	pm->priv_queue->sync_with_hw(pm->priv_queue, KFD_HIQ_TIMEOUT);
-
+/*
     volatile int i;
     for (i=1; i!=0; i++);
     // FIXME: debug
@@ -407,7 +407,7 @@ int pm_send_runlist(struct packet_manager *pm, struct list_head *dqm_queues)
         access_page(current->mm, (unsigned long)in_buf);
         access_page(current->mm, (unsigned long)out_buf);
     }
-
+*/
 	mutex_unlock(&pm->lock);
 
 	return retval;

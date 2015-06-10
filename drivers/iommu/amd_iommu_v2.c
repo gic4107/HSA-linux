@@ -51,6 +51,11 @@ static u16 device_id(struct pci_dev *pdev)
 {
 	u16 devid;
 
+    if (!pdev) {
+        printk("device_id null\n");
+        return;
+    }
+
 	devid = pdev->bus->number;
 	devid = (devid << 8) | pdev->devfn;
 
@@ -795,6 +800,11 @@ int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, struct kvm 
 	if (!amd_iommu_v2_supported())
 		return -ENODEV;
 
+    if (!pdev) {
+        printk("amd_iommu_vm_process_bind_pasid, pdev null\n");
+        return -1;
+    }
+
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
     printk("devid=%d, dev_state=%p\n", devid, dev_state);
@@ -864,10 +874,20 @@ int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3)
 {
 	struct device_state *dev_state;
 	u16 devid;
+
+    if (!pdev) {
+        printk("amd_iommu_set_gcr3, pdev null\n");
+        return -EINVAL;
+    }
+
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
 
-    printk("amd_iommu_set_gcr3 pasid=%d, gcr3=%llx\n", pasid, gcr3);
+    printk("amd_iommu_set_gcr3, dev_state=%p\n", dev_state);
+    if (!dev_state)
+        return -EINVAL;
+
+    printk("amd_iommu_set_gcr3 domain=%p, pasid=%d, gcr3=%llx\n", dev_state->domain, pasid, gcr3);
     return amd_iommu_domain_set_gcr3(dev_state->domain, pasid, gcr3);
 }
 EXPORT_SYMBOL(amd_iommu_set_gcr3);

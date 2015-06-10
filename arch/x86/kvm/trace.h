@@ -883,6 +883,28 @@ TRACE_EVENT(kvm_set_spte,
 		  __entry->next_level, __entry->sptep, __entry->spte)
 );
 
+TRACE_EVENT(kvm_spt_page_fault,
+	TP_PROTO(unsigned int gva, unsigned long gfn, unsigned long pfn, int level),
+	TP_ARGS(gva, gfn, pfn, level),
+
+	TP_STRUCT__entry(
+		__field(	unsigned long,	gva  )
+		__field(	unsigned long,	gfn  )
+		__field(	unsigned long,	pfn  )
+        __field(    int,    level        )
+	),
+
+	TP_fast_assign(
+		__entry->gva	= gva;
+		__entry->gfn	= gfn;
+		__entry->pfn	= pfn;
+		__entry->level	= level;
+	),
+
+	TP_printk("gva %llx, gfn %llx, pfn %llx, level %d",
+		  __entry->gva, __entry->gfn, __entry->pfn, __entry->level)
+);
+
 #endif /* CONFIG_X86_64 */
 
 #endif /* _TRACE_KVM_H */

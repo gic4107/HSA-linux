@@ -329,11 +329,11 @@ static int create_compute_queue_nocpsch(struct device_queue_manager *dqm, struct
             }
         }
         is_pipeline_pages_mapped = true;
-        
     }
 #endif
 #endif
 
+/*
     // FIXME: debug
     if (ring_user && wptr_user && rptr_user) {
         access_clr_a_page(current->mm, (unsigned long)ring_user);
@@ -347,12 +347,13 @@ static int create_compute_queue_nocpsch(struct device_queue_manager *dqm, struct
 
     dump_mqd(mqd_kva);
     access_clr_a_page(current->mm, (unsigned long)mqd_kva);
+*/
 //    mqd->acquire_hqd(mqd, q->pipe, q->queue, 0);       // v0.6, v1.0 also set vmid=0
     mqd->acquire_hqd(mqd, q->pipe, q->queue, qpd->vmid);       // v0.6, v1.0 also set vmid=0
     mqd->load_mqd(mqd, q->mqd);
     mqd->release_hqd(mqd);
 
-    // FIXME: debug
+/*    // FIXME: debug
     volatile int i;
     for (i=1; i!=0; i++);
     access_clr_a_page(current->mm, (unsigned long)mqd_kva);
@@ -366,7 +367,7 @@ static int create_compute_queue_nocpsch(struct device_queue_manager *dqm, struct
         access_page(current->mm, (unsigned long)out_buf);
     }
     dump_mqd(mqd_kva);
-
+*/
     // FIXME: debug, remove when vm_finish_ppr enable
 //    kfree(fault->state);
 //    kfree(fault);

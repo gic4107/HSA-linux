@@ -20,7 +20,7 @@ int kvm_hsa_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread
 
     return kvm_bind_kfd_virtio_be_p(kvm, thread);
 }
-
+/*
 int kvm_hsa_is_iommu_nested_translation(void)
 {
     if (hsa_dev == NULL)
@@ -119,44 +119,6 @@ int kvm_hsa_set_iommu_nested_cr3(hpa_t root_hpa)
     return 0;
 }
 EXPORT_SYMBOL_GPL(kvm_hsa_set_iommu_nested_cr3);
-/*
-int kvm_hsa_set_iommu_nested_cr3(struct kvm *kvm, struct pci_dev *dev)
-{
-    struct kvm_vcpu *vcpu;
-    struct kvm_vcpu_arch *arch;
-    struct kvm_mmu *mmu;
-    hpa_t nested_cr3 = 0;
-    int i;
-    int ret;
-
-    printk("=====kvm_hsa_set_iommu_nested_cr3, kvm=%p, dev=%p\n", kvm, dev);
-
-    // get stage2 page table from kvm
-    for(i=0; i<4; i++) {
-        if (kvm->vcpus[i]) {
-            vcpu = kvm->vcpus[i];
-            arch = &vcpu->arch;
-            mmu  = &arch->mmu;
-            printk("mmu->get_cr3=%llx, root_hpa=%llx\n", mmu->get_cr3(kvm->vcpus[i]), mmu->root_hpa);
-            if (nested_cr3 == 0)
-                nested_cr3 = mmu->root_hpa;
-            else if (nested_cr3 != mmu->root_hpa) {
-                printk("FAIL: different root_hpa for vcpus, 0x%lx 0x%lx\n", nested_cr3, mmu->root_hpa);
-                return -EINVAL;
-            }
-        }
-    }
-
-    // send pdev, stage2 page table to IOMMU
-    ret = amd_iommu_set_nested_cr3(dev, nested_cr3);  
-    if (ret) {
-        printk("amd_iommu_set_nested_cr3 fail\n");
-        return -EINVAL;
-    }
-
-    return 0;
-}
-EXPORT_SYMBOL_GPL(kvm_hsa_set_iommu_nested_cr3);
 */
 void walk_page_table(hpa_t root_hpa, unsigned long addr)
 {
@@ -195,6 +157,7 @@ void walk_page_table(hpa_t root_hpa, unsigned long addr)
     }
 }
 
+/*
 int kvm_hsa_iommu_nested_page_fault(struct kvm *kvm, gpa_t gpa, u32 flags)
 {
     struct kvm_vcpu *vcpu;
@@ -218,6 +181,32 @@ int kvm_hsa_iommu_nested_page_fault(struct kvm *kvm, gpa_t gpa, u32 flags)
     return mmu->page_fault(kvm->vcpus[0], gpa, error_code, false);  
 }
 EXPORT_SYMBOL_GPL(kvm_hsa_iommu_nested_page_fault);
+*/
+
+int iommu_spt_page_fault(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code, 
+                            bool prefault, u64 guest_cr3);
+int kvm_hsa_iommu_spt_page_fault(struct kvm *kvm, gva_t gva, u32 flags, u64 guest_cr3)
+{
+    struct kvm_vcpu *vcpu;
+    struct kvm_vcpu_arch *arch;
+    struct kvm_mmu *mmu;
+    u32 error_code = 0;
+    int ret;
+
+    vcpu = kvm->vcpus[0];
+    arch = &vcpu->arch;
+    mmu  = &arch->mmu;
+
+    if (flags & PPR_FAULT_WRITE)
+        error_code |= PFERR_WRITE_MASK;
+    if (flags & PPR_FAULT_GN)
+        error_code |= PFERR_USER_MASK;
+    error_code |= PFERR_IOMMU_MASK;
+
+    printk("=====kvm_hsa_iommu_spt_page_fault, kvm=%p, gva=%llx, flags=%d, error=%x, guest_cr3=%llx\n", kvm, gva, flags, error_code, guest_cr3);
+    return iommu_spt_page_fault(kvm->vcpus[0], gva, error_code, false, guest_cr3);  
+}
+EXPORT_SYMBOL_GPL(kvm_hsa_iommu_spt_page_fault);
 
 void kvm_hsa_read_guest_pgd(struct kvm* kvm, gpa_t gpa)
 {
@@ -258,3 +247,14 @@ hpa_t kvm_hsa_translate_gpa_to_hpa(struct kvm *kvm, gpa_t gpa)
 }
 EXPORT_SYMBOL_GPL(kvm_hsa_translate_gpa_to_hpa);
 
+void kvm_hsa_iommu_bind_spt(gpa_t guest_cr3, hpa_t spt_root)
+{
+    int (*radeon_kfd_bind_iommu_spt_p)(gpa_t guest_cr3, hpa_t spt_root);
+    radeon_kfd_bind_iommu_spt_p = symbol_request(radeon_kfd_bind_iommu_spt);
+    if (!radeon_kfd_bind_iommu_spt_p) {
+        printk("symbol_request(radeon_kfd_bind_iommu_kfd) fail\n");
+        return -EINVAL;
+    }
+    radeon_kfd_bind_iommu_spt_p(guest_cr3, spt_root);
+}
+EXPORT_SYMBOL_GPL(kvm_hsa_iommu_bind_spt);

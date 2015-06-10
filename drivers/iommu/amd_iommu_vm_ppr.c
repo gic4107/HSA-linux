@@ -22,7 +22,6 @@
 #include "amd_iommu_proto.h"
 #include "amd_iommu_vm_ppr.h"
 
-//FIXME: for debugging usage
 #include <linux/radeon_kfd.h>
 
 #define IOMMU_VM_PPR_TABLE_SIZE 5 /* bits: 32 entries */
@@ -32,6 +31,7 @@ static DEFINE_MUTEX(iommu_vm_ppr_mutex);
 
 //FIXME: for debugging usage
 void (*read_guest_pgd_p)(struct mm_struct *mm);
+uint64_t (*radeon_kfd_get_vm_process_pgd_p)(uint64_t vm_task);
 
 static struct iommu_vm_ppr* find_iommu_vm_ppr(struct mm_struct *mm)
 {
@@ -114,6 +114,7 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
     int head, tail;
     struct fault *fault;
     u32 error_code = 0;
+    u64 guest_cr3;
     int ret;
 
 //    printk("vm_finish_ppr: %p\n", iommu_vm_ppr);
@@ -122,7 +123,7 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
     head = iommu_vm_ppr->head;
     tail = iommu_vm_ppr->vm_consume_head;
 
-//    while (head != tail) {
+    while (head != tail) {
         fault = (struct fault*)(iommu_vm_ppr->ppr_log_region[head].fault);
         printk("fault=%p, pasid=%d\n", fault, fault->pasid);
     	if (fault->dev_state->inv_ppr_cb) {
@@ -150,7 +151,16 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
     	} 
 
         // fix stage2 page table
-        ret = kvm_hsa_iommu_nested_page_fault(fault->state->kvm, gpa, fault->flags);  
+//        ret = kvm_hsa_iommu_nested_page_fault(fault->state->kvm, gpa, fault->flags);  
+        // fix spt page fault
+
+        // get guest cr3
+        if (!radeon_kfd_get_vm_process_pgd_p)
+            radeon_kfd_get_vm_process_pgd_p = symbol_request(radeon_kfd_get_vm_process_pgd); 
+        guest_cr3 = radeon_kfd_get_vm_process_pgd_p((uint64_t)(fault->state->task));
+        printk("vm_finish_ppr, guest_cr3=%llx\n", guest_cr3);
+        ret = kvm_hsa_iommu_spt_page_fault(fault->state->kvm, fault->address, 
+                                                        fault->flags, guest_cr3);
         printk("ret=%d\n", ret);
 
         // flush
@@ -163,14 +173,14 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
     	kfree(fault);
         
         head = (head+1) % MAX_PPR_LOG_ENTRY;
-//    }
+    }
 
     iommu_vm_ppr->head = head;
     printk("tail=%d, head=%d, vm_consume_head=%d\n", 
             iommu_vm_ppr->tail, iommu_vm_ppr->head, iommu_vm_ppr->vm_consume_head);
     return 0;
 }
-    
+
 static int amd_iommu_vm_ppr_open(struct inode *inode, struct file *f)
 {
     struct iommu_vm_ppr *iommu_vm_ppr;
