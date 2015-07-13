@@ -134,7 +134,6 @@ static void free_process(struct kfd_process *p)
 {
 	struct kfd_process_device *pdd, *temp;
 
-    printk("free_process: pasid=%d\n", p->pasid);
 	radeon_kfd_pasid_free(p->pasid);
 
 	list_for_each_entry_safe(pdd, temp, &p->per_device_data, per_device_list) {
@@ -153,7 +152,6 @@ static void free_process(struct kfd_process *p)
 
 #ifdef CONFIG_HSA_VIRTUALIZATION
     if (p->process_type == KFD_PROCESS_TYPE_VIRTIO_BE) {
-        printk("kfree p->virtio_be_info\n");
         kfree(p->virtio_be_info);
     }
 #endif
@@ -173,12 +171,14 @@ static void shutdown_process(struct kfd_process *p)
 	mutex_unlock(&kfd_processes_mutex);
 	synchronize_srcu(&kfd_processes_srcu);
 
+#ifdef CONFIG_HSA_VIRTUALIZATION
     hlist_for_each_entry_rcu(iter, kfd_processes, kfd_processes) {
         if (p->process_type != KFD_PROCESS_TYPE_NORMAL) {
             printk("shutdown_process, type=%d\n", p->process_type);
             vm_process = 1;
         }
     }
+#endif
 }
 
 static void
@@ -187,7 +187,6 @@ kfd_process_notifier_release(struct mmu_notifier *mn, struct mm_struct *mm)
 	struct kfd_process *p = container_of(mn, struct kfd_process, mmu_notifier);
 	BUG_ON(p->mm != mm);
 
-    printk("kfd_process_notifier_release, call shutdown_process\n");
 	shutdown_process(p);
 }
 
@@ -196,7 +195,6 @@ kfd_process_notifier_destroy(struct mmu_notifier *mn)
 {
 	struct kfd_process *p = container_of(mn, struct kfd_process, mmu_notifier);
 
-    printk("kfd_process_notifier_destroy, call free_process\n");
 	free_process(p);
 }
 
@@ -233,14 +231,16 @@ create_process(const struct task_struct *thread)
 
 	process->mm = thread->mm;
 
+    process->process_type = KFD_PROCESS_TYPE_NORMAL;
+
 	process->mmu_notifier.ops = &kfd_process_mmu_notifier_ops;
 	err = mmu_notifier_register(&process->mmu_notifier, process->mm);
 	if (err)
 		goto err_mmu_notifier;
 
 	process->lead_thread = thread->group_leader;
-    printk("create_process: task=%p, lead_thread=%p, mm=%p, get_task_mm=%p, mm->pgd=%p, get_task_mm->pgd=%p\n", 
-                 thread, process->lead_thread, process->mm, get_task_mm(process->lead_thread), process->mm->pgd, get_task_mm(process->lead_thread)->pgd);
+//    printk("create_process: task=%p, lead_thread=%p, mm=%p, get_task_mm=%p, mm->pgd=%p, get_task_mm->pgd=%p\n", 
+//                 thread, process->lead_thread, process->mm, get_task_mm(process->lead_thread), process->mm->pgd, get_task_mm(process->lead_thread)->pgd);
 
 	process->queue_array_size = INITIAL_QUEUE_ARRAY_SIZE;
 
@@ -335,7 +335,7 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
 	idr_init(&pdd->alloc_idr);
 
 	/* Create the GPUVM context for this specific device */
-//	err = radeon_kfd_process_create_vm(dev, &pdd->vm);
+	err = radeon_kfd_process_create_vm(dev, &pdd->vm);
 	if (err != 0)
 		return ERR_PTR(err);
 
@@ -359,7 +359,7 @@ struct kfd_process_device *radeon_kfd_bind_process_to_device(struct kfd_dev *dev
                         p->vm_info->vm_task, p->vm_info->vm_mm, pgd_gpa);
     	if (err < 0) {
             printk("amd_iommu_vm_process_bind_pasid fail %d\n", err);
-//    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
+    		radeon_kfd_process_destroy_vm(dev, pdd->vm);
     		return ERR_PTR(err);
         }        
     }
@@ -424,11 +424,11 @@ void radeon_kfd_unbind_process_from_device(struct kfd_dev *dev, pasid_t pasid)
 	/*Remove all handles from idr and release appropriate local memory object*/
 	idr_for_each_entry(&pdd->alloc_idr, mem, id) {
 		idr_remove(&pdd->alloc_idr, id);
-//		radeon_kfd_process_gpuvm_free(dev, mem);
+		radeon_kfd_process_gpuvm_free(dev, mem);
 	}
 
 	/* Destroy the GPUVM VM context */
-//	radeon_kfd_process_destroy_vm(dev, pdd->vm);
+	radeon_kfd_process_destroy_vm(dev, pdd->vm);
 
 	kfree(pdd);
 

@@ -642,8 +642,8 @@ retry:
 	domid   = (event[1] >> EVENT_DOMID_SHIFT) & EVENT_DOMID_MASK;
 	flags   = (event[1] >> EVENT_FLAGS_SHIFT) & EVENT_FLAGS_MASK;
 	address = (u64)(((u64)event[3]) << 32) | event[2];
-    printk("iommu_print_event ...\n");
-    printk("event[0]=0x%x\n, event[1]=0x%x\n, event[2]=0x%x\n, event[3]=0x%x\n", event[0], event[1], event[2], event[3]);
+//    printk("iommu_print_event ...\n");
+//    printk("event[0]=0x%x\n, event[1]=0x%x\n, event[2]=0x%x\n, event[3]=0x%x\n", event[0], event[1], event[2], event[3]);
 
 	if (type == 0) {
 		/* Did we hit the erratum? */
@@ -896,7 +896,6 @@ static void build_inv_dte(struct iommu_cmd *cmd, u16 devid)
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->data[0] = devid;
 	CMD_SET_TYPE(cmd, CMD_INV_DEV_ENTRY);
-    printk("build_inv_dte: %x\n", cmd->data[0]);
 }
 
 static void build_inv_iommu_pages(struct iommu_cmd *cmd, u64 address,
@@ -928,7 +927,6 @@ static void build_inv_iommu_pages(struct iommu_cmd *cmd, u64 address,
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_SIZE_MASK;
 	if (pde) /* PDE bit - we want to flush everything, not only the PTEs */
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_PDE_MASK;
-    printk("build_inv_iommu_pages, %x, %x, %x, %x\n", cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3]);
 }
 
 static void build_inv_iotlb_pages(struct iommu_cmd *cmd, u16 devid, int qdep,
@@ -960,7 +958,6 @@ static void build_inv_iotlb_pages(struct iommu_cmd *cmd, u16 devid, int qdep,
 	CMD_SET_TYPE(cmd, CMD_INV_IOTLB_PAGES);
 	if (s)
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_SIZE_MASK;
-    printk("build_inv_iotlb_pages, %x, %x, %x, %x\n", cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3]);
 }
 
 static void build_inv_iommu_pasid(struct iommu_cmd *cmd, u16 domid, int pasid,
@@ -979,7 +976,6 @@ static void build_inv_iommu_pasid(struct iommu_cmd *cmd, u16 domid, int pasid,
 	if (size)
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_SIZE_MASK;
 	CMD_SET_TYPE(cmd, CMD_INV_IOMMU_PAGES);
-    printk("build_inv_iommu_pasid, %x, %x, %x, %x\n", cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3]);
 }
 
 static void build_inv_iotlb_pasid(struct iommu_cmd *cmd, u16 devid, int pasid,
@@ -1002,7 +998,6 @@ static void build_inv_iotlb_pasid(struct iommu_cmd *cmd, u16 devid, int pasid,
 	if (size)
 		cmd->data[2] |= CMD_INV_IOMMU_PAGES_SIZE_MASK;
 	CMD_SET_TYPE(cmd, CMD_INV_IOTLB_PAGES);
-    printk("build_inv_iotlb_pasid, %x, %x, %x, %x\n", cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3]);
 }
 
 static void build_complete_ppr(struct iommu_cmd *cmd, u16 devid, int pasid,
@@ -1019,7 +1014,6 @@ static void build_complete_ppr(struct iommu_cmd *cmd, u16 devid, int pasid,
 	cmd->data[3] |= (status & PPR_STATUS_MASK) << PPR_STATUS_SHIFT;
 
 	CMD_SET_TYPE(cmd, CMD_COMPLETE_PPR);
-    printk("build_complete_ppr, %x, %x, %x, %x\n", cmd->data[0], cmd->data[1], cmd->data[2], cmd->data[3]);
 }
 
 static void build_inv_all(struct iommu_cmd *cmd)
@@ -1323,7 +1317,6 @@ static bool increase_address_space(struct protection_domain *domain,
 {
 	u64 *pte;
 
-    printk("increase_address_space\n");
 	if (domain->mode == PAGE_MODE_6_LEVEL)
 		/* address space already 64 bit large */
 		return false;
@@ -1452,7 +1445,6 @@ static int iommu_map_page(struct protection_domain *dom,
 	u64 __pte, *pte;
 	int i, count;
 
-    printk("iommu_map_page\n");
 	if (!(prot & IOMMU_PROT_MASK))
 		return -EINVAL;
 
@@ -2343,7 +2335,6 @@ static bool pci_pri_tlp_required(struct pci_dev *pdev)
 
 	pci_read_config_word(pdev, pos + PCI_PRI_STATUS, &status);
 
-    printk("pci_pri_tlp_required status=%d\n", status);
 	return (status & PCI_PRI_TLP_OFF) ? true : false;
 }
 
@@ -3747,7 +3738,6 @@ static int __flush_all(struct protection_domain *domain, u64 address, size_t siz
 	if (!(domain->flags & PD_IOMMUV2_MASK))
 		return -EINVAL;
 
-    printk("__flush_all\n");
 	build_inv_iommu_pages(&cmd, address, size, domain->id, 1);
 
 	/*
@@ -3864,11 +3854,11 @@ static int __set_gcr3(struct protection_domain *domain, int pasid,
 
     printk("===== __set_gcr3 domain=%p, gcr3_tbl=%p, glx=%d, pasid=%d, pte=%p, *pte=0x%llx, cr3=0x%llx\n", 
                 domain, domain->gcr3_tbl, domain->glx, pasid, pte, *pte, cr3);
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    return __amd_iommu_flush_all_tlb(domain);
-#else
+//#ifdef CONFIG_HSA_VIRTUALIZATION
+//    return __amd_iommu_flush_all_tlb(domain);
+//#else
 	return __amd_iommu_flush_tlb(domain, pasid);
-#endif
+//#endif
 }
 
 static int __clear_gcr3(struct protection_domain *domain, int pasid)

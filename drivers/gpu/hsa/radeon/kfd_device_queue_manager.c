@@ -54,7 +54,6 @@ static int destroy_queues_cpsch(struct device_queue_manager *dqm, bool preempt_s
 extern void __user *ring_user;
 extern void __user *wptr_user;
 extern void __user *rptr_user;
-void *mqd_kva;
 extern struct identical_mapping_info identical_mapping;
 extern uint64_t in_buf;
 extern uint64_t out_buf;
@@ -260,117 +259,10 @@ static int create_compute_queue_nocpsch(struct device_queue_manager *dqm, struct
 
     printk("q->mqd=%p, __pa=%p\n", q->mqd, __pa(q->mqd));
 
-    // FIXME: debug
-    mqd_kva = q->mqd;
-    printk("mqd_kva = %p\n", mqd_kva);
-    struct kfd_process *p = q->process;
-
-#ifdef MQD_IOMMU
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
-        // update mqd.cp_mqd_base_addr_lo
-        update_mqd_vm(q->mqd, (void*)(p->vm_info->mqd_gva));
-        
-        // copy mqd to guest's mqd
-        retval = __copy_to_user((void __user*)(p->vm_info->mqd_hva), q->mqd, sizeof(struct cik_mqd));
-//        printk("no copy mqd back to guest\n");
-        printk("copy mqd to guest, retval=%d\n", retval);
-        
-        mqd_kva = p->vm_info->mqd_hva;
-        printk("mqd_kva = %p\n", mqd_kva);
-    }
-#endif
-#endif
-
-    // construct identical nested translation for process mqd
-
-#ifdef IDENTICAL_MAPPING
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
-        struct kvm *kvm = p->vm_info->virtio_be_process->virtio_be_info->kvm;
-        struct kvm_userspace_memory_region mem;
-        uint64_t mqd_gpa = __pa(q->mqd);
-        int kvm_mem_slot = 13;
-
-        // create kvm memory region
-        mem.slot = kvm_mem_slot++;
-        mem.flags = 0;
-        mem.guest_phys_addr = mqd_gpa;
-        mem.memory_size = 4096;
-        mem.userspace_addr = identical_mapping.start + 4096*(identical_mapping.used++);
-        printk("identical_hva_space = %llx\n", mem.userspace_addr);
-        kvm_set_memory_region(kvm, &mem); 
-
-        // copy content of mqd to identical_hva_space
-//	    retval = __copy_to_user((void __user *)identical_hva_space, 
-//                                            mqd_kva, sizeof(struct cik_mqd));
-        
-        // construct identical mapping for mqd
-        kvm_hsa_iommu_nested_page_fault(kvm, mqd_gpa, 0x520);   // 1<<5 | 1<<8 | 1<<10
-
-        // construct HVA space mapping for mqd
-//        kvm_hsa_iommu_nested_page_fault(kvm, mqd_gpa, 0x120);   // 1<<5 | 1<<8 
-
-        // map for pipeline pages
-        int i;
-        if (!is_pipeline_pages_mapped) {
-            for(i=0; i<pipeline_num_pages; i++) {
-                uint64_t gpa = page_to_phys(pipeline_gart_pages[i]);
-                mem.slot = kvm_mem_slot++;
-                mem.flags = 0;
-                mem.guest_phys_addr = gpa;
-                mem.memory_size = 4096;
-                mem.userspace_addr = identical_mapping.start + 4096*(identical_mapping.used++);
-                printk("gpa=%llx, identical_hva_space = %llx\n", gpa, mem.userspace_addr);
-                kvm_set_memory_region(kvm, &mem); 
-
-                // construct identical mapping for mqd
-                kvm_hsa_iommu_nested_page_fault(kvm, gpa, 0x520);   // 1<<5 | 1<<8 | 1<<10
-            }
-        }
-        is_pipeline_pages_mapped = true;
-    }
-#endif
-#endif
-
-/*
-    // FIXME: debug
-    if (ring_user && wptr_user && rptr_user) {
-        access_clr_a_page(current->mm, (unsigned long)ring_user);
-        access_clr_a_page(current->mm, (unsigned long)wptr_user);
-        access_clr_a_page(current->mm, (unsigned long)rptr_user);
-    }
-    if (in_buf & out_buf) {
-        access_clr_a_page(current->mm, (unsigned long)in_buf);
-        access_clr_a_page(current->mm, (unsigned long)out_buf);
-    }
-
-    dump_mqd(mqd_kva);
-    access_clr_a_page(current->mm, (unsigned long)mqd_kva);
-*/
 //    mqd->acquire_hqd(mqd, q->pipe, q->queue, 0);       // v0.6, v1.0 also set vmid=0
     mqd->acquire_hqd(mqd, q->pipe, q->queue, qpd->vmid);       // v0.6, v1.0 also set vmid=0
     mqd->load_mqd(mqd, q->mqd);
     mqd->release_hqd(mqd);
-
-/*    // FIXME: debug
-    volatile int i;
-    for (i=1; i!=0; i++);
-    access_clr_a_page(current->mm, (unsigned long)mqd_kva);
-    if (ring_user && wptr_user && rptr_user) {
-        access_page(current->mm, (unsigned long)ring_user);
-        access_page(current->mm, (unsigned long)wptr_user);
-        access_page(current->mm, (unsigned long)rptr_user);
-    }
-    if (in_buf & out_buf) {
-        access_page(current->mm, (unsigned long)in_buf);
-        access_page(current->mm, (unsigned long)out_buf);
-    }
-    dump_mqd(mqd_kva);
-*/
-    // FIXME: debug, remove when vm_finish_ppr enable
-//    kfree(fault->state);
-//    kfree(fault);
 
 	return 0;
 }
@@ -1064,78 +956,6 @@ static int create_queue_cpsch(struct device_queue_manager *dqm, struct queue *q,
 	retval = mqd->init_mqd(mqd, &q->mqd, &q->mqd_mem_obj, &q->gart_mqd_addr, &q->properties);
 	if (retval != 0)
 		goto out;
-
-    // FIXME: debug
-    mqd_kva = q->mqd;
-    printk("mqd_kva = %p\n", mqd_kva);
-
-#ifdef MQD_IOMMU
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    struct kfd_process *p = q->process;
-    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
-        // update mqd.cp_mqd_base_addr_lo
-        update_mqd_vm(q->mqd, (void*)(p->vm_info->mqd_gva));
-        
-        // copy mqd to guest's mqd
-        retval = __copy_to_user((void __user*)(p->vm_info->mqd_hva), q->mqd, sizeof(struct cik_mqd));
-        printk("copy mqd to guest, retval=%d\n", retval);
-        
-        mqd_kva = p->vm_info->mqd_hva;
-    }
-#endif
-#endif
-    printk("q->mqd=%p, __pa=%p\n", q->mqd, __pa(q->mqd));
-
-    // construct identical nested translation for process mqd
-#ifdef IDENTICAL_MAPPING
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    struct kfd_process *p = q->process;
-    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
-        struct kvm *kvm = p->vm_info->virtio_be_process->virtio_be_info->kvm;
-        struct kvm_userspace_memory_region mem;
-        uint64_t mqd_gpa = __pa(q->mqd);
-
-        // create kvm memory region
-        mem.slot = 13;
-        mem.flags = 0;
-        mem.guest_phys_addr = mqd_gpa;
-        mem.memory_size = 4096;
-        mem.userspace_addr = identical_mapping.start + 4096*(identical_mapping.used++);
-        printk("identical_hva_space = %llx\n", mem.userspace_addr);
-        kvm_set_memory_region(kvm, &mem); 
-
-        // copy content of mqd to identical_hva_space
-//	    retval = __copy_to_user((void __user *)identical_hva_space, 
-//                                            mqd_kva, sizeof(struct cik_mqd));
-        
-        // construct identical mapping for mqd
-        kvm_hsa_iommu_nested_page_fault(kvm, mqd_gpa, 0x520);   // 1<<5 | 1<<8 | 1<<10
-
-        // construct HVA space mapping for mqd
-//        kvm_hsa_iommu_nested_page_fault(kvm, mqd_gpa, 0x120);   // 1<<5 | 1<<8 
-
-        // map for pipeline pages
-        int i;
-        if (!is_pipeline_pages_mapped) {
-            for(i=0; i<pipeline_num_pages; i++) {
-                uint64_t gpa = page_to_phys(pipeline_gart_pages[i]);
-                mem.slot = 13;
-                mem.flags = 0;
-                mem.guest_phys_addr = gpa;
-                mem.memory_size = 4096;
-                mem.userspace_addr = identical_mapping.start + 4096*(identical_mapping.used++);
-                printk("gpa=%llx, identical_hva_space = %llx\n", gpa, mem.userspace_addr);
-                kvm_set_memory_region(kvm, &mem); 
-
-                // construct identical mapping for mqd
-                kvm_hsa_iommu_nested_page_fault(kvm, gpa, 0x520);   // 1<<5 | 1<<8 | 1<<10
-            }
-        }
-        is_pipeline_pages_mapped = true;
-        
-    }
-#endif
-#endif
 
 	list_add(&q->list, &qpd->queues_list);
 	if (q->properties.is_active) {

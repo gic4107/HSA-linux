@@ -378,7 +378,6 @@ struct kfd_ioctl_vm_identical_mapping_space_args {
 #define KFD_IOC_VM_VIRTIO_BE_BIND_VM_PROCESS      _IOW(KFD_IOC_MAGIC, 89, uint64_t)
 #define KFD_IOC_VM_VIRTIO_BE_UNBIND_VM_PROCESS    _IO(KFD_IOC_MAGIC, 90)
 #define KFD_IOC_IOMMU_ENABLE_NESTED_TRANSLATION              _IOW(KFD_IOC_MAGIC, 91, uint32_t)
-#define KFD_IOC_DEBUG_DOORBELL_VALUE              _IO(KFD_IOC_MAGIC, 92)
 #define KFD_IOC_WALK_PAGE_TABLE              _IOW(KFD_IOC_MAGIC, 93, uint64_t)
 #define KFD_IOC_CLEAR_PAGE              _IOW(KFD_IOC_MAGIC, 94, uint64_t)
 #define KFD_IOC_WALK_RWPTR               _IO(KFD_IOC_MAGIC, 95)
@@ -387,7 +386,6 @@ struct kfd_ioctl_vm_identical_mapping_space_args {
 #define KFD_IOC_VM_IDENTICAL_MAPPING_SPACE          _IOW(KFD_IOC_MAGIC, 98, uint64_t)
 #define KFD_IOC_SET_IN_BUF          _IOW(KFD_IOC_MAGIC, 100, uint64_t)
 #define KFD_IOC_SET_OUT_BUF         _IOW(KFD_IOC_MAGIC, 99, uint64_t)
-#define KFD_IOC_DUMP_MQD            _IOW(KFD_IOC_MAGIC, 101, uint64_t)
 
 #endif
 

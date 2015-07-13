@@ -51,10 +51,10 @@ static u16 device_id(struct pci_dev *pdev)
 {
 	u16 devid;
 
-    if (!pdev) {
-        printk("device_id null\n");
-        return;
-    }
+//    if (!pdev) {
+//        printk("device_id null\n");
+//        return;
+//    }
 
 	devid = pdev->bus->number;
 	devid = (devid << 8) | pdev->devfn;
@@ -388,24 +388,6 @@ static void mn_invalidate_page(struct mmu_notifier *mn,
 	__mn_flush_page(mn, address);
 }
 
-static void mn_invalidate_range(struct mmu_notifier *mn,
-				struct mm_struct *mm,
-				unsigned long start, unsigned long end)
-{
-	struct pasid_state *pasid_state;
-	struct device_state *dev_state;
-
-    printk("mn_invalidate_range\n");
-	pasid_state = mn_to_state(mn);
-	dev_state   = pasid_state->device_state;
-/*
-	if ((start ^ (end - 1)) < PAGE_SIZE)
-		amd_iommu_flush_page(dev_state->domain, pasid_state->pasid,
-				     start);
-	else*/
-		amd_iommu_flush_tlb(dev_state->domain, pasid_state->pasid);
-}
-
 static void mn_invalidate_range_start(struct mmu_notifier *mn,
 				      struct mm_struct *mm,
 				      unsigned long start, unsigned long end)
@@ -413,7 +395,7 @@ static void mn_invalidate_range_start(struct mmu_notifier *mn,
 	struct pasid_state *pasid_state;
 	struct device_state *dev_state;
 
-    printk("mn_invalidate_range_start\n");
+    printk("mn_invalidate_range_start, mm=%p\n", mm);
 	pasid_state = mn_to_state(mn);
 	dev_state   = pasid_state->device_state;
 
@@ -800,10 +782,10 @@ int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, struct kvm 
 	if (!amd_iommu_v2_supported())
 		return -ENODEV;
 
-    if (!pdev) {
-        printk("amd_iommu_vm_process_bind_pasid, pdev null\n");
-        return -1;
-    }
+//    if (!pdev) {
+//        printk("amd_iommu_vm_process_bind_pasid, pdev null\n");
+//        return -1;
+//    }
 
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
@@ -875,10 +857,10 @@ int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3)
 	struct device_state *dev_state;
 	u16 devid;
 
-    if (!pdev) {
-        printk("amd_iommu_set_gcr3, pdev null\n");
-        return -EINVAL;
-    }
+//    if (!pdev) {
+//        printk("amd_iommu_set_gcr3, pdev null\n");
+//        return -EINVAL;
+//    }
 
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
@@ -908,7 +890,6 @@ int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
 
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
-    printk("devid=%d, dev_state=%p\n", devid, dev_state);
 
 	if (dev_state == NULL)
 		return -EINVAL;

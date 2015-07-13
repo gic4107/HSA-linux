@@ -2550,8 +2550,6 @@ static int set_spte(struct kvm_vcpu *vcpu, u64 *sptep,
     spte |= (spte & PT_USER_MASK)? PTE_U_MASK: 0;
 #endif
 #endif
-    // FIXME: debug
-    trace_kvm_set_spte(0, sptep, spte);
 
 set_pte:
 	if (mmu_spte_update(sptep, spte))
@@ -2716,8 +2714,6 @@ static int __direct_map(struct kvm_vcpu *vcpu, gpa_t v, int write,
 		return 0;
 
 	for_each_shadow_entry(vcpu, (u64)gfn << PAGE_SHIFT, iterator) {
-        trace_kvm_shadow_entry(gfn, pfn, level, iterator.level, 
-                                        is_shadow_present_pte(*iterator.sptep));
 		if (iterator.level == level) {
 			mmu_set_spte(vcpu, iterator.sptep, ACC_ALL,     // set spte to sptep
 				     write, &emulate, level, gfn, pfn,
@@ -3955,7 +3951,7 @@ int kvm_mmu_load(struct kvm_vcpu *vcpu)
 	if (r)
 		goto out;
 	/* set_cr3() should ensure TLB has been flushed */
-    printk("kvm_mmu_load, vcpu=%p, arch=%p, mmu=%p, set_cr3 cr3=%llx, root_hpa=%llx\n", vcpu, &vcpu->arch, &vcpu->arch.mmu, vcpu->arch.cr3, vcpu->arch.mmu.root_hpa);
+//    printk("kvm_mmu_load, vcpu=%p, arch=%p, mmu=%p, set_cr3 cr3=%llx, root_hpa=%llx\n", vcpu, &vcpu->arch, &vcpu->arch.mmu, vcpu->arch.cr3, vcpu->arch.mmu.root_hpa);
 	vcpu->arch.mmu.set_cr3(vcpu, vcpu->arch.mmu.root_hpa);
 #ifdef CONFIG_HSA_VIRTUALIZATION
 #ifdef NPT_DISABLE

@@ -294,13 +294,13 @@ retry_walk:
 		pte = mmu->get_pdptr(vcpu, (addr >> 30) & 3);
 		trace_kvm_mmu_paging_element(pte, walker->level);
 		if (!FNAME(is_present_gpte)(pte)) {
-            printk("FNAME error 1\n");
+//            printk("FNAME error 1\n");
 			goto error;
         }
 		--walker->level;
 	}
 #endif
-    printk("=== walk_addr_generic, cr3=%llx, pdptr=%p\n", pte, vcpu->arch.walk_mmu->pdptrs);
+//    printk("=== walk_addr_generic, cr3=%llx, pdptr=%p\n", pte, vcpu->arch.walk_mmu->pdptrs);
 	walker->max_level = walker->level;
 	ASSERT((!is_long_mode(vcpu) && is_pae(vcpu)) ||
 	       (mmu->get_cr3(vcpu) & CR3_NONPAE_RESERVED_BITS) == 0);
@@ -310,7 +310,7 @@ retry_walk:
 	++walker->level;
 
 	do {
-        printk("level=%d: pte=%llx\n", walker->level, pte);
+//        printk("level=%d: pte=%llx\n", walker->level, pte);
 		gfn_t real_gfn;
 		unsigned long host_addr;
 
@@ -346,8 +346,8 @@ retry_walk:
 			goto error;
         }
 		walker->ptep_user[walker->level - 1] = ptep_user;
-        printk("level %d pte=%llx (by host_addr=%llx, offset=%llx)\n", walker->level,
-                 pte, host_addr, offset);
+//        printk("level %d pte=%llx (by host_addr=%llx, offset=%llx)\n", walker->level,
+//                 pte, host_addr, offset);
 
 		trace_kvm_mmu_paging_element(pte, walker->level);
 
@@ -731,7 +731,7 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 
 	r = mmu_topup_memory_caches(vcpu);      // vcpu->arch
 	if (r) {
-        printk("paging64_page_fault1: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
+//        printk("paging64_page_fault1: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
 		return r;
     }
 
@@ -748,7 +748,7 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 		if (!prefault)
 			inject_page_fault(vcpu, &walker.fault);
 
-        printk("paging64_page_fault2: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
+//        printk("paging64_page_fault2: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
 		return 0;
 	}
 
@@ -772,13 +772,13 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 
 	if (try_async_pf(vcpu, prefault, walker.gfn, addr, &pfn, write_fault,   // vcpu->kvm
 			 &map_writable)) {
-        printk("paging64_page_fault3: addr=%llx, gfn=%llx, pfn=%llx, level=%d\n", addr, walker.gfn, pfn, level);
+//        printk("paging64_page_fault3: addr=%llx, gfn=%llx, pfn=%llx, level=%d\n", addr, walker.gfn, pfn, level);
 		return 0;
     }
 
 	if (handle_abnormal_pfn(vcpu, mmu_is_nested(vcpu) ? 0 : addr,       // vcpu->kvm
 				walker.gfn, pfn, walker.pte_access, &r)) {
-        printk("paging64_page_fault4: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
+//        printk("paging64_page_fault4: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
 		return r;
     }
 
@@ -816,15 +816,13 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 	kvm_mmu_audit(vcpu, AUDIT_POST_PAGE_FAULT);
 	spin_unlock(&vcpu->kvm->mmu_lock);
 
-    trace_kvm_spt_page_fault(addr, walker.gfn, pfn, level);
-    printk("paging64_page_fault5: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
-
+//    printk("paging64_page_fault5: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
 	return r;
 
 out_unlock:
 	spin_unlock(&vcpu->kvm->mmu_lock);
 	kvm_release_pfn_clean(pfn);
-    printk("paging64_page_fault6: addr=%llx, gfn=%llx, pfn=%llx, level=%d, notifier_count=%d\n", addr, walker.gfn, pfn, level, vcpu->kvm->mmu_notifier_count);
+//    printk("paging64_page_fault6: addr=%llx, gfn=%llx, pfn=%llx, level=%d, notifier_count=%d\n", addr, walker.gfn, pfn, level, vcpu->kvm->mmu_notifier_count);
 	return 0;
 }
 
@@ -1038,13 +1036,13 @@ retry_walk:
 		pte = mmu->get_pdptr(vcpu, (addr >> 30) & 3);
 		trace_kvm_mmu_paging_element(pte, walker->level);
 		if (!FNAME(is_present_gpte)(pte)) {
-            printk("FNAME error 1\n");
+//            printk("FNAME error 1\n");
 			goto error;
         }
 		--walker->level;
 	}
 #endif
-    printk("=== iommu_spt_walk_addr_generic, cr3=%llx, pdptr=%p\n", pte, vcpu->arch.walk_mmu->pdptrs);
+//    printk("=== iommu_spt_walk_addr_generic, cr3=%llx, pdptr=%p\n", pte, vcpu->arch.walk_mmu->pdptrs);
 	walker->max_level = walker->level;
 	ASSERT((!is_long_mode(vcpu) && is_pae(vcpu)) ||
 	       (mmu->get_cr3(vcpu) & CR3_NONPAE_RESERVED_BITS) == 0);
@@ -1054,7 +1052,7 @@ retry_walk:
 	++walker->level;
 
 	do {
-        printk("level=%d: pte=%llx\n", walker->level, pte);
+//        printk("level=%d: pte=%llx\n", walker->level, pte);
 		gfn_t real_gfn;
 		unsigned long host_addr;
 
@@ -1072,7 +1070,7 @@ retry_walk:
 		real_gfn = mmu->translate_gpa(vcpu, gfn_to_gpa(table_gfn),      // just return gpa
 					      PFERR_USER_MASK|PFERR_WRITE_MASK);
 		if (unlikely(real_gfn == UNMAPPED_GVA)) {
-            printk("FNAME error 2\n");
+//            printk("FNAME error 2\n");
 			goto error;
         }
 		real_gfn = gpa_to_gfn(real_gfn);
@@ -1080,30 +1078,30 @@ retry_walk:
 		host_addr = gfn_to_hva_prot(vcpu->kvm, real_gfn,
 					    &walker->pte_writable[walker->level - 1]);
 		if (unlikely(kvm_is_error_hva(host_addr))) {
-            printk("FNAME error 3\n");
+//            printk("FNAME error 3\n");
 			goto error;
         }
 
 		ptep_user = (pt_element_t __user *)((void *)host_addr + offset);
 		if (unlikely(__copy_from_user(&pte, ptep_user, sizeof(pte)))) { // traverse pte to next level
-            printk("FNAME error 4\n");
+//            printk("FNAME error 4\n");
 			goto error;
         }
 		walker->ptep_user[walker->level - 1] = ptep_user;
-        printk("level %d pte=%llx (by host_addr=%llx, offset=%llx)\n", walker->level,
-                 pte, host_addr, offset);
+//        printk("level %d pte=%llx (by host_addr=%llx, offset=%llx)\n", walker->level,
+//                 pte, host_addr, offset);
 
 		trace_kvm_mmu_paging_element(pte, walker->level);
 
 		if (unlikely(!FNAME(is_present_gpte)(pte))) {
-            printk("FNAME error 5, pte=%llx\n", pte);       // here
+//            printk("FNAME error 5, pte=%llx\n", pte);       // here
 			goto error;
         }
 
 		if (unlikely(FNAME(is_rsvd_bits_set)(mmu, pte,
 					             walker->level))) {
 			errcode |= PFERR_RSVD_MASK | PFERR_PRESENT_MASK;
-            printk("FNAME error 6\n");
+//            printk("FNAME error 6\n");
 			goto error;
 		}
 
@@ -1115,7 +1113,7 @@ retry_walk:
 
 	if (unlikely(permission_fault(mmu, pte_access, access))) {
 		errcode |= PFERR_PRESENT_MASK;
-        printk("FNAME error 7\n");
+//        printk("FNAME error 7\n");
 		goto error;
 	}
 
@@ -1127,7 +1125,7 @@ retry_walk:
 
 	real_gpa = mmu->translate_gpa(vcpu, gfn_to_gpa(gfn), access);
 	if (real_gpa == UNMAPPED_GVA) {
-        printk("FNAME return 0\n");
+//        printk("FNAME return 0\n");
 		return 0;
     }
 
@@ -1147,7 +1145,7 @@ retry_walk:
 	if (unlikely(!accessed_dirty)) {
 		ret = FNAME(update_accessed_dirty_bits)(vcpu, mmu, walker, write_fault);
 		if (unlikely(ret < 0)) {
-            printk("FNAME error 8\n");
+//            printk("FNAME error 8\n");
 			goto error;
         }
 		else if (ret)
@@ -1305,15 +1303,13 @@ int iommu_spt_page_fault(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 	kvm_mmu_audit(vcpu, AUDIT_POST_PAGE_FAULT);
 	spin_unlock(&vcpu->kvm->mmu_lock);
 
-    trace_kvm_spt_page_fault(addr, walker.gfn, pfn, level);
-    printk("spt_page_fault5: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
-
+//    printk("spt_page_fault5: addr=%llx, gfn=%llx, pfn=%llx, level=%d, r=%d\n", addr, walker.gfn, pfn, level, r);
 	return r;
 
 out_unlock:
 	spin_unlock(&vcpu->kvm->mmu_lock);
 	kvm_release_pfn_clean(pfn);
-    printk("spt_page_fault6: addr=%llx, gfn=%llx, pfn=%llx, level=%d, notifier_count=%d\n", addr, walker.gfn, pfn, level, vcpu->kvm->mmu_notifier_count);
+//    printk("spt_page_fault6: addr=%llx, gfn=%llx, pfn=%llx, level=%d, notifier_count=%d\n", addr, walker.gfn, pfn, level, vcpu->kvm->mmu_notifier_count);
 	return 0;
 }
 #endif

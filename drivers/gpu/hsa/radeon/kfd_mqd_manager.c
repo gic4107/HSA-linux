@@ -54,20 +54,14 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 		uint64_t *gart_addr, struct queue_properties *q)
 {
 	uint64_t addr;
-	struct cik_mqd *m, *mmm;
+	struct cik_mqd *m;
 	int retval;
 	BUG_ON(!mm || !q || !mqd);
 
 	pr_debug("kfd: In func %s\n", __func__);
 
-	retval = 0;
-#ifdef MQD_IOMMU
-	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&mmm, &addr, ALIGN(sizeof(struct cik_mqd), 256));
-    m = kzalloc(sizeof(struct cik_mqd), GFP_KERNEL);
-    printk("m=%p, mmm=%p\n", m, mmm);
-#else
+    retval = 0;
 	retval = radeon_kfd_vidmem_alloc_map(mm->dev, mqd_mem_obj, (void **)&m, &addr, ALIGN(sizeof(struct cik_mqd), 256));
-#endif
 	if (retval != 0)
 		return -ENOMEM;
 
@@ -88,13 +82,8 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 	m->cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS | QUANTUM_DURATION(10);
 
 	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
-#ifdef MQD_IOMMU
-	m->cp_mqd_base_addr_lo        = lower_32(m);
-	m->cp_mqd_base_addr_hi        = upper_32(m);
-#else
 	m->cp_mqd_base_addr_lo        = lower_32(addr);
 	m->cp_mqd_base_addr_hi        = upper_32(addr);
-#endif
     printk("init_mqd: addr=%llx, m=%p\n", addr, m);
     printk("init_mqd: mqd_base_addr_lo=%llx, mqd_base_addr_hi=%llx\n", 
                     m->cp_mqd_base_addr_lo, m->cp_mqd_base_addr_hi);
@@ -108,11 +97,7 @@ static int init_mqd(struct mqd_manager *mm, void **mqd, kfd_mem_obj *mqd_mem_obj
 
 	*mqd = m;
 	if (gart_addr != NULL)
-#ifdef MQD_IOMMU
-        *gart_addr = m;
-#else
 		*gart_addr = addr;
-#endif
 	retval = mm->update_mqd(mm, m, q);
 
 	return retval;
@@ -178,21 +163,6 @@ static int load_mqd(struct mqd_manager *mm, void *mqd)
 
 	return 0;
 }
-
-#ifdef CONFIG_HSA_VIRTUALIZATION
-int update_mqd_vm(void *mqd, void *mqd_gva)
-{
-	struct cik_mqd *m;
-	m = get_mqd(mqd);
-
-    printk("update_mqd_vm\n");
-	m->cp_mqd_base_addr_lo        = lower_32(mqd_gva);
-	m->cp_mqd_base_addr_hi        = upper_32(mqd_gva);
-    printk("update_mqd_vm:   cp_mqd_base_addr_lo=%llx\n"
-           "                     cp_mqd_base_addr_hi=%llx\n",
-           m->cp_mqd_base_addr_lo, m->cp_mqd_base_addr_hi);
-}
-#endif
 
 static int update_mqd(struct mqd_manager *mm, void *mqd, struct queue_properties *q)
 {

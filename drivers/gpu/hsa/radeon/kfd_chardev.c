@@ -44,13 +44,8 @@
 // FIXME: Debug
 #include <linux/highmem.h>
 #include <asm/pgtable_types.h>
-void __user *wptr_user;
-void __user *rptr_user;
-void __user *ring_user;
-extern uint32_t *debug_doorbell;
 extern u32 __iomem *pasid1_doorbell_kernel_ptr;
 extern u32 __iomem *pasid2_doorbell_kernel_ptr;
-extern void *mqd_kva;
 uint64_t in_buf;
 uint64_t out_buf;
 
@@ -190,129 +185,6 @@ set_queue_properties_from_user(struct queue_properties *q_properties, struct kfd
 	return 0;
 }
 
-void* walk_page_table(struct mm_struct *mm, unsigned long addr)
-{
-    pgd_t *pgd;
-    pud_t *pud;
-    pmd_t *pmd;
-    pte_t *pte;
-    int offset = addr & 0xfff;
-    printk("walk_page_table, offset=%x\n", offset);
-
-    pgd = pgd_offset(mm, addr);
-    if (!pgd_present(*pgd))
-        return NULL;
-    printk("pgd=%p, pgd_val=%llx\n", pgd, pgd_val(*pgd));
-    
-    pud = pud_offset(pgd, addr);
-    if (!pud_present(*pud))
-        return NULL;
-    printk("pud=%p, pud_val=%llx\n", pud, pud_val(*pud));
-    
-    pmd = pmd_offset(pud, addr);
-    if (!pmd_present(*pmd))
-        return NULL;
-    printk("pmd=%p, pmd_val=%llx\n", pmd, pmd_val(*pmd));
-    if (pmd_val(*pmd) & _PAGE_PAT) 
-        return pmd;
-
-    pte = pte_offset_map(pmd, addr);
-
-    return pte;
-}
-
-void access_clr_a_page(struct mm_struct *mm, unsigned long addr)
-{
-    void *entry;
-    struct page *page;
-    void *map;
-    int offset;
-
-    printk("access_clr_a_page: %llx\n", addr);
-    entry = walk_page_table(mm, addr);
-    if (!entry)
-        return;
-
-    printk("entry=%llx\n", *(uint64_t*)entry);
-
-    if (*(uint64_t*)entry & _PAGE_PAT) {     // 2M page
-        pmd_t *pmd = (pmd_t*)entry;
-        page = pmd_page(*pmd);
-        offset = addr & 0x1fffff;
-
-        map = kmap(page);
-        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
-        kunmap(page);
-
-        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));   
-        pmd->pmd = pmd_val(*pmd) & ~_PAGE_ACCESSED;
-        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));   
-    }
-    else if (pte_present(*(pte_t*)entry)) {
-        pte_t *pte = (pte_t*)entry;
-        page = pte_page(*pte);
-        offset = addr & 0xfff;
-
-        map = kmap(page);
-        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
-        kunmap(page);
-
-        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
-        pte->pte = pte_val(*pte) & ~_PAGE_ACCESSED;
-        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
-    }
-}
-
-void access_page(struct mm_struct *mm, unsigned long addr)
-{
-    void *entry;
-    struct page *page;
-    void *map;
-    int offset;
-
-    printk("access_page: %llx\n", addr);
-    entry = walk_page_table(mm, addr);
-    if (!entry)
-        return;
-
-    printk("entry=%llx\n", *(uint64_t*)entry);
-
-    if (*(uint64_t*)entry & _PAGE_PAT) {     // 2M page
-        pmd_t *pmd = (pmd_t*)entry;
-        page = pmd_page(*pmd);
-        offset = addr & 0x1fffff;
-
-        printk("pmd=%p, *pmd=%llx, pmd_val=%llx\n", pmd, *pmd, pmd_val(*pmd));   
-
-        map = kmap(page);
-        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
-        kunmap(page);
-    }
-    else if (pte_present(*(pte_t*)entry)) {
-        pte_t *pte = (pte_t*)entry;
-        page = pte_page(*pte);
-        offset = addr & 0xfff;
-
-        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
-
-        map = kmap(page);
-        printk("map=%p, 0x%x\n", map+offset, *(int*)(map+offset));
-        kunmap(page);
-    }
-}
-
-void my_clear_page(struct mm_struct *mm, unsigned long addr)
-{
-    pte_t *pte;
-
-    pte = walk_page_table(mm, addr);
-    if (pte_present(*pte)) {
-        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
-        pte->pte = pte_val(*pte) & ~_PAGE_PRESENT;
-        printk("pte=%p, *pte=%llx, pte_val=%llx\n", pte, *pte, pte_val(*pte));   
-    }
-}
-
 static long
 kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *arg)
 {
@@ -322,26 +194,11 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	unsigned int queue_id;
 	struct kfd_process_device *pdd;
 	struct queue_properties q_properties;
-    int iommu_nested_translation = 0;
 
 	memset(&q_properties, 0, sizeof(struct queue_properties));
 
   	if (copy_from_user(&args, arg, sizeof(args)))
    		return -EFAULT;
-
-#ifdef MQD_IOMMU
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    struct kfd_ioctl_vm_create_queue_args vargs;
-    if (p->process_type == KFD_PROCESS_TYPE_VM_PROCESS) {
-        if (copy_from_user(&vargs, arg, sizeof(vargs)))
-            return -EFAULT;
-        p->vm_info->mqd_gva = vargs.mqd_gva;
-        p->vm_info->mqd_hva = vargs.mqd_hva;
-        printk("mqd_gva=%llx\n", p->vm_info->mqd_gva);
-        printk("mqd_hva=%llx\n", p->vm_info->mqd_hva);
-    }
-#endif
-#endif
 
     printk("ring_base_address=0x%llx\n", args.ring_base_address);
     printk("write_pointer_address=0x%llx\n", args.write_pointer_address);
@@ -350,21 +207,6 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
     printk("gpu_id=%d\n", args.gpu_id);
     printk("queue_type=%d\n", args.queue_type);
     printk("queue_percentage=%d\n", args.queue_percentage);
-    // FIXME: debug code to show the permission
-//    if (p->process_type == KFD_PROCESS_TYPE_NORMAL) {     // comment only if vm's info sent in HVA
-        printk("write_pointer_addr=%llx\n", args.write_pointer_address);
-
-        wptr_user = (void __user*)(args.write_pointer_address);
-        rptr_user = (void __user*)(args.read_pointer_address);
-        ring_user = (void __user*)(args.ring_base_address);
-
-//        access_clr_a_page(current->mm, (unsigned long)wptr_user);
-//        access_clr_a_page(current->mm, (unsigned long)wptr_user+24);
-//        access_clr_a_page(current->mm, (unsigned long)rptr_user);
-//        access_page(current->mm, (unsigned long)ring_user);
-//        access_page(current->mm, (unsigned long)wptr_user);
-//        access_page(current->mm, (unsigned long)rptr_user);
-//    }
 
 	if (!access_ok(VERIFY_WRITE, args.read_pointer_address, sizeof(qptr_t))) {
 		pr_err("kfd: can't access read pointer");
@@ -406,6 +248,9 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 	err = pqm_create_queue(&p->pqm, dev, filep, &q_properties, 0, q_properties.type, &queue_id);
 	if (err != 0)
 		goto err_create_queue;
+
+	args.queue_id = queue_id;
+	args.doorbell_address = (uint64_t)q_properties.doorbell_ptr;
 
 	if (copy_to_user(arg, &args, sizeof(args))) {
 		err = -EFAULT;
@@ -452,19 +297,9 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 {
 	int retval;
 	struct kfd_ioctl_destroy_queue_args args;
-    int iommu_nested_translation;
-    int err;
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
-
-    // FIXME: debug code to show the permission
-//    if (p->process_type == KFD_PROCESS_TYPE_NORMAL) {     // comment only if vm's info sent in HVA
-//        access_page(current->mm, (unsigned long)ring_user);
-//        access_page(current->mm, (unsigned long)wptr_user);
-//        access_page(current->mm, (unsigned long)rptr_user);
-//        access_page(current->mm, (unsigned long)mqd_kva); 
-//    }
 
 	pr_debug("kfd: destroying queue id %d for PASID %d\n",
 				args.queue_id,
@@ -1765,45 +1600,15 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 #endif
 
     // FIXME: debug
-    case KFD_IOC_DEBUG_DOORBELL_VALUE:
-        printk("KFD_IOC_DEBUG_DOORBELL_VALUE, debug_doorbell=%p\n", debug_doorbell);        
-        for(i=0; i<1024; i++) {
-            printk("%d, ", debug_doorbell[i]);
-            if(i % 16 == 0)  printk("\n");
-        }        
-        break;
-
-    // FIXME: debug
-    case KFD_IOC_DUMP_MQD:
-        dump_mqd(mqd_kva); 
-        break;
-
-    // FIXME: debug
 	case KFD_IOC_KICK_DOORBELL1:
 		printk("KFD_IOC_KICK_DOORBELL1, %p\n", pasid1_doorbell_kernel_ptr);
-        printk("mqd_kva = %p\n", mqd_kva);
-        dump_mqd(mqd_kva); 
-//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
         write_kernel_doorbell((u32 *)pasid1_doorbell_kernel_ptr, 16);
-//        for(i=1; i!=0; i++);
-//        for(i=1; i!=0; i++);
-//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
-        dump_mqd(mqd_kva); 
         break;
 
     // FIXME: debug
 	case KFD_IOC_KICK_DOORBELL2:
 		printk("KFD_IOC_KICK_DOORBELL2, %p\n", pasid2_doorbell_kernel_ptr);
-        printk("mqd_kva = %p\n", mqd_kva);
-//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
-//        access_clr_a_page(current->mm, (unsigned long)identical_hva_space);
-        dump_mqd(mqd_kva); 
         write_kernel_doorbell((u32 *)pasid2_doorbell_kernel_ptr, 16);
-//        for(i=1; i!=0; i++);
-//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
-//        access_clr_a_page(current->mm, (unsigned long)identical_hva_space);
-        dump_mqd(mqd_kva); 
-//        access_clr_a_page(current->mm, (unsigned long)mqd_kva); 
         break;
 
     // FIXME: debug
@@ -1825,10 +1630,6 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
     // FIXME: debug
 	case KFD_IOC_WALK_RWPTR:
 		printk("KFD_IOC_WALK_RWPTR ");
-
-//        access_clr_a_page(current->mm, wptr_user);
-//        access_clr_a_page(current->mm, rptr_user);
-
         break;
 
     // FIXME: debug
@@ -1839,8 +1640,6 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             return -EFAULT;
 
         printk("va=%llx\n", va); 
-//        access_clr_a_page(current->mm, va);
-
         break;
 
     // FIXME: debug
@@ -1851,8 +1650,6 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             return -EFAULT;
 
         printk("va=%llx\n", va); 
-        my_clear_page(current->mm, va);
-
         break;
 
 #endif

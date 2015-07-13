@@ -27,7 +27,6 @@
 
 // gic4107 for debug
 #include <linux/sched.h>
-uint32_t *debug_doorbell;
 u32 __iomem *pasid1_doorbell_kernel_ptr;
 u32 __iomem *pasid2_doorbell_kernel_ptr;
 
@@ -130,14 +129,6 @@ int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct 
 	if (vma->vm_end - vma->vm_start != doorbell_process_allocation())
 		return -EINVAL;
 
-    // FIXME: debug
-/*    debug_doorbell = (uint32_t*)__get_free_page(GFP_KERNEL);
-    if (!debug_doorbell)
-        return -ENOMEM;
-    memset(debug_doorbell, 0, 4096);
-    SetPageReserved(virt_to_page(debug_doorbell));
-    printk("debug_doorbell=%p\n", debug_doorbell);
-*/
 	/* device_index must be GPU ID!! */
 	device_index = vma->vm_pgoff - KFD_MMAP_DOORBELL_START;
 
@@ -149,10 +140,7 @@ int radeon_kfd_doorbell_mmap(struct kfd_process *process, struct vm_area_struct 
 	vma->vm_flags |= VM_IO | VM_DONTCOPY | VM_DONTEXPAND | VM_NORESERVE | VM_DONTDUMP | VM_PFNMAP;
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
-//	start = dev->doorbell_base + (process->pasid+1) * doorbell_process_allocation();
 	start = dev->doorbell_base + process->pasid * doorbell_process_allocation();
-//    start = virt_to_phys(debug_doorbell);
-//    debug_doorbell = __va(start);
 
 	printk("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
 		 "     target user address == 0x%016llX\n"
@@ -188,14 +176,6 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
 
     printk("radeon_kfd_vm_doorbell_mmap\n");
 
-    // FIXME: debug
-/*    debug_doorbell = (uint32_t*)__get_free_page(GFP_KERNEL);
-    if (!debug_doorbell)
-        return -ENOMEM;
-    memset(debug_doorbell, 0, 4096);
-    SetPageReserved(virt_to_page(debug_doorbell));
-    printk("debug_doorbell=%p\n", debug_doorbell);
-*/
     printk("vm_end=0x%lx, vm_start=0x%lx\n", vma->vm_end, vma->vm_start);
 	/* For simplicitly we only allow mapping of the entire doorbell allocation of a single device & process. */
 	if (vma->vm_end - vma->vm_start != doorbell_process_allocation())
@@ -213,8 +193,6 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	start = dev->doorbell_base + process->pasid * doorbell_process_allocation();
-//    debug_doorbell = __va(start);
-//    start = virt_to_phys(debug_doorbell);
     vma->vm_pgoff = start >> PAGE_SHIFT;
     pdd->doorbell_mapping = vma->vm_start;
     
