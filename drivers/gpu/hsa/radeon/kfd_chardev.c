@@ -121,7 +121,6 @@ radeon_kfd_chardev(void)
 	return kfd_device;
 }
 
-
 static int
 kfd_open(struct inode *inode, struct file *filep)
 {
@@ -1117,13 +1116,13 @@ static long
 kfd_ioctl_vm_close_process(struct file *filep, struct kfd_process *p, void __user *arg)
 {
     uint64_t vm_mm;
-    struct kfd_process *process;
     
     if(copy_from_user(&vm_mm, arg, sizeof(vm_mm))) {
         printk("copy_from_user fail\n");
         return -EFAULT;
     }
     printk("vm_mm=0x%llx\n", vm_mm);
+
     radeon_kfd_vm_close_process((const void*)vm_mm);
 
     return 0;

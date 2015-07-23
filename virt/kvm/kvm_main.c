@@ -746,48 +746,34 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	enum kvm_mr_change change;
 
 	r = check_memory_region_flags(mem);
-	if (r) {
-        printk("out1\n");
+	if (r)
 		goto out;
-    }
 
 	r = -EINVAL;
 	/* General sanity checks */
-	if (mem->memory_size & (PAGE_SIZE - 1)) {
-        printk("out2\n");
+	if (mem->memory_size & (PAGE_SIZE - 1))
 		goto out;
-    }
-	if (mem->guest_phys_addr & (PAGE_SIZE - 1)) {
-        printk("out3\n");
+	if (mem->guest_phys_addr & (PAGE_SIZE - 1))
 		goto out;
-    }
 	/* We can read the guest memory with __xxx_user() later on. */
 	if ((mem->slot < KVM_USER_MEM_SLOTS) &&
 	    ((mem->userspace_addr & (PAGE_SIZE - 1)) ||
 	     !access_ok(VERIFY_WRITE,
 			(void __user *)(unsigned long)mem->userspace_addr,
-			mem->memory_size))) {
-        printk("out4\n");
+			mem->memory_size)))
 		goto out;
-    }
-	if (mem->slot >= KVM_MEM_SLOTS_NUM) {
-        printk("out5\n");
+	if (mem->slot >= KVM_MEM_SLOTS_NUM)
 		goto out;
-    }
-	if (mem->guest_phys_addr + mem->memory_size < mem->guest_phys_addr) {
-        printk("out6\n");
+	if (mem->guest_phys_addr + mem->memory_size < mem->guest_phys_addr)
 		goto out;
-    }
 
 	slot = id_to_memslot(kvm->memslots, mem->slot);
 	base_gfn = mem->guest_phys_addr >> PAGE_SHIFT;
 	npages = mem->memory_size >> PAGE_SHIFT;
 
 	r = -EINVAL;
-	if (npages > KVM_MEM_MAX_NR_PAGES) {
-        printk("out7\n");
+	if (npages > KVM_MEM_MAX_NR_PAGES)
 		goto out;
-    }
 
 	if (!npages)
 		mem->flags &= ~KVM_MEM_LOG_DIRTY_PAGES;
@@ -806,12 +792,8 @@ int __kvm_set_memory_region(struct kvm *kvm,
 		else { /* Modify an existing slot. */
 			if ((mem->userspace_addr != old.userspace_addr) ||
 			    (npages != old.npages) ||
-			    ((new.flags ^ old.flags) & KVM_MEM_READONLY)) {
-                printk("out71: ");
-                printk("old=%llx %d %llx\n", old.userspace_addr, old.npages, old.flags);
-                printk("new=%llx %d %llx\n", mem->userspace_addr, npages, new.flags);
+			    ((new.flags ^ old.flags) & KVM_MEM_READONLY))
 				goto out;
-            }
 
 			if (base_gfn != old.base_gfn)
 				change = KVM_MR_MOVE;
@@ -819,16 +801,13 @@ int __kvm_set_memory_region(struct kvm *kvm,
 				change = KVM_MR_FLAGS_ONLY;
 			else { /* Nothing to change. */
 				r = 0;
-                printk("out8\n");
 				goto out;
 			}
 		}
 	} else if (old.npages) {
 		change = KVM_MR_DELETE;
-	} else /* Modify a non-existent slot: disallowed. */ {
-        printk("out9\n");
+	} else /* Modify a non-existent slot: disallowed. */
 		goto out;
-    }
 
 	if ((change == KVM_MR_CREATE) || (change == KVM_MR_MOVE)) {
 		/* Check for overlaps */
@@ -838,10 +817,8 @@ int __kvm_set_memory_region(struct kvm *kvm,
 			    (slot->id == mem->slot))
 				continue;
 			if (!((base_gfn + npages <= slot->base_gfn) ||
-			      (base_gfn >= slot->base_gfn + slot->npages))) {
-                printk("out10\n");
+			      (base_gfn >= slot->base_gfn + slot->npages)))
 				goto out;
-            }
 		}
 	}
 
@@ -917,12 +894,6 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	kvm_free_physmem_slot(kvm, &old, &new);
 	kfree(old_memslots);
 
-    printk("__kvm_set_memory_region, new: id %d, flags 0x%x, base_gfn %llx, npage 0x%x, userspace_addr %llx\n", 
-                    new.id, new.flags, new.base_gfn, new.npages, new.userspace_addr);
-    struct kvm_memory_slot *my;
-    kvm_for_each_memslot(my, kvm->memslots)
-        printk("id %d, base_gfn %llx, npage 0x%x, userspace_addr %llx\n", 
-                my->id, my->base_gfn, my->npages, my->userspace_addr);
 	/*
 	 * IOMMU mapping:  New slots need to be mapped.  Old slots need to be
 	 * un-mapped and re-mapped if their base changes.  Since base change
@@ -940,13 +911,10 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	return 0;
 
 out_slots:
-    printk("out_slots\n");
 	kfree(slots);
 out_free:
-    printk("out_free\n");
 	kvm_free_physmem_slot(kvm, &new, &old);
 out:
-    printk("out\n");
 	return r;
 }
 EXPORT_SYMBOL_GPL(__kvm_set_memory_region);
@@ -968,9 +936,6 @@ static int kvm_vm_ioctl_set_memory_region(struct kvm *kvm,
 {
 	if (mem->slot >= KVM_USER_MEM_SLOTS)
 		return -EINVAL;
-    printk("kvm_vm_ioctl_set_memory_region, slot %d, flags 0x%x, gpa=%llx, "
-           "size %llx, userspace_addr=%llx\n", mem->slot, mem->flags, 
-                mem->guest_phys_addr, mem->memory_size, mem->userspace_addr);
 	return kvm_set_memory_region(kvm, mem);
 }
 
@@ -1131,7 +1096,7 @@ static int get_user_page_nowait(struct task_struct *tsk, struct mm_struct *mm,
 {
 	int flags = FOLL_TOUCH | FOLL_NOWAIT | FOLL_HWPOISON | FOLL_GET;
 
-	if (write)      // 1 in doorbell
+	if (write)
 		flags |= FOLL_WRITE;
 
 	return __get_user_pages(tsk, mm, start, 1, flags, page, NULL, NULL);
@@ -1170,9 +1135,6 @@ static bool hva_to_pfn_fast(unsigned long addr, bool atomic, bool *async,
 	npages = __get_user_pages_fast(addr, 1, 1, page);
 	if (npages == 1) {
 		*pfn = page_to_pfn(page[0]);
-        if(*pfn == 0xD0003) {
-            printk("===== hva_to_pfn_fast, get 0xD0003 from page_to_pfn\n");
-        }
 
 		if (writable)
 			*writable = true;
@@ -1260,40 +1222,15 @@ static pfn_t hva_to_pfn(unsigned long addr, bool atomic, bool *async,
 	/* we can do it either atomically or asynchronously, not both */
 	BUG_ON(atomic && async);
 
-	if (hva_to_pfn_fast(addr, atomic, async, write_fault, writable, &pfn)) {
-        if(pfn == 0xD0003) {
-            printk("===== pfn 0xD0003 return from hva_to_pfn_fast\n");
-            printk("hva_to_pfn addr=0x%llx, atomic=%d, async=%d, write_fault=%d, writable=%d\n", 
-                        addr, atomic, *async, write_fault, *writable);
-            printk("vm_start=0x%llx, vm_pgoff=0x%llx, vm_flags=0x%lx, vm_page_prot=0x%llx\n", 
-                        vma->vm_start, vma->vm_pgoff, vma->vm_flags, vma->vm_page_prot);
-            printk("pfn=0x%lx pfn_valid=%d, pfn_to_page=0x%llx, PageReserved=%d\n", 
-                        pfn, pfn_valid(pfn), pfn_to_page(pfn), PageReserved(pfn_to_page(pfn)));
-            printk("current=%p, mm=%p, vma=%p, vma->vm_mm=%p\n", current, current->mm, vma, vma->vm_mm);
-        }
+	if (hva_to_pfn_fast(addr, atomic, async, write_fault, writable, &pfn))
 		return pfn;
-    }
 
 	if (atomic)
 		return KVM_PFN_ERR_FAULT;
 
 	npages = hva_to_pfn_slow(addr, async, write_fault, writable, &pfn);
-	if (npages == 1) {
-        if(pfn == 0xD0003) {
-            printk("===== pfn 0xD0003 return from hva_to_pfn_slow\n");
-            printk("hva_to_pfn addr=0x%llx, atomic=%d, async=%d, write_fault=%d, writable=%d\n", 
-                        addr, atomic, *async, write_fault, *writable);
-            printk("vm_start=0x%llx, vm_pgoff=0x%llx, vm_flags=0x%lx, vm_page_prot=0x%llx\n", 
-                        vma->vm_start, vma->vm_pgoff, vma->vm_flags, vma->vm_page_prot);
-            printk("pfn=0x%lx pfn_valid=%d, pfn_to_page=0x%llx, PageReserved=%d\n", 
-                        pfn, pfn_valid(pfn), pfn_to_page(pfn), PageReserved(pfn_to_page(pfn)));
-            printk("current=%p, mm=%p, vma=%p, vma->vm_mm=%p\n", current, current->mm, vma, vma->vm_mm);
-        }
+	if (npages == 1)
 		return pfn;
-    }
-    else 
-        printk("===== hva_to_pfn =====\n addr=0x%llx, npages=%d, async=%p, writable=%p\n", 
-                    addr, npages, async, writable);
 
 	down_read(&current->mm->mmap_sem);
 	if (npages == -EHWPOISON ||
@@ -1309,16 +1246,6 @@ static pfn_t hva_to_pfn(unsigned long addr, bool atomic, bool *async,
 	else if ((vma->vm_flags & VM_PFNMAP)) {
 		pfn = ((addr - vma->vm_start) >> PAGE_SHIFT) +
 			vma->vm_pgoff;
-        printk("===== VM_PFNMAP\n");
-        printk("hva_to_pfn addr=0x%llx, atomic=%d, async=%d, write_fault=%d, writable=%d\n", 
-                    addr, atomic, *async, write_fault, *writable);
-        printk("vm_start=0x%llx, vm_pgoff=0x%llx, vm_flags=0x%lx, vm_page_prot=0x%llx\n", 
-                    vma->vm_start, vma->vm_pgoff, vma->vm_flags, vma->vm_page_prot);
-        printk("current=%p, mm=%p, vma=%p, vma->vm_mm=%p\n", current, current->mm, vma, vma->vm_mm);
-        printk("pfn=0x%lx\n", pfn); 
-        printk("pfn_valid=%d\n", pfn_valid(pfn));
-//        printk("pfn_to_page=0x%llx\n", pfn_to_page(pfn));
-//        printk("PageReserved=%d\n", PageReserved(pfn_to_page(pfn)));
 		BUG_ON(!kvm_is_mmio_pfn(pfn));
 	} else {
 		if (async && vma_is_valid(vma, write_fault))
@@ -2443,12 +2370,9 @@ static long kvm_vm_ioctl(struct file *filp,
 	case KVM_IRQFD: {
 		struct kvm_irqfd data;
 
-        printk("KVM_IRQFD\n");
 		r = -EFAULT;
 		if (copy_from_user(&data, argp, sizeof data))
 			goto out;
-        printk("KVM_IRQFD, fd=%d, gsi=%d, flags=0x%x\n", data.fd, data.gsi, data.flags);
-
 		r = kvm_irqfd(kvm, &data);
 		break;
 	}
@@ -3203,12 +3127,9 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 	int r;
 	int cpu;
 
-    printk("kvm_init\n");
 	r = kvm_arch_init(opaque);
-	if (r) {
-        printk("kvm_arch_init return %d\n", r);
+	if (r)
 		goto out_fail;
-    }
 
 	/*
 	 * kvm_arch_init makes sure there's at most one caller

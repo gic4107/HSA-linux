@@ -556,7 +556,6 @@ int ttm_mem_global_alloc_page(struct ttm_mem_global *glob,
 	 * only if highmem or !dma32.
 	 */
 
-    printk("ttm_mem_global_alloc_page: page=%p, pfn=%llx\n", page, page_to_pfn(page));
 #ifdef CONFIG_HIGHMEM
 	if (PageHighMem(page) && glob->zone_highmem != NULL)
 		zone = glob->zone_highmem;

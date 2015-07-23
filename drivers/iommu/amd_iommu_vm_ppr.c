@@ -109,7 +109,7 @@ void amd_iommu_vm_ppr(struct fault *fault, int write)
 }
 EXPORT_SYMBOL(amd_iommu_vm_ppr);
 
-static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
+static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, int consume_head)
 {
     int head, tail;
     struct fault *fault;
@@ -117,7 +117,6 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
     u64 guest_cr3;
     int ret;
 
-//    printk("vm_finish_ppr: %p\n", iommu_vm_ppr);
     printk("vm_finish_ppr: tail=%d, head=%d, vm_consume_head=%d\n", 
             iommu_vm_ppr->tail, iommu_vm_ppr->head, iommu_vm_ppr->vm_consume_head);
     head = iommu_vm_ppr->head;
@@ -125,7 +124,6 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
 
     while (head != tail) {
         fault = (struct fault*)(iommu_vm_ppr->ppr_log_region[head].fault);
-        printk("fault=%p, pasid=%d\n", fault, fault->pasid);
     	if (fault->dev_state->inv_ppr_cb) {
 	    	int status;
 
@@ -133,7 +131,6 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
 	    					      fault->pasid,
     						      fault->address,
     						      fault->flags);
-            printk("inv_ppr_cb status=%d\n", status);
 	    	switch (status) {
     		case AMD_IOMMU_INV_PRI_RSP_SUCCESS:
     			set_pri_tag_status(fault->state, fault->tag, PPR_SUCCESS);
@@ -145,28 +142,20 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, uint64_t gpa)
     			set_pri_tag_status(fault->state, fault->tag, PPR_FAILURE);
     			break;
     		default:
-                printk("inv_ppr_cb BUG\n");
     			BUG();
     		}
     	} 
-
-        // fix stage2 page table
-//        ret = kvm_hsa_iommu_nested_page_fault(fault->state->kvm, gpa, fault->flags);  
-        // fix spt page fault
 
         // get guest cr3
         if (!radeon_kfd_get_vm_process_pgd_p)
             radeon_kfd_get_vm_process_pgd_p = symbol_request(radeon_kfd_get_vm_process_pgd); 
         guest_cr3 = radeon_kfd_get_vm_process_pgd_p((uint64_t)(fault->state->task));
-        printk("vm_finish_ppr, guest_cr3=%llx\n", guest_cr3);
         ret = kvm_hsa_iommu_spt_page_fault(fault->state->kvm, fault->address, 
                                                         fault->flags, guest_cr3);
-        printk("ret=%d\n", ret);
 
         // flush
   		amd_iommu_flush_all_tlb(fault->dev_state->domain);
 
-        printk("finish_pri_tag\n");
 		set_pri_tag_status(fault->state, fault->tag, PPR_SUCCESS);
 	    finish_pri_tag(fault->dev_state, fault->state, fault->tag, 1);    
     	put_pasid_state(fault->state);    
@@ -201,13 +190,6 @@ static int amd_iommu_vm_ppr_open(struct inode *inode, struct file *f)
     hash_add(iommu_vm_pprs, &iommu_vm_ppr->node, (uintptr_t)current->mm);   
     mutex_unlock(&iommu_vm_ppr_mutex);
 
-    //FIXME: for debugging usage
-    read_guest_pgd_p = symbol_request(read_guest_pgd);
-    if (!read_guest_pgd_p) {
-        printk("symbol_request(read_guest_pgd_be) fail\n");
-        return -EINVAL;
-    }
-
     return 0;
 }
 
@@ -221,7 +203,7 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
     struct pasid_state *pasid_state;
     struct device_state *dev_state;
     unsigned long start, end;
-    uint64_t gpa;
+    int head;
     int fd;
 	int r;
 
@@ -258,13 +240,13 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
 		break;
 
     case IVP_IOC_VM_FINISH_PPR:
-		if (copy_from_user(&gpa, argp, sizeof gpa)) {
+		if (copy_from_user(&head, argp, sizeof head)) {
 			r = -EFAULT;
 			break;
 		}
-        printk("IVP_IOC_VM_FINISH_PPR, gpa=%llx\n", gpa);
+        printk("IVP_IOC_VM_FINISH_PPR, head=%d\n", head);
 
-        r = vm_finish_ppr(iommu_vm_ppr, gpa);
+        r = vm_finish_ppr(iommu_vm_ppr, head);
         break;
 
     case IVP_IOC_MMU_CLEAR_FLUSH_YOUNG:

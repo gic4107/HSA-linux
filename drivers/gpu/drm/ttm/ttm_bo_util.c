@@ -524,7 +524,6 @@ static int ttm_bo_ioremap(struct ttm_buffer_object *bo,
 	if (bo->mem.bus.addr) {
 		map->bo_kmap_type = ttm_bo_map_premapped;
 		map->virtual = (void *)(((u8 *)bo->mem.bus.addr) + offset);
-        printk("ttm_bo_ioremap1: addr=%p, map=%p\n", bo->mem.bus.addr, map->virtual);
 	} else {
 		map->bo_kmap_type = ttm_bo_map_iomap;
 		if (mem->placement & TTM_PL_FLAG_WC)
@@ -533,7 +532,6 @@ static int ttm_bo_ioremap(struct ttm_buffer_object *bo,
 		else
 			map->virtual = ioremap_nocache(bo->mem.bus.base + bo->mem.bus.offset + offset,
 						       size);
-        printk("ttm_bo_ioremap2: map=%p\n", map->virtual);
 	}
 	return (!map->virtual) ? -ENOMEM : 0;
 }
@@ -564,8 +562,6 @@ static int ttm_bo_kmap_ttm(struct ttm_buffer_object *bo,
 		map->bo_kmap_type = ttm_bo_map_kmap;
 		map->page = ttm->pages[start_page];
 		map->virtual = kmap(map->page);
-        printk("ttm_bo_kmap_ttm1, ttm=%p, ttm->pages=%p, page=%p, page_to_phys=%llx, kmap=%p\n", 
-                    ttm, ttm->pages, map->page, page_to_phys(map->page), map->virtual);        // here
 	} else {
 		/*
 		 * We need to use vmap to get the desired page protection
@@ -577,7 +573,6 @@ static int ttm_bo_kmap_ttm(struct ttm_buffer_object *bo,
 		map->bo_kmap_type = ttm_bo_map_vmap;
 		map->virtual = vmap(ttm->pages + start_page, num_pages,
 				    0, prot);
-        printk("ttm_bo_kmap_ttm2, page=%p, kmap=%p\n", ttm->pages, map->virtual);
 	}
 	return (!map->virtual) ? -ENOMEM : 0;
 }
@@ -607,7 +602,7 @@ int ttm_bo_kmap(struct ttm_buffer_object *bo,
 	ttm_mem_io_unlock(man);
 	if (ret)
 		return ret;
-	if (!bo->mem.bus.is_iomem) {        // here
+	if (!bo->mem.bus.is_iomem) {
 		return ttm_bo_kmap_ttm(bo, start_page, num_pages, map);
 	} else {
 		offset = start_page << PAGE_SHIFT;
@@ -722,13 +717,3 @@ int ttm_bo_move_accel_cleanup(struct ttm_buffer_object *bo,
 	return 0;
 }
 EXPORT_SYMBOL(ttm_bo_move_accel_cleanup);
-
-#ifdef CONFIG_HSA_VIRTUALIZATION
-struct page **ttm_bo_pages(struct ttm_tt *ttm, int *num_pages)
-{
-    printk("ttm_bo_pages, ttm=%p, pages=%p, num_page=%d\n", ttm, ttm->pages, ttm->num_pages);
-    *num_pages = ttm->num_pages;
-    return ttm->pages;
-}
-EXPORT_SYMBOL(ttm_bo_pages);
-#endif

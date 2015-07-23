@@ -174,7 +174,6 @@ static void shutdown_process(struct kfd_process *p)
 #ifdef CONFIG_HSA_VIRTUALIZATION
     hlist_for_each_entry_rcu(iter, kfd_processes, kfd_processes) {
         if (p->process_type != KFD_PROCESS_TYPE_NORMAL) {
-            printk("shutdown_process, type=%d\n", p->process_type);
             vm_process = 1;
         }
     }
@@ -714,21 +713,35 @@ radeon_kfd_vm_create_process(const void *vm_mm)
 
 long radeon_kfd_vm_close_process(const void *vm_mm)
 {
-    struct kfd_process *process;
+    struct kfd_process *p;
+    struct kfd_process_device *pdd;
 
     if(vm_mm == NULL)
         return ERR_PTR(-EINVAL);
 
-    process = find_vm_process(vm_mm);
-    if(process == NULL) {
+    p = find_vm_process(vm_mm);
+    if(p == NULL) {
         printk("!!! radeon_kfd_vm_close_process: process not found\n");
         return -EFAULT;
     }
 
-    kfree(process->vm_info);
+    pdd = radeon_kfd_get_process_device_data(p->vm_info->dev, p);
+    if(pdd == NULL) {
+        printk("!!! radeon_kfd_vm_close_process: pdd not found\n");
+        return -EFAULT;
+    }
+    printk("pdd->doorbell_mapping=%p\n", pdd->doorbell_mapping);
 
-    shutdown_process(process);
-    free_process(process); 
+    radeon_kfd_doorbell_unmap(pdd); 
+ 
+    amd_iommu_unbind_pasid(p->vm_info->dev->pdev, p->pasid);
+ 
+    list_del(&p->vm_info->list);
+
+    kfree(p->vm_info);
+
+    shutdown_process(p);
+    free_process(p); 
 
     return 0;
 }
@@ -780,13 +793,10 @@ void radeon_kfd_bind_iommu_spt(gpa_t guest_cr3, hpa_t spt_root)
     if (list_empty(&vm_info_list))
         return;
 
-    printk("guest_cr3=%llx, spt_root=%llx\n", guest_cr3, spt_root);
     list_for_each_entry(vm_info, &vm_info_list, list) {
         if (vm_info->vm_pgd_gpa == guest_cr3) {
-            if (vm_info->vm_spt_root == spt_root) { // SPT same, just return
-                printk("PASID %d, spt_root same\n", vm_info->kfd_process->pasid);
+            if (vm_info->vm_spt_root == spt_root)  // SPT same, just return
                 return;
-            }
             break;
         }
     }

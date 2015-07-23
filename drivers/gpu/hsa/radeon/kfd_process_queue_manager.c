@@ -123,8 +123,10 @@ static int create_cp_queue(struct process_queue_manager *pqm, struct kfd_dev *de
 	q_properties->queue_id = qid;
 
 	retval = init_queue(q, *q_properties);
-	if (retval != 0)
+	if (retval != 0) {
+        printk("init_queue fail\n");
 		goto err_init_queue;
+    }
 
 	(*q)->device = dev;
 	(*q)->process = pqm->process;
@@ -195,6 +197,7 @@ int pqm_create_queue(struct process_queue_manager *pqm,
 		pqn->q = q;
 		pqn->kq = NULL;
 		retval = dev->dqm->create_queue(dev->dqm, q, &pdd->qpd, &q->properties.vmid);
+        printk("dqm->create_queue return %d\n", retval);
 		print_queue(q);
 		break;
 	case KFD_QUEUE_TYPE_DIQ:

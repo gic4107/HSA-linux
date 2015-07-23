@@ -642,8 +642,6 @@ retry:
 	domid   = (event[1] >> EVENT_DOMID_SHIFT) & EVENT_DOMID_MASK;
 	flags   = (event[1] >> EVENT_FLAGS_SHIFT) & EVENT_FLAGS_MASK;
 	address = (u64)(((u64)event[3]) << 32) | event[2];
-//    printk("iommu_print_event ...\n");
-//    printk("event[0]=0x%x\n, event[1]=0x%x\n, event[2]=0x%x\n, event[3]=0x%x\n", event[0], event[1], event[2], event[3]);
 
 	if (type == 0) {
 		/* Did we hit the erratum? */
@@ -736,13 +734,12 @@ static void iommu_handle_ppr_entry(struct amd_iommu *iommu, u64 *raw)
 		return;
 	}
 
+    printk("iommu_handle_ppr_entry, raw[0]=%llx, raw[1]=%llx\n", raw[0], raw[1]);
 	fault.address   = raw[1];
 	fault.pasid     = PPR_PASID(raw[0]);
 	fault.device_id = PPR_DEVID(raw[0]);
 	fault.tag       = PPR_TAG(raw[0]);
 	fault.flags     = PPR_FLAGS(raw[0]);
-
-    printk("iommu_handle_ppr_entry, raw0=0x%llx, raw1=0x%llx\n", raw[0], raw[1]);
 
 	atomic_notifier_call_chain(&ppr_notifier, 0, &fault);
 }
@@ -2146,10 +2143,6 @@ static void set_dte_entry(u16 devid, struct protection_domain *domain, bool ats)
 	flags &= ~(0xffffUL);
 	flags |= domain->id;
 
-    printk("set_dte_entry: domain=%p, iommu_domain=%p, mode=%d, glx=%d\n", domain, domain->iommu_domain, domain->mode, domain->glx);
-    printk("set_dte_entry: pt_root=0x%llx, gcr3=0x%llx\n", domain->pt_root, domain->gcr3_tbl);
-    printk("set_dte_entry: virt_to_phys(pt_root)=0x%llx, __pa(gcr3)=0x%llx\n", virt_to_phys(domain->pt_root), __pa(domain->gcr3_tbl));
-    printk("set_dte_entry: data[0]=%llx, data[1]=%llx\n", pte_root, flags);
 	amd_iommu_dev_table[devid].data[1]  = flags;
 	amd_iommu_dev_table[devid].data[0]  = pte_root;
 }
@@ -2362,7 +2355,6 @@ static int attach_device(struct device *dev,
 		dev_data->ats.enabled = true;
 		dev_data->ats.qdep    = pci_ats_queue_depth(pdev);
 		dev_data->pri_tlp     = pci_pri_tlp_required(pdev);
-        printk("dev_data->pri_tlp=%d\n", dev_data->pri_tlp);
 	} else if (amd_iommu_iotlb_sup &&
 		   pci_enable_ats(pdev, PAGE_SHIFT) == 0) {
 		dev_data->ats.enabled = true;
@@ -3304,7 +3296,6 @@ static int amd_iommu_domain_init(struct iommu_domain *dom)
 	if (!domain->pt_root)
 		goto out_free;
 
-    printk("amd_iommu_domain_init, domain=%p, mode=%d, domain->pt_root=%p\n", domain, domain->mode, domain->pt_root);
 	domain->iommu_domain = dom;
 
 	dom->priv = domain;
@@ -3441,7 +3432,6 @@ static phys_addr_t amd_iommu_iova_to_phys(struct iommu_domain *dom,
 	phys_addr_t paddr;
 	u64 *pte, __pte;
 
-    printk("amd_iommu_iova_to_phys\n");
 	if (domain->mode == PAGE_MODE_NONE)
 		return iova;
 
@@ -3569,7 +3559,6 @@ void amd_iommu_domain_direct_map(struct iommu_domain *dom)
 	domain->mode    = PAGE_MODE_NONE;
 	domain->updated = true;
 
-    printk("amd_iommu_domain_direct_map, mode=%d\n", domain->mode);
 	/* Make changes visible to IOMMUs */
 	update_domain(domain);
 
@@ -3844,7 +3833,6 @@ static int __set_gcr3(struct protection_domain *domain, int pasid,
 
 //	if (domain->mode != PAGE_MODE_NONE)
 //		return -EINVAL;
-    printk("__set_gcr3 mode=%d\n", domain->mode);
 
 	pte = __get_gcr3_pte(domain->gcr3_tbl, domain->glx, pasid, true);
 	if (pte == NULL)
@@ -3852,8 +3840,6 @@ static int __set_gcr3(struct protection_domain *domain, int pasid,
 
 	*pte = (cr3 & PAGE_MASK) | GCR3_VALID;
 
-    printk("===== __set_gcr3 domain=%p, gcr3_tbl=%p, glx=%d, pasid=%d, pte=%p, *pte=0x%llx, cr3=0x%llx\n", 
-                domain, domain->gcr3_tbl, domain->glx, pasid, pte, *pte, cr3);
 //#ifdef CONFIG_HSA_VIRTUALIZATION
 //    return __amd_iommu_flush_all_tlb(domain);
 //#else

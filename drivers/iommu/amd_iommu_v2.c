@@ -51,11 +51,6 @@ static u16 device_id(struct pci_dev *pdev)
 {
 	u16 devid;
 
-//    if (!pdev) {
-//        printk("device_id null\n");
-//        return;
-//    }
-
 	devid = pdev->bus->number;
 	devid = (devid << 8) | pdev->devfn;
 
@@ -276,7 +271,12 @@ static void __unbind_pasid(struct pasid_state *pasid_state)
 	/* Make sure no more pending faults are in the queue */
 	flush_workqueue(iommu_wq);
 
-	mmu_notifier_unregister(&pasid_state->mn, pasid_state->mm);
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    if (!pasid_state->virtio_be_mm)
+    	mmu_notifier_unregister(&pasid_state->mn, pasid_state->mm);
+#else
+    mmu_notifier_unregister(&pasid_state->mn, pasid_state->mm);
+#endif
 
 	put_pasid_state(pasid_state); /* Reference taken in bind() function */
 }
@@ -365,7 +365,6 @@ static int mn_clear_flush_young(struct mmu_notifier *mn,
 				struct mm_struct *mm,
 				unsigned long address)
 {
-    printk("mn_clear_flush_young\n");
 	__mn_flush_page(mn, address);
 
 	return 0;
@@ -376,7 +375,6 @@ static void mn_change_pte(struct mmu_notifier *mn,
 			  unsigned long address,
 			  pte_t pte)
 {
-    printk("mn_change_pte\n");
 	__mn_flush_page(mn, address);
 }
 
@@ -384,7 +382,6 @@ static void mn_invalidate_page(struct mmu_notifier *mn,
 			       struct mm_struct *mm,
 			       unsigned long address)
 {
-    printk("mn_invalidate_page\n");
 	__mn_flush_page(mn, address);
 }
 
@@ -395,7 +392,6 @@ static void mn_invalidate_range_start(struct mmu_notifier *mn,
 	struct pasid_state *pasid_state;
 	struct device_state *dev_state;
 
-    printk("mn_invalidate_range_start, mm=%p\n", mm);
 	pasid_state = mn_to_state(mn);
 	dev_state   = pasid_state->device_state;
 
@@ -418,7 +414,6 @@ void set_pri_tag_status(struct pasid_state *pasid_state,
 {
 	unsigned long flags;
 
-    printk("set_pri_tag_status %d\n", status);
 	spin_lock_irqsave(&pasid_state->lock, flags);
 	pasid_state->pri[tag].status = status;
 	spin_unlock_irqrestore(&pasid_state->lock, flags);
@@ -431,7 +426,6 @@ void finish_pri_tag(struct device_state *dev_state,
 {
 	unsigned long flags;
 
-    printk("finish_pri_tag tag=%d\n", tag);
 	spin_lock_irqsave(&pasid_state->lock, flags);
 	if (atomic_dec_and_test(&pasid_state->pri[tag].inflight) &&
 	    pasid_state->pri[tag].finish) {
@@ -449,7 +443,6 @@ void finish_pri_tag(struct device_state *dev_state,
 {
 	unsigned long flags;
 
-    printk("finish_pri_tag tag=%d\n", tag);
 	spin_lock_irqsave(&pasid_state->lock, flags);
 	if (atomic_dec_and_test(&pasid_state->pri[tag].inflight) &&
 	    pasid_state->pri[tag].finish) {
@@ -536,7 +529,6 @@ static int ppr_notifier(struct notifier_block *nb, unsigned long e, void *data)
 	iommu_fault = data;
 	tag         = iommu_fault->tag & 0x1ff;
 	finish      = (iommu_fault->tag >> 9) & 1;
-    printk("ppr_notifier, device_id=%d, pasid=%d tag=%d ... ", iommu_fault->device_id, iommu_fault->pasid, tag);
 
 	ret = NOTIFY_DONE;
 	dev_state = get_device_state(iommu_fault->device_id);
@@ -544,7 +536,6 @@ static int ppr_notifier(struct notifier_block *nb, unsigned long e, void *data)
         printk("!!! dev_state NUL\n");
 		goto out;
     }
-    printk("dev_state=%p ", dev_state);
 
 	pasid_state = get_pasid_state(dev_state, iommu_fault->pasid);
 	if (pasid_state == NULL) {
@@ -559,7 +550,6 @@ static int ppr_notifier(struct notifier_block *nb, unsigned long e, void *data)
 #endif
 		goto out_drop_state;
 	}
-    printk("pasid_state=%p\n", pasid_state);
     
 	spin_lock_irqsave(&pasid_state->lock, flags);
 	atomic_inc(&pasid_state->pri[tag].inflight);
@@ -782,11 +772,6 @@ int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, struct kvm 
 	if (!amd_iommu_v2_supported())
 		return -ENODEV;
 
-//    if (!pdev) {
-//        printk("amd_iommu_vm_process_bind_pasid, pdev null\n");
-//        return -1;
-//    }
-
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
     printk("devid=%d, dev_state=%p\n", devid, dev_state);
@@ -857,15 +842,9 @@ int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3)
 	struct device_state *dev_state;
 	u16 devid;
 
-//    if (!pdev) {
-//        printk("amd_iommu_set_gcr3, pdev null\n");
-//        return -EINVAL;
-//    }
-
 	devid     = device_id(pdev);
 	dev_state = get_device_state(devid);
 
-    printk("amd_iommu_set_gcr3, dev_state=%p\n", dev_state);
     if (!dev_state)
         return -EINVAL;
 
@@ -894,6 +873,7 @@ int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
 	if (dev_state == NULL)
 		return -EINVAL;
 
+    printk("amd_iommu_bind_pasid dev=%p, pasid=%d\n", pdev, pasid);
 	ret = -EINVAL;
 	if (pasid < 0 || pasid >= dev_state->max_pasids)
 		goto out;
@@ -958,6 +938,8 @@ void amd_iommu_unbind_pasid(struct pci_dev *pdev, int pasid)
 
 	if (!amd_iommu_v2_supported())
 		return;
+
+    printk("amd_iommu_unbind_pasid dev=%p, pasid=%d\n", pdev, pasid);
 
 	devid = device_id(pdev);
 	dev_state = get_device_state(devid);
@@ -1173,7 +1155,6 @@ static int __init amd_iommu_v2_init(void)
 	if (iommu_wq == NULL)
 		goto out_free;
 
-    printk("amd_iommu_register_ppr_notifier\n");
 	amd_iommu_register_ppr_notifier(&ppr_nb);
 	profile_event_register(PROFILE_TASK_EXIT, &profile_nb);
 

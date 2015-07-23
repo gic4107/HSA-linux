@@ -67,20 +67,17 @@ static int ttm_bo_man_get_node(struct ttm_mem_type_manager *man,
 		return -ENOMEM;
 
 	spin_lock(&rman->lock);
-    printk("ttm_bo_man_get_node: mem->start=%x\n", mem->start);     // 0
-    printk("fpfn=%x, lpfn=%x\n", placement->fpfn, lpfn);            // 0, 40000
 	ret = drm_mm_insert_node_in_range(mm, node, mem->num_pages,
 					  mem->page_alignment,
 					  placement->fpfn, lpfn,
 					  DRM_MM_SEARCH_BEST);
-    printk("ttm_bo_man_get_node: mem->start=%x\n", mem->start);     // 0
 	spin_unlock(&rman->lock);
 
 	if (unlikely(ret)) {
 		kfree(node);
 	} else {
 		mem->mm_node = node;
-		mem->start = node->start;       // mem->start = 499
+		mem->start = node->start;
 	}
 
 	return 0;

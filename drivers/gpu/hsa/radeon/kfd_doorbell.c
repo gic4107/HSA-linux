@@ -196,7 +196,7 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
     vma->vm_pgoff = start >> PAGE_SHIFT;
     pdd->doorbell_mapping = vma->vm_start;
     
-    printk("vma->pgoff=0x%lx, pdd_doorbell_mapping=%llx\n", vma->vm_pgoff, pdd->doorbell_mapping);
+    printk("vma->pgoff=0x%lx, pdd->doorbell_mapping=%llx\n", vma->vm_pgoff, pdd->doorbell_mapping);
 
 	printk("kfd: mapping doorbell page in radeon_kfd_doorbell_mmap\n"
 		 "     target user address == 0x%016llX\n"
@@ -216,10 +216,7 @@ int radeon_kfd_vm_doorbell_mmap(struct kfd_process *process, struct vm_area_stru
 		 doorbell_process_allocation());
 
     printk("current=%p, mm=%p, vma=%p, vma->vm_mm=%p\n", current, current->mm, vma, vma->vm_mm);
-    int ret = io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot);
-    printk("current=%p, mm=%p, vma=%p, vma->vm_mm=%p, ret=%d\n", current, current->mm, vma, vma->vm_mm, ret);
-    return ret;
-//    return io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot)
+    return io_remap_pfn_range(vma, vma->vm_start, start >> PAGE_SHIFT, doorbell_process_allocation(), vma->vm_page_prot);
 }
 #endif
 

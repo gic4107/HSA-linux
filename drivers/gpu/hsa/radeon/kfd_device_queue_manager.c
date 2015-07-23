@@ -646,16 +646,6 @@ static int init_pipelines(struct device_queue_manager *dqm, unsigned int pipes_n
 	}
     printk("init_pipelines: hpdptr=%p\n", hpdptr);
 
-/*
-#ifdef IDENTICAL_MAPPING
-    pipeline_gart_pages = radeon_kfd_vidmem_pages(dqm->dev, 
-                                    &dqm->pipeline_mem, &pipeline_num_pages);
-    if (pipeline_gart_pages) 
-        for(i=0; i<pipeline_num_pages; i++) 
-            if (pipeline_gart_pages[i]) 
-                printk("page_to_phys=%llx\n", page_to_phys(pipeline_gart_pages[i]));
-#endif
-*/
 	memset(hpdptr, 0, CIK_HPD_EOP_BYTES * pipes_num);
 	radeon_kfd_vidmem_unkmap(dqm->dev, dqm->pipeline_mem);
 

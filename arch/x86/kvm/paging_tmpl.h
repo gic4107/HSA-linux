@@ -328,7 +328,7 @@ retry_walk:
 		real_gfn = mmu->translate_gpa(vcpu, gfn_to_gpa(table_gfn),      // just return gpa
 					      PFERR_USER_MASK|PFERR_WRITE_MASK);
 		if (unlikely(real_gfn == UNMAPPED_GVA)) {
-            printk("FNAME error 2\n");
+//            printk("FNAME error 2\n");
 			goto error;
         }
 		real_gfn = gpa_to_gfn(real_gfn);
@@ -352,14 +352,14 @@ retry_walk:
 		trace_kvm_mmu_paging_element(pte, walker->level);
 
 		if (unlikely(!FNAME(is_present_gpte)(pte))) {
-            printk("FNAME error 5, pte=%llx\n", pte);       // here
+//            printk("FNAME error 5, pte=%llx\n", pte);       // here
 			goto error;
         }
 
 		if (unlikely(FNAME(is_rsvd_bits_set)(mmu, pte,
 					             walker->level))) {
 			errcode |= PFERR_RSVD_MASK | PFERR_PRESENT_MASK;
-            printk("FNAME error 6\n");
+//            printk("FNAME error 6\n");
 			goto error;
 		}
 
@@ -371,7 +371,7 @@ retry_walk:
 
 	if (unlikely(permission_fault(mmu, pte_access, access))) {
 		errcode |= PFERR_PRESENT_MASK;
-        printk("FNAME error 7\n");
+//        printk("FNAME error 7\n");
 		goto error;
 	}
 
@@ -383,7 +383,7 @@ retry_walk:
 
 	real_gpa = mmu->translate_gpa(vcpu, gfn_to_gpa(gfn), access);
 	if (real_gpa == UNMAPPED_GVA) {
-        printk("FNAME return 0\n");
+//        printk("FNAME return 0\n");
 		return 0;
     }
 
@@ -403,7 +403,7 @@ retry_walk:
 	if (unlikely(!accessed_dirty)) {
 		ret = FNAME(update_accessed_dirty_bits)(vcpu, mmu, walker, write_fault);
 		if (unlikely(ret < 0)) {
-            printk("FNAME error 8\n");
+//            printk("FNAME error 8\n");
 			goto error;
         }
 		else if (ret)

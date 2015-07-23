@@ -3212,7 +3212,6 @@ static void mmu_sync_roots(struct kvm_vcpu *vcpu)
 	vcpu_clear_mmio_info(vcpu, ~0ul);
 	kvm_mmu_audit(vcpu, AUDIT_PRE_SYNC);
 	if (vcpu->arch.mmu.root_level == PT64_ROOT_LEVEL) {
-        printk("mmu_sync_roots %d\n", PT64_ROOT_LEVEL);
 		hpa_t root = vcpu->arch.mmu.root_hpa;
 		sp = page_header(root);
 		mmu_sync_children(vcpu, sp);
@@ -4325,7 +4324,6 @@ int kvm_mmu_create(struct kvm_vcpu *vcpu)
 	vcpu->arch.mmu.translate_gpa = translate_gpa;
 	vcpu->arch.nested_mmu.translate_gpa = translate_nested_gpa;
 
-    printk("kvm_mmu_create\n");
 	return alloc_mmu_pages(vcpu);
 }
 
@@ -4334,7 +4332,6 @@ void kvm_mmu_setup(struct kvm_vcpu *vcpu)
 	ASSERT(vcpu);
 	ASSERT(!VALID_PAGE(vcpu->arch.mmu.root_hpa));
 
-    printk("kvm_mmu_setup\n");  // not here
 	init_kvm_mmu(vcpu);
 }
 

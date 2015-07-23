@@ -711,7 +711,6 @@ int kvm_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3)
 		 */
 	}
 
-    printk("kvm_set_cr3, cr3=%llx\n", cr3);
 	vcpu->arch.cr3 = cr3;
 	__set_bit(VCPU_EXREG_CR3, (ulong *)&vcpu->arch.regs_avail);
 	kvm_mmu_new_cr3(vcpu);

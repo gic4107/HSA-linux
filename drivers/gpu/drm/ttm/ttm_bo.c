@@ -247,7 +247,7 @@ static int ttm_bo_add_ttm(struct ttm_buffer_object *bo, bool zero_alloc)
 	case ttm_bo_type_device:
 		if (zero_alloc)
 			page_flags |= TTM_PAGE_FLAG_ZERO_ALLOC;
-	case ttm_bo_type_kernel:        // here
+	case ttm_bo_type_kernel:
 		bo->ttm = bdev->driver->ttm_tt_create(bdev, bo->num_pages << PAGE_SHIFT,
 						      page_flags, glob->dummy_read_page);
 		if (unlikely(bo->ttm == NULL))
@@ -300,7 +300,7 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 	if (!(new_man->flags & TTM_MEMTYPE_FLAG_FIXED)) {
 		if (bo->ttm == NULL) {
 			bool zero = !(old_man->flags & TTM_MEMTYPE_FLAG_FIXED);
-			ret = ttm_bo_add_ttm(bo, zero);     // here
+			ret = ttm_bo_add_ttm(bo, zero);
 			if (ret)
 				goto out_err;
 		}
@@ -310,9 +310,7 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 			goto out_err;
 
 		if (mem->mem_type != TTM_PL_SYSTEM) {
-//            printk("ttm_ttm_bind, mem->start=%llx\n", mem->start);      // 499
 			ret = ttm_tt_bind(bo->ttm, mem);
-//            printk("ttm_ttm_bind, mem->start=%llx\n", mem->start);      // 499
 			if (ret)
 				goto out_err;
 		}
@@ -899,7 +897,7 @@ int ttm_bo_mem_space(struct ttm_buffer_object *bo,
 
 		if (man->has_type && man->use_type) {
 			type_found = true;
-			ret = (*man->func->get_node)(man, bo, placement, mem);      // here to set mem->start
+			ret = (*man->func->get_node)(man, bo, placement, mem);
 			if (unlikely(ret))
 				return ret;
 		}
@@ -1047,8 +1045,8 @@ int ttm_bo_validate(struct ttm_buffer_object *bo,
 	/*
 	 * Check whether we need to move buffer.
 	 */
-	if (!ttm_bo_mem_compat(placement, &bo->mem, &new_flags)) {  // here for allocate_mem, not for gpumap_mem
-		ret = ttm_bo_move_buffer(bo, placement, interruptible,      
+	if (!ttm_bo_mem_compat(placement, &bo->mem, &new_flags)) {
+		ret = ttm_bo_move_buffer(bo, placement, interruptible,
 					 no_wait_gpu);
 		if (ret)
 			return ret;
@@ -1063,7 +1061,7 @@ int ttm_bo_validate(struct ttm_buffer_object *bo,
 	/*
 	 * We might need to add a TTM.
 	 */
-	if (bo->mem.mem_type == TTM_PL_SYSTEM && bo->ttm == NULL) {     // not here
+	if (bo->mem.mem_type == TTM_PL_SYSTEM && bo->ttm == NULL) {
 		ret = ttm_bo_add_ttm(bo, true);
 		if (ret)
 			return ret;
@@ -1164,13 +1162,11 @@ int ttm_bo_init(struct ttm_bo_device *bdev,
 	locked = ww_mutex_trylock(&bo->resv->lock);
 	WARN_ON(!locked);
 
-//    printk("ttm_bo_init1: mem.start=%llx\n", bo->mem.start);        // 0
 	if (likely(!ret))
 		ret = ttm_bo_validate(bo, placement, interruptible, false);
 
 	ttm_bo_unreserve(bo);
 
-//    printk("ttm_bo_init2: mem.start=%llx\n", bo->mem.start);        // 499
 	if (unlikely(ret))
 		ttm_bo_unref(&bo);
 
