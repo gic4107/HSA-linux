@@ -237,7 +237,7 @@ struct kfd_ioctl_open_graphic_handle_args {
 #define KFD_IOC_WALK_RWPTR          _IO(KFD_IOC_MAGIC, 26)
 #define KFD_IOC_SET_IN_BUF          _IOW(KFD_IOC_MAGIC, 27, uint64_t)
 #define KFD_IOC_SET_OUT_BUF         _IOW(KFD_IOC_MAGIC, 28, uint64_t)
-
+#define KFD_IOC_DEBUG_GVA           _IOW(KFD_IOC_MAGIC, 29, uint64_t)
 #pragma pack(pop)
 
 #endif

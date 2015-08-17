@@ -8,7 +8,7 @@
 #include "../cik_regs.h"
 
 // FIXME: debug
-#define MQD_IOMMU 1
+//#define MQD_IOMMU 1
 
 #define PROPERTIES_NODE_MAX 5
 #define MAX_PROCESS_QUEUES 1024
@@ -47,6 +47,7 @@ typedef u32 doorbell_t;
 #define VIRTKFD_WAIT_EVENTS             22
 #define VIRTKFD_OPEN_GRAPHIC_HANDLE     23
 #define VIRTKFD_MMAP_DOORBELL_REGION    24
+#define VIRTKFD_DEBUG_GVA               25
 // FIXME: debug
 #define VIRTKFD_KICK_DOORBELL           99
 
@@ -57,7 +58,6 @@ struct virtkfd_process {
     struct mm_struct *mm;
     struct mmu_notifier mmu_notifier;
     struct mmu_notifier virtio_iommu_notifier;
-    int virtio_iommu_bind;
     doorbell_t *doorbell_region;
     doorbell_t __user *doorbell_user_mapping;
 };

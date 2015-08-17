@@ -38,22 +38,26 @@ static struct class *virtkfd_class;
 struct device *virtkfd_device;
 static DEFINE_IDA(virtkfd_index_ida);
 struct virtio_kfd *vkfd;
+
 // FIXME: debug
 static uint64_t doorbell_addr;
 static uint64_t in_buf;
 static uint64_t out_buf;
 
-// FIXME: debug
-void dump_mqd(void *mqd)
-{
-    int i;
 
-    printk("dump_mqd: mqd=%p\n", mqd);
+static long virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg);
+static int virtkfd_open(struct inode *inode, struct file *filep);
+static int virtkfd_release(struct inode *inode, struct file *filep);
+static int virtkfd_mmap(struct file *filp, struct vm_area_struct *vma);
 
-    for (i=0; i<sizeof(struct cik_mqd); i+=sizeof(uint32_t)) 
-        printk("%p: %x\n", mqd+i, *(uint32_t*)(mqd+i));
-}
-EXPORT_SYMBOL(dump_mqd);
+static const struct file_operations virtkfd_fops = {
+	.owner = THIS_MODULE,
+	.unlocked_ioctl = virtkfd_ioctl,
+	.compat_ioctl = virtkfd_ioctl,
+	.open = virtkfd_open,
+    .release = virtkfd_release, 
+	.mmap = virtkfd_mmap,
+};
 
 #define to_vvq(_vq) container_of(_vq, struct vring_virtqueue, vq)
 
@@ -64,7 +68,7 @@ static int minor_to_index(int minor)
 
 int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t vm_mm)
 {
-    printk("virtkfd_add_req, command=%d, param=%p\n", cmd, param);
+//    printk("virtkfd_add_req, command=%d, param=%p\n", cmd, param);
     struct virtkfd_req *req;
     struct scatterlist sg_cmd, sg_param, sg_vm_mm, sg_status, *sgs[4];
     int num_in=0, num_out=0; 
@@ -81,10 +85,10 @@ int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t vm_mm)
     req->vm_mm   = vm_mm;
     req->param   = param;
 
-    printk("cmd=%d param=%p vm_mm=%llx status=%p\n", req->command, req->param, vm_mm, &req->status);
     sg_init_one(&sg_cmd, &cmd, sizeof(cmd));
     sg_init_one(&sg_vm_mm, &vm_mm, sizeof(vm_mm));
-    sg_init_one(&sg_param, param, param_len);
+    if (param)
+        sg_init_one(&sg_param, param, param_len);
     sg_init_one(&sg_status, &req->status, sizeof(req->status));
     sgs[num_out++] = &sg_cmd;
     sgs[num_out++] = &sg_vm_mm;
@@ -102,7 +106,6 @@ int virtkfd_add_req(int cmd, void *param, int param_len, uint64_t vm_mm)
         printk("virtqueue_kick return %d\n", ret);
         return -1;
     }
-    printk("virtqueue_kick done, wait %p\n", &req->signal);
     while(req->signal == 0);        // signal by virtqueue's callback function
 
     kfree(req); 
@@ -116,12 +119,10 @@ static void virtkfd_done(struct virtqueue *vq)
     int len;
 	unsigned long flags;
 
-    printk("virtkfd_done\n");
 	spin_lock_irqsave(&vkfd->vq_lock, flags);
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-            printk("req->signal=%p, true\n", &req->signal);
             req->signal = true;
 		}
 		if (unlikely(virtqueue_is_broken(vq)))
@@ -202,7 +203,6 @@ static int virtkfd_probe(struct virtio_device *vdev)
         return -1;
     }
 	int err, index;
-printk("virtiokfd_probe\n");
 
 	err = ida_simple_get(&virtkfd_index_ida, 0, minor_to_index(1 << MINORBITS),
 			     GFP_KERNEL);
@@ -442,18 +442,17 @@ static void free_process(struct virtkfd_process *p)
                                                                                  
 static void shutdown_process(struct virtkfd_process *p)                              
 {                                                                                
-//    mutex_lock(&virtkfd_processes_mutex);                                            
-//    hash_del_rcu(&p->node);                                             
-    hash_del(&p->node);                                             
-//    mutex_unlock(&virtkfd_processes_mutex);                                          
-//    synchronize_srcu(&virtkfd_processes_srcu);                                       
+    mutex_lock(&virtkfd_processes_mutex);                                            
+    hash_del_rcu(&p->node);                                             
+    mutex_unlock(&virtkfd_processes_mutex);                                          
+    synchronize_srcu(&virtkfd_processes_srcu);                                       
     
     // unmap userspace doorbell mapping
-//    if(p->doorbell_user_mapping != NULL)
-//        vm_munmap((uintptr_t)p->doorbell_user_mapping, doorbell_process_allocation());
+    if(p->doorbell_user_mapping != NULL)
+        vm_munmap((uintptr_t)p->doorbell_user_mapping, doorbell_process_allocation());
+
     // send VIRTKFD_CLOSE to BE
-    virtkfd_add_req(VIRTKFD_CLOSE, &p->mm, sizeof(p->mm), NO_MATCH);
-    printk("VIRTKFD_CLOSE done\n");
+    virtkfd_add_req(VIRTKFD_CLOSE, &p->mm, sizeof(p->mm), (uint64_t)p->mm);
 }
 
 static void                                                                      
@@ -462,7 +461,6 @@ virtkfd_process_notifier_release(struct mmu_notifier *mn, struct mm_struct *mm)
     struct virtkfd_process *p = container_of(mn, struct virtkfd_process, mmu_notifier);  
     BUG_ON(p->mm != mm);                                                         
                                                                                  
-    printk("virtkfd_process_notifier_release, call shutdown_process\n");             
     shutdown_process(p);                                                         
 }                                                                                
                                                                                  
@@ -471,7 +469,6 @@ virtkfd_process_notifier_destroy(struct mmu_notifier *mn)
 {                                                                                
     struct virtkfd_process *p = container_of(mn, struct virtkfd_process, mmu_notifier);  
                                                                                  
-    printk("virtkfd_process_notifier_destroy, call free_process\n");                 
     free_process(p);                                                             
 }                                                                                
                                                                                  
@@ -479,15 +476,6 @@ static const struct mmu_notifier_ops virtkfd_process_mmu_notifier_ops = {
     .release = virtkfd_process_notifier_release,                                     
     .destroy = virtkfd_process_notifier_destroy,                                     
 };
-
-static const struct mmu_notifier_ops virtio_kfd_iommu_process_mmu_notifier_ops = {            
-    .release = virtkfd_process_notifier_release,                                     
-    .destroy = virtkfd_process_notifier_destroy,                                     
-	.clear_flush_young      = virtio_iommu_clear_flush_young,
-	.change_pte             = virtio_iommu_change_pte,
-	.invalidate_page        = virtio_iommu_invalidate_page,
-	.invalidate_range_start = virtio_iommu_invalidate_range_start,
-};  
 
 static struct virtkfd_process*
 create_process(const struct task_struct *thread)
@@ -563,10 +551,20 @@ virtkfd_create_process(const struct task_struct *thread)
 }
 
 static int
+virtkfd_release(struct inode *inode, struct file *filep)
+{
+    struct virtkfd_process *p = find_process(current);
+    if(!p)
+        return -1;
+    
+    shutdown_process(p);
+    free_process(p);
+}
+
+static int
 virtkfd_open(struct inode *inode, struct file *filep)
 {
     printk("kfd_open current=%p, active_mm=%p, mm=%p, pgd=%p\n", current, current->active_mm, current->mm, current->mm->pgd);
-	printk("kfd_open file=%p\n", filep);
     struct virtkfd_process *process;
     uint64_t doorbell_region_gpa;
     struct vm_process_info info;
@@ -620,6 +618,7 @@ virtkfd_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
+/*
 pte_t* walk_page_table(struct mm_struct *mm, unsigned long addr)
 {
     pgd_t *pgd;
@@ -759,6 +758,7 @@ void my_clear_page(struct mm_struct *mm, unsigned long addr)
         virtio_iommu_invalidate_range_start(NULL, mm, page_start, page_start+4096);
     }
 }
+*/
 
 static long
 virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -774,6 +774,7 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
     static void __user *ring_user;
     static void *m;
     unsigned long va;
+    struct kfd_ioctl_get_clock_counters_args cc_args;
 
 	dev_dbg(virtkfd_device,
 		"ioctl cmd 0x%x (#%d), arg 0x%lx\n",
@@ -788,7 +789,6 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             return -EFAULT;
 
         printk("va=%llx\n", va); 
-        my_clear_page(current->mm, va);
 
         break;
 
@@ -800,16 +800,12 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
             return -EFAULT;
 
         printk("va=%llx\n", va); 
-        access_clr_a_page(current->mm, va);
 
         break;
 
     // FIXME: debug
 	case KFD_IOC_WALK_RWPTR:
 		printk("KFD_IOC_WALK_RWPTR ");
-
-        access_clr_a_page(current->mm, wptr_user);
-        access_clr_a_page(current->mm, rptr_user);
 
         break;
 
@@ -833,40 +829,23 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
     case KFD_IOC_KICK_DOORBELL:
         printk("KFD_IOC_KICK_DOORBELL, doorbell_addr=%llx", doorbell_addr);
-        dump_mqd(m);
-        access_clr_a_page(current->mm, (unsigned long)m);
 		err = virtkfd_add_req(VIRTKFD_KICK_DOORBELL, &doorbell_addr, sizeof(doorbell_addr), vm_mm);
-        access_clr_a_page(current->mm, (unsigned long)m);
-        dump_mqd(m);
         break;
 
     case KFD_IOC_GET_DOORBELL:
         printk("KFD_IOC_GET_DOORBELL ");
         uint64_t db_addr = &p->doorbell_user_mapping[0];
-        printk("db_addr=%llx\n", db_addr);
         copy_to_user((void __user*)arg, &db_addr, sizeof(db_addr));
         break;
 
 	case KFD_IOC_CREATE_QUEUE:
 		printk("KFD_IOC_CREATE_QUEUE\n");
         struct kfd_ioctl_create_queue_args cq_args;
-        struct virtkfd_ioctl_create_queue_args vcq_args;
         struct queue_properties q_properties;
         struct cik_mqd *mqd;
 
         if (copy_from_user(&cq_args, arg, sizeof(struct kfd_ioctl_create_queue_args)))
             return -EFAULT;
-
-#ifdef MQD_IOMMU
-//        set_queue_properties_from_user(&q_properties, &cq_args);
-//        mqd = mqd_create(&q_properties);
-        mqd = kzalloc(sizeof(struct cik_mqd), GFP_KERNEL);
-        m = mqd;
-
-        memcpy(&vcq_args.args, &cq_args, sizeof(cq_args));
-        vcq_args.mqd_gva = (uint64_t)mqd;
-        vcq_args.mqd_gpa = (uint64_t)virt_to_phys(mqd);
-#endif
 
         printk("ring_base_address=0x%llx\n", cq_args.ring_base_address);
         printk("write_pointer_address=0x%llx\n", cq_args.write_pointer_address);
@@ -876,42 +855,10 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         printk("queue_type=%d\n", cq_args.queue_type);
         printk("queue_percentage=%d\n", cq_args.queue_percentage);
         printk("queue_priority=%d\n", cq_args.queue_priority);
-        printk("mqd_gva=%p\n", vcq_args.mqd_gva);
-        printk("mqd_gpa=%p\n", vcq_args.mqd_gpa);
 
-        wptr_user = (void __user*)(cq_args.write_pointer_address);
-        rptr_user = (void __user*)(cq_args.read_pointer_address);
-        ring_user = (void __user*)(cq_args.ring_base_address);
-
-        access_clr_a_page(current->mm, (unsigned long)ring_user);
-        access_clr_a_page(current->mm, (unsigned long)wptr_user);
-        access_clr_a_page(current->mm, (unsigned long)rptr_user);
-        access_clr_a_page(current->mm, (unsigned long)in_buf);
-        access_clr_a_page(current->mm, (unsigned long)out_buf);
-
-        // translate ring, r/w pointer into GPA
-//        cq_args.ring_base_address     = gva_to_gpa(current->mm, (unsigned long)ring_user);
-//        cq_args.write_pointer_address = gva_to_gpa(current->mm, (unsigned long)wptr_user);
-//        cq_args.read_pointer_address  = gva_to_gpa(current->mm, (unsigned long)rptr_user);
-
-#ifdef MQD_IOMMU
-        dump_mqd(mqd);
-        access_clr_a_page(current->mm, (unsigned long)mqd);
-		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, &vcq_args, sizeof(vcq_args), vm_mm);       // back-end will fill args
-        access_clr_a_page(current->mm, (unsigned long)mqd);
-        dump_mqd(mqd);
-        cq_args.queue_id = vcq_args.args.queue_id;
-#else
 		err = virtkfd_add_req(VIRTKFD_CREATE_QUEUE, &cq_args, sizeof(cq_args), vm_mm);       // back-end will fill args
         cq_args.queue_id = cq_args.queue_id;
-#endif
         printk("queue_id=%d\n", cq_args.queue_id);
-
-        access_clr_a_page(current->mm, (unsigned long)mqd);
-        access_clr_a_page(current->mm, (unsigned long)ring_user);
-        access_clr_a_page(current->mm, (unsigned long)wptr_user);
-        access_clr_a_page(current->mm, (unsigned long)rptr_user);
-        access_clr_a_page(current->mm, (unsigned long)in_buf);
 
         // assign doorbell_address with qid
         cq_args.doorbell_address = &p->doorbell_user_mapping[cq_args.queue_id];
@@ -920,23 +867,12 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         if (copy_to_user((void __user*)arg, &cq_args, sizeof(cq_args)))
             return -EFAULT;
 
-        // bind mmu_notifier to notify host to flush IOMMU page
-/*        if (!p->virtio_iommu_bind) {
-            printk("bind virtio_iommu notifier\n"); 
-            p->virtio_iommu_bind = 1;
-            p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
-            mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
-        }
-*/
 		break;
 
 	case KFD_IOC_DESTROY_QUEUE:
 		printk("KFD_IOC_DESTROY_QUEUE\n"); 
         struct kfd_ioctl_destroy_queue_args dq_args;
 
-        access_clr_a_page(current->mm, (unsigned long)wptr_user);
-        access_clr_a_page(current->mm, (unsigned long)wptr_user+24);
-        access_clr_a_page(current->mm, (unsigned long)rptr_user);
         if (copy_from_user(&dq_args, arg, sizeof(dq_args)))
             return -EFAULT;
 		err = virtkfd_add_req(VIRTKFD_DESTROY_QUEUE, &dq_args, sizeof(dq_args), vm_mm);       
@@ -956,29 +892,13 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
         printk("alternate_policy=%u\n", mp_args.alternate_policy);
 		err = virtkfd_add_req(VIRTKFD_SET_MEMORY_POLICY, &mp_args, sizeof(mp_args), vm_mm);       // back-end will fill args
 
-        // bind mmu_notifier to notify host to flush IOMMU page
-/*        if (!p->virtio_iommu_bind) {
-            printk("bind virtio_iommu notifier\n"); 
-            p->virtio_iommu_bind = 1;
-            p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
-            mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
-        }
-*/
 		break;
 
 	case KFD_IOC_GET_CLOCK_COUNTERS:
-		printk("KFD_IOC_GET_CLOCK_COUNTERS\n");
-        struct kfd_ioctl_get_clock_counters_args cc_args;
-
         if (copy_from_user(&cc_args, arg, sizeof(cc_args)))
             return -EFAULT;
 
-        printk("gpu_id=%d\n", cc_args.gpu_id);
 		err = virtkfd_add_req(VIRTKFD_GET_CLOCK_COUNTERS, &cc_args, sizeof(cc_args), vm_mm);       // back-end will fill args
-        printk("gpu_clock_counter=%llu\n", cc_args.gpu_clock_counter);
-        printk("cpu_clock_counter=%llu\n", cc_args.cpu_clock_counter);
-        printk("system_clock_counter=%llu\n", cc_args.system_clock_counter);
-        printk("system_clock_freq=%llu\n", cc_args.system_clock_freq);
 
         if (copy_to_user((void __user*)arg, &cc_args, sizeof(cc_args)))
             return -EFAULT;
@@ -1012,14 +932,6 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		printk("KFD_IOC_DBG_REGISTER\n");
 //		err = kfd_ioctl_dbg_register(filep, process, (void __user *) arg);
 
-        // bind mmu_notifier to notify host to flush IOMMU page
-/*        if (!p->virtio_iommu_bind) {
-            printk("bind virtio_iommu notifier\n"); 
-            p->virtio_iommu_bind = 1;
-            p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
-            mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
-        }
-*/
 		break;
 
 	case KFD_IOC_DBG_UNREGISTER:
@@ -1051,14 +963,6 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		printk("KFD_IOC_CREATE_VIDMEM\n");
 //		err = kfd_ioctl_create_vidmem(filep, process, (void __user *)arg);
 
-        // bind mmu_notifier to notify host to flush IOMMU page
-/*        if (!p->virtio_iommu_bind) {
-            printk("bind virtio_iommu notifier\n"); 
-            p->virtio_iommu_bind = 1;
-            p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
-            mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
-        }
-*/
 		break;
 
 	case KFD_IOC_DESTROY_VIDMEM:
@@ -1117,15 +1021,14 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 //		err = kfd_ioctl_open_graphic_handle(filep, process, (void __user *)arg);
 
-        // bind mmu_notifier to notify host to flush IOMMU page
-/*        if (!p->virtio_iommu_bind) {
-            printk("bind virtio_iommu notifier\n"); 
-            p->virtio_iommu_bind = 1;
-            p->virtio_iommu_notifier.ops = &virtio_kfd_iommu_process_mmu_notifier_ops;
-            mmu_notifier_register(&p->virtio_iommu_notifier, p->mm);
-        }
-*/
 		break;
+
+    case KFD_IOC_DEBUG_GVA:
+        printk("KFD_IOC_DEBUG_GVA\n");
+        uint64_t debug_gva;
+        if (copy_from_user(&debug_gva, arg, sizeof(debug_gva)))
+            return -EFAULT;
+		err = virtkfd_add_req(VIRTKFD_DEBUG_GVA, &debug_gva, sizeof(debug_gva), vm_mm);       
 
 	default:
 		dev_err(virtkfd_device,
@@ -1135,7 +1038,6 @@ virtkfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-    printk("FE ioctl done\n");
 	if ((err < 0) && (err != -EAGAIN))
 		dev_err(virtkfd_device, "ioctl error %ld\n", err);
 
@@ -1163,14 +1065,6 @@ virtkfd_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	return -EINVAL;
 }
-
-static const struct file_operations virtkfd_fops = {
-	.owner = THIS_MODULE,
-	.unlocked_ioctl = virtkfd_ioctl,
-	.compat_ioctl = virtkfd_ioctl,
-	.open = virtkfd_open,
-	.mmap = virtkfd_mmap,
-};
 
 static int __init init(void)
 {

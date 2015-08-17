@@ -31,16 +31,12 @@
 #include <linux/virtio_config.h>
 #include <uapi/linux/virtio_ids.h>
 #include <linux/uaccess.h>
-//FIXME: Debug
-#include <linux/highmem.h>
+#include <linux/workqueue.h>
 
 #include "amd_iommu_types.h"
 #include "amd_iommu_proto.h"
 #include "amd_iommu_vm_ppr.h"
 #include "virtio_iommu.h"
-
-// FIXME: debug
-void dump_mqd(void *mqd);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Yu-Ju Huang <gic4107@gmail.com>");
@@ -52,6 +48,7 @@ static DEFINE_IDA(virtio_iommu_index_ida);
 #define MINORBITS 20
 #define PART_BITS 4
 
+static struct workqueue_struct *vm_ppr_wq;
 static struct virtio_iommu *viommu;
 static struct iommu_vm_ppr *ppr;
 
@@ -62,13 +59,12 @@ static int minor_to_index(int minor)
 
 static void virtio_iommu_free_req_param(void *data)
 {
-//    printk("virtio_iommu_free_req_param, data=%p\n", data);
     kfree(data);
 }
 
 int virtio_iommu_add_req0_no_wait(int cmd)
 {
-    printk("virtio_iommu_add_req0, command=%d\n", cmd);
+//    printk("virtio_iommu_add_req0, command=%d\n", cmd);
     struct virtio_iommu_req *req;
     struct scatterlist sg_cmd, sg_status, *sgs[2];
     int num_in=0, num_out=0; 
@@ -107,7 +103,7 @@ int virtio_iommu_add_req0_no_wait(int cmd)
 
 int virtio_iommu_add_req(int cmd, void *param, int param_len, int wait, void (*cb)(void* data))
 {
-    printk("virtio_iommu_add_req, command=%d, param=%p, wait=%d\n", cmd, param, wait);
+//    printk("virtio_iommu_add_req, command=%d, param=%p, wait=%d\n", cmd, param, wait);
     struct virtio_iommu_req *req;
     struct scatterlist sg_cmd, sg_param, sg_status, *sgs[3];
     int num_in=0, num_out=0; 
@@ -167,53 +163,7 @@ int virtio_iommu_add_req_no_wait(int cmd, void *param, int param_len, void (*cb)
     return virtio_iommu_add_req(cmd, param, param_len, 0, cb);
 }
 
-uint64_t walk_page_table2(struct mm_struct *mm, unsigned long addr)
-{
-    pgd_t *pgd;
-    pud_t *pud;
-    pmd_t *pmd;
-    pte_t *pte;
-    uint64_t gpa;
-
-    pgd = pgd_offset(mm, addr);
-    if (!pgd_present(*pgd))
-        return NULL;
-    printk("pgd=%p, pgd_val=%llx\n", pgd, pgd_val(*pgd));
-    
-    pud = pud_offset(pgd, addr);
-    if (!pud_present(*pud))
-        return NULL;
-    printk("pud=%p, pud_val=%llx\n", pud, pud_val(*pud));
-    
-    pmd = pmd_offset(pud, addr);
-    if (!pmd_present(*pmd))
-        return NULL;
-    printk("pmd=%p, pmd_val=%llx\n", pmd, pmd_val(*pmd));
-
-    pte = pte_offset_map(pmd, addr);
-    if (pte_present(*pte)) {
-        printk("pte=%p, pte_val=%llx\n", pte, pte_val(*pte));   
-        gpa = pte_val(*pte) & 0xFFFFFFFFFF000ULL;
-        struct page *page = pte_page(*pte);
-        void *map = kmap(page);
-        printk("write_dispatch_id=%p, %lld\n", map+2168, *(uint64_t*)(map+2168));
-        printk("max_legacy_doorbell_dispatch_id_plus_1=%p, %lld\n", map+2192, *(uint64_t*)(map+2192));
-        printk("read_dispatch_id=%p, %lld\n", map+2240, *(uint64_t*)(map+2240));
-/*        *(uint64_t*)(map+2168) = 10;
-        *(uint64_t*)(map+2192) = 10;
-        *(uint64_t*)(map+2240) = 10;
-        printk("write_dispatch_id=%p, %lld\n", map+2168, *(uint64_t*)(map+2168));
-        printk("max_legacy_doorbell_dispatch_id_plus_1=%p, %lld\n", map+2192, *(uint64_t*)(map+2192));
-        printk("read_dispatch_id=%p, %lld\n", map+2240, *(uint64_t*)(map+2240));
-*/
-        kunmap(page);
-        pte_unmap(pte);
-    }
-
-    return gpa;
-}
-
-static void vm_ppr_handler(void)
+static void vm_ppr_handler(struct work_struct *work)
 {
     struct ppr_log *ppr_log;
     int head;
@@ -222,16 +172,17 @@ static void vm_ppr_handler(void)
     struct page *page;
     struct task_struct *task;
     struct mm_struct *mm;
-    struct virtio_iommu_mmu_notification *mmu;
     int log_count = 0;
-    uint64_t *gpa;
 
+    mutex_lock(&ppr->head_lock);
     head = ppr->vm_consume_head;
-    tail = ppr->tail;
-    printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, ppr->tail, ppr->vm_consume_head);
+    mutex_unlock(&ppr->head_lock);
 
-    if (head == tail)
-        return;
+    mutex_lock(&ppr->tail_lock);
+    tail = ppr->tail;
+    mutex_unlock(&ppr->tail_lock);
+
+    printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", head, tail, ppr->vm_consume_head);
 
     while (head != tail) {
         ++log_count;
@@ -248,30 +199,28 @@ static void vm_ppr_handler(void)
 
         if (npages == 1) {
             printk("npages=1\n");
-
-            // gpa send to host to fix stage2 table
-            gpa = (uint64_t*)kmalloc(sizeof(uint64_t), GFP_KERNEL);
-            *gpa = walk_page_table2(mm, ppr_log->address);
+            put_page(page);
         }
 
         head = (head+1) % MAX_PPR_LOG_ENTRY;
     }
+
+    if (log_count == 0)
+        return ;
+    
+    mutex_lock(&ppr->vm_consume_head_lock);
     ppr->vm_consume_head = head;
-    printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, ppr->tail, ppr->vm_consume_head);
+    mutex_unlock(&ppr->vm_consume_head_lock);
+
+    printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, tail, head);
 
     // send back to let host finish_pri_tag 
     if (log_count) {
-        virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR, gpa, sizeof(*gpa), virtio_iommu_free_req_param);
-/*
-        mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
-        mmu->mm = (uint64_t)mm;
-        mmu->start = (uint64_t)ppr_log->address;
-        mmu->end   = mmu->start + 0x1000;
-        virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_INVALIDATE_RANGE_START, mmu, 
-                                sizeof(*mmu), virtio_iommu_free_req_param);
-        printk("VIRTIO_IOMMU_INVALIDATE_PAGE done\n");
-*/
+        virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR, 
+            &ppr->vm_consume_head, sizeof(ppr->vm_consume_head), NULL);
     }
+
+    kfree(work);
 }
 
 static void virtio_iommu_done(struct virtqueue *vq)
@@ -279,14 +228,12 @@ static void virtio_iommu_done(struct virtqueue *vq)
     struct virtio_iommu_req *req;
     int len;
 	unsigned long flags;
-//    int virtio_req_back = 0;
 
-    printk("virtio_iommu_done\n");
 	spin_lock_irqsave(&viommu->vq_lock, flags);
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-//            virtio_req_back = 1;
+            printk("virtio_iommu_done, interrupted by request\n");
             if (req->cb)
                 req->cb(req->param);
 
@@ -301,8 +248,16 @@ static void virtio_iommu_done(struct virtqueue *vq)
 
 	spin_unlock_irqrestore(&viommu->vq_lock, flags);
 
-//    if (!virtio_req_back)   // interrupt by iommu-vm-ppr sending irqfd
-        vm_ppr_handler();
+    // handler guest PPR
+    struct work_struct *work = kmalloc(sizeof(struct work_struct), GFP_ATOMIC);
+    if (work == NULL) {
+        printk("work allocate fail\n");
+        return;
+    }
+
+    printk("virtio_iommu_done, interrupted by IRQFD\n");
+    INIT_WORK(work, vm_ppr_handler);
+    queue_work(vm_ppr_wq, work);
 }
 
 int virtio_iommu_clear_flush_young(struct mmu_notifier *mn,
@@ -311,7 +266,6 @@ int virtio_iommu_clear_flush_young(struct mmu_notifier *mn,
 {
     struct virtio_iommu_mmu_notification *mmu;
 
-    printk("virtio_iommu_clear_flush_young, addr=%llx\n", address);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
     mmu->mm = (uint64_t)mm;
     mmu->start = (uint64_t)address;
@@ -328,7 +282,6 @@ void virtio_iommu_change_pte(struct mmu_notifier *mn,
 {
     struct virtio_iommu_mmu_notification *mmu;
 
-    printk("virtio_iommu_change_pte, addr=%llx\n", address);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
     mmu->mm = (uint64_t)mm;
     mmu->start = (uint64_t)address;
@@ -342,7 +295,6 @@ void virtio_iommu_invalidate_page(struct mmu_notifier *mn,
 {
     struct virtio_iommu_mmu_notification *mmu;
 
-    printk("virtio_iommu_invalidate_page, addr=%llx\n", address);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
     mmu->mm = (uint64_t)mm;
     mmu->start = (uint64_t)address;
@@ -356,8 +308,6 @@ void virtio_iommu_invalidate_range_start(struct mmu_notifier *mn,
 {
     struct virtio_iommu_mmu_notification *mmu;
 
-    printk("virtio_iommu_invalidate_range_start, mm=%p, virtio_iommu_free_req_param=%p, start=%llx, end=%llx\n", 
-                            mm, virtio_iommu_free_req_param, start, end);
     mmu = (struct virtio_iommu_mmu_notification*)kmalloc(sizeof(*mmu), GFP_KERNEL);
     mmu->mm    = (uint64_t)mm;
     mmu->start = (uint64_t)start;
@@ -391,7 +341,6 @@ static int virtio_iommu_probe(struct virtio_device *vdev)
 {
 	int err, index;
     uint64_t ppr_region_gpa;
-    printk("virtio_iommu_probe\n");
 
 	err = ida_simple_get(&virtio_iommu_index_ida, 0, minor_to_index(1 << MINORBITS),
 			     GFP_KERNEL);
@@ -427,11 +376,17 @@ static int virtio_iommu_probe(struct virtio_device *vdev)
     SetPageReserved(virt_to_page(ppr));       // may not need 
     ppr_region_gpa = (uint64_t)virt_to_phys(ppr);
 
+    vm_ppr_wq = create_workqueue("vm_ppr_wq");
+    if (vm_ppr_wq == NULL)
+        goto out_free_ppr;
+
     virtio_iommu_add_req_wait(VIRTIO_IOMMU_MMAP_PPR_REGION, &ppr_region_gpa, sizeof(*ppr), NULL);
     printk("VIRTIO_IOMMU_MMAP_PPR_REGION done, ppr_region_gpa=%llx\n", ppr_region_gpa);
 
 	return 0;
 
+out_free_ppr:
+    kfree(ppr);
 out_free_vq:
 	vdev->config->del_vqs(vdev);
 out_free_viommu:
@@ -467,17 +422,7 @@ static int __init virtio_iommu_init(void)
 {
 	int ret;
 
-	pr_info("AMD IOMMUv2 driver by Joerg Roedel <joerg.roedel@amd.com>\n");
-
     printk("virtio_iommu_init\n");
-//	if (!amd_iommu_v2_supported()) {
-//		pr_info("AMD IOMMUv2 functionality not available on this system\n");
-		/*
-		 * Load anyway to provide the symbols to other modules
-		 * which may use AMD IOMMUv2 optionally.
-		 */
-//		return 0;
-//	}
 
     ret = register_virtio_driver(&virtio_iommu);
 
