@@ -87,6 +87,9 @@ extern u64 __pure __using_nonexistent_pte_bit(void)
 #define gpte_to_gfn_lvl FNAME(gpte_to_gfn_lvl)
 #define gpte_to_gfn(pte) gpte_to_gfn_lvl((pte), PT_PAGE_TABLE_LEVEL)
 
+// debug
+extern uint64_t debug_gva;
+
 /*
  * The guest_walker structure emulates the behavior of the hardware page
  * table walker.
@@ -775,6 +778,9 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 //        printk("paging64_page_fault3: addr=%llx, gfn=%llx, pfn=%llx, level=%d\n", addr, walker.gfn, pfn, level);
 		return 0;
     }
+
+    // debug
+//    printk("paging64_page_fault: addr=%llx, pfn=%llx\n", addr, pfn);
 
 	if (handle_abnormal_pfn(vcpu, mmu_is_nested(vcpu) ? 0 : addr,       // vcpu->kvm
 				walker.gfn, pfn, walker.pte_access, &r)) {

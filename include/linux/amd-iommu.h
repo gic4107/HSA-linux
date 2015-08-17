@@ -181,6 +181,8 @@ extern int amd_iommu_vm_process_bind_pasid(struct pci_dev *pdev, int pasid, stru
              struct mm_struct *vm_mm, unsigned long gcr3);
 extern void amd_iommu_vm_ppr(struct fault *fault, int write);
 int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3);
+void amd_iommu_flush(struct pci_dev* dev, int pasid, unsigned long address);
+void amd_iommu_vm_process_unbind_pasid(struct pci_dev *pdev, int pasid);
 #endif
 
 #else

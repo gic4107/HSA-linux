@@ -120,6 +120,7 @@ int kvm_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread);
 void radeon_kfd_bind_iommu_spt(gpa_t guest_cr3, hpa_t spt_root);
 void read_guest_pgd(struct mm_struct *mm);
 uint64_t radeon_kfd_get_vm_process_pgd(uint64_t vm_task);
+void radeon_kfd_flush_iommu(gpa_t guest_cr3, gva_t fault_addr);
 #endif
 
 #endif

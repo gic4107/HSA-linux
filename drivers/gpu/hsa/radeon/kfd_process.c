@@ -734,7 +734,7 @@ long radeon_kfd_vm_close_process(const void *vm_mm)
 
     radeon_kfd_doorbell_unmap(pdd); 
  
-    amd_iommu_unbind_pasid(p->vm_info->dev->pdev, p->pasid);
+    amd_iommu_vm_process_unbind_pasid(p->vm_info->dev->pdev, p->pasid);
  
     list_del(&p->vm_info->list);
 
@@ -745,22 +745,6 @@ long radeon_kfd_vm_close_process(const void *vm_mm)
 
     return 0;
 }
-
-// FIXME: for debugging usage
-void read_guest_pgd(struct mm_struct *mm)  
-{
-    struct kvm *kvm;
-    gpa_t pgd_gpa;
-    struct kfd_process *p = find_vm_process((const void*)mm); 
-    printk("read_guest_pgd, p=%p\n", p);
-    if (!p) 
-        return;
-
-    kvm = p->vm_info->virtio_be_process->virtio_be_info->kvm;
-    pgd_gpa = p->vm_info->vm_pgd_gpa;
-    kvm_hsa_read_guest_pgd(kvm, pgd_gpa);
-}
-EXPORT_SYMBOL(read_guest_pgd);
 
 int kvm_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread)              
 {                                                                                   
@@ -830,6 +814,31 @@ void radeon_kfd_bind_iommu_spt(gpa_t guest_cr3, hpa_t spt_root)
 }
 EXPORT_SYMBOL(radeon_kfd_bind_iommu_spt);
 
+void radeon_kfd_flush_iommu(gpa_t guest_cr3, gva_t fault_addr)
+{
+    struct vm_info *vm_info;
+    struct kfd_process *virtio_be;
+    struct kvm *kvm;
+    int pasid;
+    int err;
+
+    if (list_empty(&vm_info_list))
+        return;
+
+    list_for_each_entry(vm_info, &vm_info_list, list)
+        if (vm_info->vm_pgd_gpa == guest_cr3)
+            break;
+
+    if (!vm_info)
+        return;
+    
+    if (!vm_info->dev)
+        return;
+
+    amd_iommu_flush(vm_info->dev->pdev, vm_info->kfd_process->pasid, fault_addr);
+}
+EXPORT_SYMBOL(radeon_kfd_flush_iommu);
+
 uint64_t radeon_kfd_get_vm_process_pgd(uint64_t vm_task)
 {
     struct vm_info *vm_info;
@@ -842,20 +851,4 @@ uint64_t radeon_kfd_get_vm_process_pgd(uint64_t vm_task)
     return 0;
 }
 EXPORT_SYMBOL(radeon_kfd_get_vm_process_pgd);
-
-int adjust_vm_process_pgd(struct kfd_dev *dev, struct kfd_process *p)
-{
-    struct kfd_process *virtio_be = p->vm_info->virtio_be_process;
-    struct mm_struct *mm;
-    BUG_ON(!virtio_be);
-
-    mm = get_task_mm(virtio_be->lead_thread);
-  	return amd_iommu_set_gcr3(dev->pdev, p->pasid, __pa(mm->pgd));
-}
-
-int resume_vm_process_pgd(struct kfd_dev *dev, struct kfd_process *p)
-{
-  	return amd_iommu_set_gcr3(dev->pdev, p->pasid, p->vm_info->vm_pgd_gpa);
-}
-
 #endif // endif CONFIG_HSA_VIRTUALIZATION

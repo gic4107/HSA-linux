@@ -20,7 +20,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#define DEBUG
+//#define DEBUG
 
 #include <linux/device.h>
 #include <linux/export.h>
@@ -347,7 +347,6 @@ kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __us
 	struct kfd_process_device *pdd;
 	enum cache_policy default_policy, alternate_policy;
 
-    printk("kfd_ioctl_set_memory_policy1\n");
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
 
@@ -361,14 +360,12 @@ kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __us
 		return -EINVAL;
 	}
 
-    printk("kfd_ioctl_set_memory_policy2\n");
 	dev = radeon_kfd_device_by_id(args.gpu_id);
 	if (dev == NULL)
 		return -EINVAL;
 
 	mutex_lock(&p->mutex);
 
-    printk("kfd_ioctl_set_memory_policy3\n");
 	pdd = radeon_kfd_bind_process_to_device(dev, p);
 	if (IS_ERR(pdd) < 0) {
 		err = PTR_ERR(pdd);
@@ -386,6 +383,12 @@ kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __us
 	alternate_policy = (args.alternate_policy == KFD_IOC_CACHE_POLICY_COHERENT)
 			   ? cache_policy_coherent : cache_policy_noncoherent;
 
+    // TEST
+    default_policy = KFD_IOC_CACHE_POLICY_NONCOHERENT;
+    alternate_policy = KFD_IOC_CACHE_POLICY_NONCOHERENT;
+    printk("default_policy=%d\n", default_policy); 
+    printk("alternate_policy=%d\n", alternate_policy);
+ 
 	if (!dev->dqm->set_cache_memory_policy(dev->dqm,
 					 &pdd->qpd,
 					 default_policy,
@@ -1346,7 +1349,7 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 
 	case KFD_IOC_GET_CLOCK_COUNTERS:
-		printk("KFD_IOC_GET_CLOCK_COUNTERS\n");
+//		printk("KFD_IOC_GET_CLOCK_COUNTERS\n");
 		err = kfd_ioctl_get_clock_counters(filep, process, (void __user *)arg);
 		break;
 
@@ -1493,7 +1496,7 @@ kfd_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 
 	case KFD_IOC_VM_GET_CLOCK_COUNTERS:
-		printk("KFD_IOC_VM_GET_CLOCK_COUNTERS\n");
+//		printk("KFD_IOC_VM_GET_CLOCK_COUNTERS\n");
 		err = kfd_ioctl_vm_get_clock_counters(filep, process, (void __user *)arg);
 		break;
 

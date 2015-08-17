@@ -173,8 +173,10 @@ static int allocate_vmid(struct device_queue_manager *dqm, struct qcm_process_de
 {
 	int bit, allocated_vmid;
 
-	if (dqm->vmid_bitmap == 0)
+	if (dqm->vmid_bitmap == 0) {
+        printk("no vmid_bitmap\n");
 		return -ENOMEM;
+    }
 
 	bit = find_first_bit((unsigned long *)&dqm->vmid_bitmap, CIK_VMID_NUM);
 	clear_bit(bit, (unsigned long *)&dqm->vmid_bitmap);
@@ -457,8 +459,10 @@ static struct mqd_manager *get_mqd_manager_nocpsch(struct device_queue_manager *
 	mqd = dqm->mqds[type];
 	if (!mqd) {
 		mqd = mqd_manager_init(type, dqm->dev);
-		if (mqd == NULL)
+		if (mqd == NULL) {
 			pr_err("kfd: mqd manager is NULL");
+            printk("kfd: mqd manager is NULL\n");
+        }
 		dqm->mqds[type] = mqd;
 	}
 

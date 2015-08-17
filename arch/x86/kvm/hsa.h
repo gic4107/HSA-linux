@@ -7,5 +7,7 @@
 int kvm_hsa_set_iommu_nested_cr3(hpa_t root_hpa);
 int kvm_hsa_is_iommu_nested_translation(void);
 int kvm_hsa_bind_kfd_virtio_be(struct kvm *kvm, const struct task_struct *thread);
+int kvm_hsa_init(void);
 void kvm_hsa_iommu_bind_spt(gpa_t guest_cr3, hpa_t spt_root);
+void kvm_hsa_page_fault_flush(gpa_t guest_cr3, gva_t fault_addr);
 #endif

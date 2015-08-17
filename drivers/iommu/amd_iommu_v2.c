@@ -460,17 +460,21 @@ static void do_fault(struct work_struct *work)
 	struct fault *fault = container_of(work, struct fault, work);
 	int npages, write, gn;
 	struct page *page;
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    struct timespec start, end;
+    uint64_t start_ns, end_ns;
+#endif
 
 	write = !!(fault->flags & PPR_FAULT_WRITE);
     gn    = !!(fault->flags & PPR_FAULT_GN);
 
-    printk("do_fault: gn=%d, write=%d, pdev=%p, domain=%p, pasid=%d, task=%p, mm=%p\n", gn, write, fault->dev_state->pdev, fault->dev_state->domain, fault->state->pasid, fault->state->task, fault->state->mm);
-    printk("addr=0x%llx, pasid=%d, fault_tag=%d\n", fault->address, fault->pasid, fault->tag);
-
 #ifdef CONFIG_HSA_VIRTUALIZATION
-    if (fault->state->virtio_be_mm && gn) {
+    if (fault->state->virtio_be_mm) {
         return amd_iommu_vm_ppr(fault, write);
     }
+
+    // host PPR start time
+    getrawmonotonic(&start);
 #endif
 
 	down_read(&fault->state->mm->mmap_sem);
@@ -511,6 +515,16 @@ static void do_fault(struct work_struct *work)
 #endif
 
 	put_pasid_state(fault->state);
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    // host PPR end time
+    getrawmonotonic(&end);
+    start_ns = (uint64_t)timespec_to_ns(&start);
+    end_ns   = (uint64_t)timespec_to_ns(&end);
+
+    printk("do_fault: gn=%d, pdev=%p, domain=%p, task=%p, mm=%p\n", gn, fault->dev_state->pdev, fault->dev_state->domain, fault->state->task, fault->state->mm);
+    printk("addr=0x%llx, pasid=%d, fault_tag=%d, start=%lld, end=%lld, diff=%lld\n", fault->address, fault->pasid, fault->tag, start_ns, end_ns, end_ns-start_ns);
+#endif
 
 	kfree(fault);
 }
@@ -837,6 +851,51 @@ out:
 }
 EXPORT_SYMBOL(amd_iommu_vm_process_bind_pasid);
 
+void amd_iommu_vm_process_unbind_pasid(struct pci_dev *pdev, int pasid)
+{
+	struct device_state *dev_state;
+	struct pasid_state *pasid_state;
+	u16 devid;
+
+	might_sleep();
+
+	if (!amd_iommu_v2_supported())
+		return;
+
+    printk("amd_iommu_vm_process_unbind_pasid dev=%p, pasid=%d\n", pdev, pasid);
+
+	devid = device_id(pdev);
+	dev_state = get_device_state(devid);
+	if (dev_state == NULL)
+		return;
+
+	if (pasid < 0 || pasid >= dev_state->max_pasids)
+		goto out;
+
+	pasid_state = get_pasid_state(dev_state, pasid);
+	if (pasid_state == NULL)
+		return;
+
+	unlink_pasid_state(pasid_state);
+	__unbind_pasid(pasid_state);
+
+	DEFINE_WAIT(wait);
+
+	prepare_to_wait(&pasid_state->wq, &wait, TASK_UNINTERRUPTIBLE);
+
+	if (atomic_dec_and_test(&pasid_state->count))
+		put_device_state(pasid_state->device_state);
+	else
+		schedule();
+
+	finish_wait(&pasid_state->wq, &wait);
+	free_pasid_state(pasid_state);
+
+out:
+	put_device_state(dev_state);
+}
+EXPORT_SYMBOL(amd_iommu_vm_process_unbind_pasid);
+
 int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3)
 {
 	struct device_state *dev_state;
@@ -852,6 +911,17 @@ int amd_iommu_set_gcr3(struct pci_dev *pdev, int pasid, unsigned long gcr3)
     return amd_iommu_domain_set_gcr3(dev_state->domain, pasid, gcr3);
 }
 EXPORT_SYMBOL(amd_iommu_set_gcr3);
+
+void amd_iommu_flush(struct pci_dev* dev, int pasid, unsigned long address)
+{
+    u16 devid = device_id(dev);
+    struct device_state* dev_state = get_device_state(devid);
+    
+    printk("amd_iommu_flush, domain=%p\n", dev_state->domain);
+	amd_iommu_flush_all_tlb(dev_state->domain);
+//    amd_iommu_flush_page(dev_state->domain, pasid, address);
+}
+EXPORT_SYMBOL(amd_iommu_flush);
 #endif
 
 int amd_iommu_bind_pasid(struct pci_dev *pdev, int pasid,
@@ -938,8 +1008,6 @@ void amd_iommu_unbind_pasid(struct pci_dev *pdev, int pasid)
 
 	if (!amd_iommu_v2_supported())
 		return;
-
-    printk("amd_iommu_unbind_pasid dev=%p, pasid=%d\n", pdev, pasid);
 
 	devid = device_id(pdev);
 	dev_state = get_device_state(devid);

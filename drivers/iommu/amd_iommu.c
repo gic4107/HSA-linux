@@ -2119,6 +2119,7 @@ static void set_dte_entry(u16 devid, struct protection_domain *domain, bool ats)
 		u64 glx  = domain->glx;
 		u64 tmp;
 
+        printk("set_dte_entry: set GV flag\n");
 		pte_root |= DTE_FLAG_GV;
 		pte_root |= (glx & DTE_GLX_MASK) << DTE_GLX_SHIFT;
 

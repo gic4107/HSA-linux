@@ -564,8 +564,10 @@ struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type, struct kfd_dev *dev
 	pr_debug("kfd: In func %s\n", __func__);
 
 	mqd = kzalloc(sizeof(struct mqd_manager), GFP_KERNEL);
-	if (!mqd)
+	if (!mqd) {
+        printk("mqd_manager_init kzalloc null\n");
 		return NULL;
+    }
 
 	mqd->dev = dev;
 

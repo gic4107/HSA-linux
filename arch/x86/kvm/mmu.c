@@ -3469,19 +3469,6 @@ static int tdp_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code,
 		return r;
     }
 
-#ifdef CONFIG_HSA_VIRTUALIZATION
-    if (error_code & IDENTICAL_MAPPING_MASK) {
-        printk("IDENTICAL_MAPPING: gfn=%llx, pfn=%llx\n", gfn, pfn);
-//        if (pfn != KVM_PFN_NOSLOT) {
-//            printk("Identical mapping but pfn = %llx\n", pfn);
-//        }
-//        else 
-        pfn = gfn;
-//        pfn = 0;
-        printk("IDENTICAL_MAPPING: gfn=%llx, pfn=%llx\n", gfn, pfn);
-    }
-#endif
-
 	spin_lock(&vcpu->kvm->mmu_lock);
 	if (mmu_notifier_retry(vcpu->kvm, mmu_seq))
 		goto out_unlock;
@@ -4238,6 +4225,10 @@ int kvm_mmu_page_fault(struct kvm_vcpu *vcpu, gva_t cr2, u32 error_code,
 	r = vcpu->arch.mmu.page_fault(vcpu, cr2, error_code, false);
 	if (r < 0)
 		goto out;
+
+#ifdef CONFIG_HSA_VIRTUALIZATION
+    kvm_hsa_page_fault_flush(vcpu->arch.cr3, cr2);
+#endif
 
 	if (!r) {
 		r = 1;

@@ -68,8 +68,11 @@ void amd_iommu_vm_ppr(struct fault *fault, int write)
 {
     struct iommu_vm_ppr *iommu_vm_ppr;
     struct ppr_log *ppr_log;
+    struct timespec start;
+    uint64_t start_ns; 
     
-//    printk("amd_iommu_vm_ppr %p\n", fault->state->virtio_be_mm);
+    // handling start time
+    getrawmonotonic(&start); 
 
     iommu_vm_ppr = find_iommu_vm_ppr(fault->state->virtio_be_mm); // use virtio_be_mm
 //    printk("iommu_vm_ppr=%p\n", iommu_vm_ppr);
@@ -78,7 +81,9 @@ void amd_iommu_vm_ppr(struct fault *fault, int write)
         return;
     }
 
+    mutex_lock(&iommu_vm_ppr->tail_lock);
     ppr_log = &iommu_vm_ppr->ppr_log_region[iommu_vm_ppr->tail];
+    mutex_unlock(&iommu_vm_ppr->tail_lock);
     if (!ppr_log) {
         printk("!!! ppr_log null\n");
         return;
@@ -89,22 +94,26 @@ void amd_iommu_vm_ppr(struct fault *fault, int write)
     ppr_log->vm_task = fault->state->task;
     ppr_log->vm_mm   = fault->state->mm;
     ppr_log->address = fault->address;
-    ppr_log->write   = write;
     ppr_log->fault   = (u64)fault;
+    ppr_log->start_ns= (u64)timespec_to_ns(&start);
+    ppr_log->write   = write;
     printk("task=%p, mm=%p, addr=0x%llx, write=%d, fault=%llx\n", 
         ppr_log->vm_task, ppr_log->vm_mm, ppr_log->address, ppr_log->write, ppr_log->fault);
 
+    // update tail
+    mutex_lock(&iommu_vm_ppr->tail_lock);
     iommu_vm_ppr->tail = (iommu_vm_ppr->tail+1)%MAX_PPR_LOG_ENTRY;
+    mutex_unlock(&iommu_vm_ppr->tail_lock);
+
     if (iommu_vm_ppr->tail == iommu_vm_ppr->head)
         printk(" !!! guest consume too slow\n");
+
     printk("tail=%d, head=%d, vm_consume_head=%d, ppr_log=%p\n", 
             iommu_vm_ppr->tail, iommu_vm_ppr->head, iommu_vm_ppr->vm_consume_head, ppr_log);
 
     // write eventfd to kick guest
-    if (!iommu_vm_ppr->call_ctx)
-        printk("!!!iommu_vm_ppr->call_ctx %p\n", iommu_vm_ppr->call_ctx);
-    else
-        eventfd_signal(iommu_vm_ppr->call_ctx, 1);
+    BUG_ON (!iommu_vm_ppr->call_ctx);
+    eventfd_signal(iommu_vm_ppr->call_ctx, 1);
     printk("amd_iommu_vm_ppr kick guest done\n");
 }
 EXPORT_SYMBOL(amd_iommu_vm_ppr);
@@ -116,14 +125,25 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, int consume_head)
     u32 error_code = 0;
     u64 guest_cr3;
     int ret;
+    struct ppr_log *ppr_log;
+    struct timespec end;
+    uint64_t end_ns;
+
+    mutex_lock(&iommu_vm_ppr->head_lock);
+    head = iommu_vm_ppr->head;
+    mutex_unlock(&iommu_vm_ppr->head_lock);
+
+    mutex_lock(&iommu_vm_ppr->vm_consume_head_lock);
+    tail = iommu_vm_ppr->vm_consume_head;
+    mutex_unlock(&iommu_vm_ppr->vm_consume_head_lock);
 
     printk("vm_finish_ppr: tail=%d, head=%d, vm_consume_head=%d\n", 
-            iommu_vm_ppr->tail, iommu_vm_ppr->head, iommu_vm_ppr->vm_consume_head);
-    head = iommu_vm_ppr->head;
-    tail = iommu_vm_ppr->vm_consume_head;
+            iommu_vm_ppr->tail, head, tail);
 
     while (head != tail) {
-        fault = (struct fault*)(iommu_vm_ppr->ppr_log_region[head].fault);
+        ppr_log = &iommu_vm_ppr->ppr_log_region[head];
+        fault = (struct fault*)ppr_log->fault;
+
     	if (fault->dev_state->inv_ppr_cb) {
 	    	int status;
 
@@ -146,27 +166,39 @@ static long vm_finish_ppr(struct iommu_vm_ppr *iommu_vm_ppr, int consume_head)
     		}
     	} 
 
-        // get guest cr3
+        // fix spt page table
         if (!radeon_kfd_get_vm_process_pgd_p)
             radeon_kfd_get_vm_process_pgd_p = symbol_request(radeon_kfd_get_vm_process_pgd); 
         guest_cr3 = radeon_kfd_get_vm_process_pgd_p((uint64_t)(fault->state->task));
         ret = kvm_hsa_iommu_spt_page_fault(fault->state->kvm, fault->address, 
-                                                        fault->flags, guest_cr3);
+                                                       fault->flags, guest_cr3);
 
         // flush
-  		amd_iommu_flush_all_tlb(fault->dev_state->domain);
+        amd_iommu_flush_all_tlb(fault->dev_state->domain);
+// 		amd_iommu_flush_page(fault->dev_state->domain, fault->pasid, fault->address);
 
 		set_pri_tag_status(fault->state, fault->tag, PPR_SUCCESS);
-	    finish_pri_tag(fault->dev_state, fault->state, fault->tag, 1);    
+	    finish_pri_tag(fault->dev_state, fault->state, fault->tag, 0);    
     	put_pasid_state(fault->state);    
-    	kfree(fault);
         
+        // guest PPR end time    
+        getrawmonotonic(&end);
+        end_ns   = (uint64_t)timespec_to_ns(&end);
+        printk("do_fault: pdev=%p, domain=%p, task=%p, mm=%p\n", fault->dev_state->pdev, fault->dev_state->domain, fault->state->task, fault->state->mm);
+        printk("addr=0x%llx, pasid=%d, fault_tag=%d, start=%lld, end=%lld, diff=%lld\n", fault->address, fault->pasid, fault->tag, ppr_log->start_ns, end_ns, end_ns-ppr_log->start_ns);
+
+    	kfree(fault);
         head = (head+1) % MAX_PPR_LOG_ENTRY;
     }
 
+    // update head
+    mutex_lock(&iommu_vm_ppr->head_lock);
     iommu_vm_ppr->head = head;
+    mutex_unlock(&iommu_vm_ppr->head_lock);
+
     printk("tail=%d, head=%d, vm_consume_head=%d\n", 
-            iommu_vm_ppr->tail, iommu_vm_ppr->head, iommu_vm_ppr->vm_consume_head);
+            iommu_vm_ppr->tail, head, tail);
+
     return 0;
 }
 
@@ -184,6 +216,9 @@ static int amd_iommu_vm_ppr_open(struct inode *inode, struct file *f)
     iommu_vm_ppr->head = 0;
     iommu_vm_ppr->tail = 0;
     iommu_vm_ppr->vm_consume_head = 0;
+    mutex_init(&iommu_vm_ppr->head_lock);
+    mutex_init(&iommu_vm_ppr->tail_lock);
+    mutex_init(&iommu_vm_ppr->vm_consume_head_lock);
     iommu_vm_ppr->virtio_be_mm = current->mm;
 
     mutex_lock(&iommu_vm_ppr_mutex);
@@ -205,7 +240,7 @@ static long amd_iommu_vm_ppr_ioctl(struct file *f, unsigned int ioctl,
     unsigned long start, end;
     int head;
     int fd;
-	int r;
+	int r = 0;
 
     printk("amd_iommu_vm_ppr_ioctl ...");
     iommu_vm_ppr = find_iommu_vm_ppr(current->mm);

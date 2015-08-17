@@ -103,6 +103,9 @@ EXPORT_SYMBOL_GPL(kvm_has_tsc_control);
 u32  kvm_max_guest_tsc_khz;
 EXPORT_SYMBOL_GPL(kvm_max_guest_tsc_khz);
 
+// debug 
+uint64_t debug_gva;
+
 /* tsc tolerance in parts per million - default to 1/2 of the NTP threshold */
 static u32 tsc_tolerance_ppm = 250;
 module_param(tsc_tolerance_ppm, uint, S_IRUGO | S_IWUSR);
@@ -3885,11 +3888,27 @@ long kvm_arch_vm_ioctl(struct file *filp,
     case KVM_HSA_BIND_KFD_VIRTIO_BE: {
 
         printk("KVM_HSA_BIND_KFD_VIRTIO_BE\n");
+
+        r = kvm_hsa_init();
+   		if (r)
+   			goto out;
+    
  		r = kvm_hsa_bind_kfd_virtio_be(kvm, current);
    		if (r)
    			goto out;
     
         break;
+    }
+
+    case KVM_HSA_SET_DEBUG_GVA: {
+        uint64_t gva;
+        printk("KVM_HSA_SET_DEBUG_GVA\n");
+        r = -EFAULT;
+        if (copy_from_user(&gva, argp, sizeof(debug_gva)))
+            goto out;
+        debug_gva = gva;
+        printk("debug_gva=%llx\n", debug_gva);
+        r = 0;
     }
 #endif /* CONFIG_HSA_VIRTUALIZATION */
 	default:
