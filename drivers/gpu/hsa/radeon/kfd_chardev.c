@@ -59,6 +59,9 @@ struct identical_mapping_info identical_mapping;
 extern struct list_head vm_info_list;
 #endif
 
+// TEST
+extern int amd_iommu_pc_get_set_reg_val(u16 devid, u8 bank, u8 cntr, u8 fxn, u64 *value, bool is_write);
+
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
 static int kfd_open(struct inode *, struct file *);
 static int kfd_mmap(struct file *, struct vm_area_struct *);
@@ -258,6 +261,80 @@ kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p, void __user *a
 
 	mutex_unlock(&p->mutex);
 
+    // start IOMMU PMC
+    u8 csource; 
+    u64 reg; 
+
+    // total translated 
+    csource = 5;
+	amd_iommu_pc_get_set_reg_val(0, 0, 0, 0x08, &csource, true);    // select counter
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 0, 0x20, &reg, true);        // devid match
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 0, 0x10, &reg, true);        // pasid match
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 0, 0x18, &reg, true);        // domain match
+
+    // IOMMU TLB hit PTE 
+    csource = 6;     
+	amd_iommu_pc_get_set_reg_val(0, 0, 1, 0x08, &csource, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 1, 0x20, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 1, 0x10, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 1, 0x18, &reg, true);
+
+    // IOMMU TLB miss PTE
+    csource = 7;     
+	amd_iommu_pc_get_set_reg_val(0, 0, 2, 0x08, &csource, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 2, 0x20, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 2, 0x10, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 2, 0x18, &reg, true);
+
+    // DTE cache hit
+    csource = 10;   
+	amd_iommu_pc_get_set_reg_val(0, 0, 3, 0x08, &csource, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 3, 0x20, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 3, 0x10, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 0, 3, 0x18, &reg, true);
+
+    // DET cache miss
+    csource = 11;    
+	amd_iommu_pc_get_set_reg_val(0, 1, 0, 0x08, &csource, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 0, 0x20, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 0, 0x10, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 0, 0x18, &reg, true);
+
+    // page table read total
+    csource = 12;    
+	amd_iommu_pc_get_set_reg_val(0, 1, 1, 0x08, &csource, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 1, 0x20, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 1, 0x10, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 1, 0x18, &reg, true);
+
+    // TLB invalidate
+    csource = 19;    
+	amd_iommu_pc_get_set_reg_val(0, 1, 2, 0x08, &csource, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 2, 0x20, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 2, 0x10, &reg, true);
+    reg = 0;
+	amd_iommu_pc_get_set_reg_val(0, 1, 2, 0x18, &reg, true);
+
 	printk("kfd: gpu id %d was created successfully.\n"
 		 "     ring size         == 0x%X\n"
 		 "     ring size         == %d\n"
@@ -309,6 +386,60 @@ kfd_ioctl_destroy_queue(struct file *filp, struct kfd_process *p, void __user *a
 	retval = pqm_destroy_queue(&p->pqm, args.queue_id);
 
 	mutex_unlock(&p->mutex);
+
+    // get IOMMU PMC
+    u64 count = 0ULL;
+    u64 reg;
+
+    // total translated 
+    amd_iommu_pc_get_set_reg_val(0, 0, 0, 0x0, &count, false);
+    printk("translated total=%llu\n", count);
+    reg = 0;    
+    amd_iommu_pc_get_set_reg_val(0, 0, 0, 0x0, &reg, true);  // reload counter
+    amd_iommu_pc_get_set_reg_val(0, 0, 0, 0x08, &reg, true);   // disable event
+
+    // IOMMU TLB hit PTE 
+    amd_iommu_pc_get_set_reg_val(0, 0, 1, 0x0, &count, false);
+    printk("TLB hit pte=%llu\n", count);
+    reg = 0;    
+    amd_iommu_pc_get_set_reg_val(0, 0, 1, 0x0, &reg, true);  // reload counter
+    amd_iommu_pc_get_set_reg_val(0, 0, 1, 0x08, &reg, true);   // disable event
+
+    // IOMMU TLB miss PTE
+    amd_iommu_pc_get_set_reg_val(0, 0, 2, 0x0, &count, false);
+    printk("TLB miss pte=%llu\n", count);
+    reg = 0;    
+    amd_iommu_pc_get_set_reg_val(0, 0, 2, 0x0, &reg, true);  // reload counter
+    amd_iommu_pc_get_set_reg_val(0, 0, 2, 0x08, &reg, true);   // disable event
+
+    // DTE cache hit
+    amd_iommu_pc_get_set_reg_val(0, 0, 3, 0x0, &count, false);
+    printk("DTE cache hit=%llu\n", count);
+    reg = 0;    
+    amd_iommu_pc_get_set_reg_val(0, 0, 3, 0x0, &reg, true);  // reload counter
+    amd_iommu_pc_get_set_reg_val(0, 0, 3, 0x08, &reg, true);   // disable event
+
+    // DET cache miss
+    amd_iommu_pc_get_set_reg_val(0, 1, 0, 0x0, &count, false);
+    printk("DET cache miss=%llu\n", count);
+    reg = 0;    
+    amd_iommu_pc_get_set_reg_val(0, 1, 0, 0x0, &reg, true);  // reload counter
+    amd_iommu_pc_get_set_reg_val(0, 1, 0, 0x08, &reg, true);   // disable event
+
+    // page table read total
+    amd_iommu_pc_get_set_reg_val(0, 1, 1, 0x0, &count, false);
+    printk("page table read=%llu\n", count);
+    reg = 0;    
+    amd_iommu_pc_get_set_reg_val(0, 1, 1, 0x0, &reg, true);  // reload counter
+    amd_iommu_pc_get_set_reg_val(0, 1, 1, 0x08, &reg, true);   // disable event
+
+    // TLB invalidate
+    amd_iommu_pc_get_set_reg_val(0, 1, 2, 0x0, &count, false);
+    printk("TLB invalidate=%llu\n", count);
+    reg = 0;    
+    amd_iommu_pc_get_set_reg_val(0, 1, 2, 0x0, &reg, true);  // reload counter
+    amd_iommu_pc_get_set_reg_val(0, 1, 2, 0x08, &reg, true);   // disable event
+
 	return retval;
 }
 
@@ -388,7 +519,7 @@ kfd_ioctl_set_memory_policy(struct file *filep, struct kfd_process *p, void __us
     alternate_policy = KFD_IOC_CACHE_POLICY_NONCOHERENT;
     printk("default_policy=%d\n", default_policy); 
     printk("alternate_policy=%d\n", alternate_policy);
- 
+
 	if (!dev->dqm->set_cache_memory_policy(dev->dqm,
 					 &pdd->qpd,
 					 default_policy,

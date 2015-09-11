@@ -256,31 +256,40 @@ static void perf_iommu_enable_event(struct perf_event *ev)
 	u16 devid = _GET_DEVID(ev);
 	u64 reg = 0ULL;
 
+    printk("perf_iommu_enable_event, %u, %u, _GET_BANK=%d, _GET_CNTR=%d\n", csource, devid, _GET_BANK(ev), _GET_CNTR(ev));
 	reg = csource;
+    printk("1: reg=%llu ", reg);
 	amd_iommu_pc_get_set_reg_val(devid,
 			_GET_BANK(ev), _GET_CNTR(ev) ,
 			 IOMMU_PC_COUNTER_SRC_REG, &reg, true);
+    printk("->reg=%llu\n", reg);
 
 	reg = 0ULL | devid | (_GET_DEVID_MASK(ev) << 32);
 	if (reg)
 		reg |= (1UL << 31);
+    printk("2: reg=%llu ", reg);
 	amd_iommu_pc_get_set_reg_val(devid,
 			_GET_BANK(ev), _GET_CNTR(ev) ,
 			 IOMMU_PC_DEVID_MATCH_REG, &reg, true);
+    printk("->reg=%llu\n", reg);
 
 	reg = 0ULL | _GET_PASID(ev) | (_GET_PASID_MASK(ev) << 32);
 	if (reg)
 		reg |= (1UL << 31);
+    printk("3: reg=%llu ", reg);
 	amd_iommu_pc_get_set_reg_val(devid,
 			_GET_BANK(ev), _GET_CNTR(ev) ,
 			 IOMMU_PC_PASID_MATCH_REG, &reg, true);
+    printk("->reg=%llu\n", reg);
 
 	reg = 0ULL | _GET_DOMID(ev) | (_GET_DOMID_MASK(ev) << 32);
 	if (reg)
 		reg |= (1UL << 31);
+    printk("4: reg=%llu ", reg);
 	amd_iommu_pc_get_set_reg_val(devid,
 			_GET_BANK(ev), _GET_CNTR(ev) ,
 			 IOMMU_PC_DOMID_MATCH_REG, &reg, true);
+    printk("->reg=%llu\n", reg);
 }
 
 static void perf_iommu_disable_event(struct perf_event *event)
@@ -297,6 +306,7 @@ static void perf_iommu_start(struct perf_event *event, int flags)
 	struct hw_perf_event *hwc = &event->hw;
 
 	pr_debug("perf: amd_iommu:perf_iommu_start\n");
+	printk("perf: amd_iommu:perf_iommu_start\n");
 	if (WARN_ON_ONCE(!(hwc->state & PERF_HES_STOPPED)))
 		return;
 
@@ -305,6 +315,7 @@ static void perf_iommu_start(struct perf_event *event, int flags)
 
 	if (flags & PERF_EF_RELOAD) {
 		u64 prev_raw_count =  local64_read(&hwc->prev_count);
+        printk("PERF_EF_RELOAD, prev_raw_count=%llu\n", prev_raw_count);
 		amd_iommu_pc_get_set_reg_val(_GET_DEVID(event),
 				_GET_BANK(event), _GET_CNTR(event),
 				IOMMU_PC_COUNTER_REG, &prev_raw_count, true);
@@ -326,6 +337,7 @@ static void perf_iommu_read(struct perf_event *event)
 	amd_iommu_pc_get_set_reg_val(_GET_DEVID(event),
 				_GET_BANK(event), _GET_CNTR(event),
 				IOMMU_PC_COUNTER_REG, &count, false);
+    printk("perf_iommu_read:\n");
 
 	/* IOMMU pc counter register is only 48 bits */
 	count &= 0xFFFFFFFFFFFFULL;
@@ -340,6 +352,8 @@ static void perf_iommu_read(struct perf_event *event)
 	delta >>= COUNTER_SHIFT;
 	local64_add(delta, &event->count);
 
+    printk("DEVID=%d, BANK=%d, CNTR=%d, count=%llu, delta=%llu, event->count=%llu\n", 
+        _GET_DEVID(event), _GET_BANK(event), _GET_CNTR(event), count, delta, event->count);
 }
 
 static void perf_iommu_stop(struct perf_event *event, int flags)
@@ -348,6 +362,7 @@ static void perf_iommu_stop(struct perf_event *event, int flags)
 	u64 config;
 
 	pr_debug("perf: amd_iommu:perf_iommu_stop\n");
+	printk("perf: amd_iommu:perf_iommu_stop\n");
 
 	if (hwc->state & PERF_HES_UPTODATE)
 		return;

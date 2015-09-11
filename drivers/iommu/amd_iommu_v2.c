@@ -917,7 +917,6 @@ void amd_iommu_flush(struct pci_dev* dev, int pasid, unsigned long address)
     u16 devid = device_id(dev);
     struct device_state* dev_state = get_device_state(devid);
     
-    printk("amd_iommu_flush, domain=%p\n", dev_state->domain);
 	amd_iommu_flush_all_tlb(dev_state->domain);
 //    amd_iommu_flush_page(dev_state->domain, pasid, address);
 }
