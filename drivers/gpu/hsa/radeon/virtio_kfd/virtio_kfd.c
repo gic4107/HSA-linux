@@ -442,6 +442,7 @@ static void free_process(struct virtkfd_process *p)
                                                                                  
 static void shutdown_process(struct virtkfd_process *p)                              
 {                                                                                
+    printk("shutdown_process1\n");
     mutex_lock(&virtkfd_processes_mutex);                                            
     hash_del_rcu(&p->node);                                             
     mutex_unlock(&virtkfd_processes_mutex);                                          
@@ -450,9 +451,11 @@ static void shutdown_process(struct virtkfd_process *p)
     // unmap userspace doorbell mapping
     if(p->doorbell_user_mapping != NULL)
         vm_munmap((uintptr_t)p->doorbell_user_mapping, doorbell_process_allocation());
+    printk("shutdown_process2\n");
 
     // send VIRTKFD_CLOSE to BE
     virtkfd_add_req(VIRTKFD_CLOSE, &p->mm, sizeof(p->mm), (uint64_t)p->mm);
+    printk("shutdown_process3\n");
 }
 
 static void                                                                      
@@ -461,6 +464,7 @@ virtkfd_process_notifier_release(struct mmu_notifier *mn, struct mm_struct *mm)
     struct virtkfd_process *p = container_of(mn, struct virtkfd_process, mmu_notifier);  
     BUG_ON(p->mm != mm);                                                         
                                                                                  
+    printk("virtkfd_process_notifier_release\n");
     shutdown_process(p);                                                         
 }                                                                                
                                                                                  
@@ -557,6 +561,7 @@ virtkfd_release(struct inode *inode, struct file *filep)
     if(!p)
         return -1;
     
+    printk("virtkfd_release\n");
     shutdown_process(p);
     free_process(p);
 }

@@ -30,7 +30,7 @@ struct iommu_vm_ppr {
     volatile struct mutex head_lock;
     volatile struct mutex tail_lock;
     volatile struct mutex vm_consume_head_lock;
-    struct eventfd_ctx *call_ctx;
+    struct eventfd_ctx *call_ctx;    // for sending virtual interrupt to guest
 };
 
 #endif

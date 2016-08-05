@@ -52,6 +52,10 @@ static struct workqueue_struct *vm_ppr_wq;
 static struct virtio_iommu *viommu;
 static struct iommu_vm_ppr *ppr;
 
+static struct wait_queue* vm_ppr_wait_queue;
+static int vm_ppr_task_count = 0;
+static struct mutex vm_ppr_task_lock;
+
 static int minor_to_index(int minor)
 {
 	return minor >> PART_BITS;
@@ -163,6 +167,52 @@ int virtio_iommu_add_req_no_wait(int cmd, void *param, int param_len, void (*cb)
     return virtio_iommu_add_req(cmd, param, param_len, 0, cb);
 }
 
+#if 0
+static void vm_ppr_handler(struct work_struct *work)
+{
+    struct ppr_log *ppr_log;
+    int head;
+    int npages;
+    struct page *page;
+    struct task_struct *task;
+    struct mm_struct *mm;
+
+    while (1) {
+        interruptible_sleep_on(&vm_ppr_wait_queue);
+        mutex_lock(&ppr->vm_consume_head_lock);
+        head = ppr->vm_consume_head;
+        mutex_unlock(&ppr->vm_consume_head_lock);
+
+        while (1) {
+            mutex_lock(&vm_ppr_task_lock);
+            vm_ppr_task_count--;
+            mutex_unlock(&vm_ppr_task_lock);
+
+            ppr_log = &ppr->ppr_log_region[head];
+            printk("ppr_log=%p, task=0x%llx, mm=0x%llx, addr=0x%llx, write=%d\n",
+                        ppr_log, ppr_log->vm_task, ppr_log->vm_mm, ppr_log->address, ppr_log->write);
+            mm   = (struct mm_struct*)ppr_log->vm_mm;
+            task = (struct task_struct*)ppr_log->vm_task;
+
+            down_read(&mm->mmap_sem);
+            npages = get_user_pages(task, mm, ppr_log->address, 1,
+                                            ppr_log->write, 0, &page, NULL);
+        	up_read(&mm->mmap_sem);
+
+            if (npages == 1)
+                put_page(page);
+
+            // send back to let host finish_pri_tag
+            mutex_lock(&ppr->vm_consume_head_lock);
+            ppr->vm_consume_head = (ppr->vm_consume_head+1) % MAX_PPR_LOG_ENTRY;
+            virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR,
+                        &ppr->vm_consume_head, sizeof(ppr->vm_consume_head), NULL);
+            mutex_unlock(&ppr->vm_consume_head_lock);
+        }
+    }
+}
+#endif
+
 static void vm_ppr_handler(struct work_struct *work)
 {
     struct ppr_log *ppr_log;
@@ -174,9 +224,9 @@ static void vm_ppr_handler(struct work_struct *work)
     struct mm_struct *mm;
     int log_count = 0;
 
-    mutex_lock(&ppr->head_lock);
+    mutex_lock(&ppr->vm_consume_head_lock);
     head = ppr->vm_consume_head;
-    mutex_unlock(&ppr->head_lock);
+    mutex_unlock(&ppr->vm_consume_head_lock);
 
     mutex_lock(&ppr->tail_lock);
     tail = ppr->tail;
@@ -197,28 +247,26 @@ static void vm_ppr_handler(struct work_struct *work)
                                         ppr_log->write, 0, &page, NULL);
     	up_read(&mm->mmap_sem);
 
-        if (npages == 1) {
-            printk("npages=1\n");
+        if (npages == 1)
             put_page(page);
-        }
 
         head = (head+1) % MAX_PPR_LOG_ENTRY;
     }
 
-    if (log_count == 0)
+    // TODO: Given the vq_request in virtio_iommu_done, need this?
+    if (log_count == 0) {
+        kfree(work);
         return ;
+    }
     
     mutex_lock(&ppr->vm_consume_head_lock);
     ppr->vm_consume_head = head;
+    // send back to let host finish_pri_tag
+    virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR,
+                &ppr->vm_consume_head, sizeof(ppr->vm_consume_head), NULL);
     mutex_unlock(&ppr->vm_consume_head_lock);
 
     printk("vm_ppr_handler, head=%d, tail=%d, vm_consume_head=%d\n", ppr->head, tail, head);
-
-    // send back to let host finish_pri_tag 
-    if (log_count) {
-        virtio_iommu_add_req_no_wait(VIRTIO_IOMMU_VM_FINISH_PPR, 
-            &ppr->vm_consume_head, sizeof(ppr->vm_consume_head), NULL);
-    }
 
     kfree(work);
 }
@@ -226,6 +274,7 @@ static void vm_ppr_handler(struct work_struct *work)
 static void virtio_iommu_done(struct virtqueue *vq)
 {
     struct virtio_iommu_req *req;
+    int vq_request = 0;
     int len;
 	unsigned long flags;
 
@@ -233,10 +282,9 @@ static void virtio_iommu_done(struct virtqueue *vq)
 	do {
 		virtqueue_disable_cb(vq);
 		while ((req = virtqueue_get_buf(vq, &len)) != NULL) {
-            printk("virtio_iommu_done, interrupted by request\n");
+            vq_request = 1;
             if (req->cb)
                 req->cb(req->param);
-
             if (req->wait == VIRTIO_IOMMU_REQ_WAIT)
                 req->wait = VIRTIO_IOMMU_REQ_DONE;
             else 
@@ -245,17 +293,23 @@ static void virtio_iommu_done(struct virtqueue *vq)
 		if (unlikely(virtqueue_is_broken(vq)))
 			break;
 	} while (!virtqueue_enable_cb(vq));
-
 	spin_unlock_irqrestore(&viommu->vq_lock, flags);
 
+    if (vq_request)
+        return;
+
     // handler guest PPR
+#if 0
+    mutex_lock(&vm_ppr_task_lock);
+    vm_ppr_task_count += 1;
+    mutex_unlock(&vm_ppr_task_lock);
+#endif
     struct work_struct *work = kmalloc(sizeof(struct work_struct), GFP_ATOMIC);
     if (work == NULL) {
         printk("work allocate fail\n");
         return;
     }
 
-    printk("virtio_iommu_done, interrupted by IRQFD\n");
     INIT_WORK(work, vm_ppr_handler);
     queue_work(vm_ppr_wq, work);
 }
@@ -376,12 +430,15 @@ static int virtio_iommu_probe(struct virtio_device *vdev)
     SetPageReserved(virt_to_page(ppr));       // may not need 
     ppr_region_gpa = (uint64_t)virt_to_phys(ppr);
 
+    // this work queue for handling VM PPR requests
     vm_ppr_wq = create_workqueue("vm_ppr_wq");
     if (vm_ppr_wq == NULL)
         goto out_free_ppr;
 
+    mutex_init(&vm_ppr_task_lock);
+
+    // bind the PPR region with host side
     virtio_iommu_add_req_wait(VIRTIO_IOMMU_MMAP_PPR_REGION, &ppr_region_gpa, sizeof(*ppr), NULL);
-    printk("VIRTIO_IOMMU_MMAP_PPR_REGION done, ppr_region_gpa=%llx\n", ppr_region_gpa);
 
 	return 0;
 
